@@ -1,19 +1,62 @@
 const express = require("express");
+const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const validate = require("../middleware/validate");
 const { canManageChannels, isServerMember } = require("../lib/membership");
 
 const router = express.Router();
 router.use(auth);
+const channelTypeSchema = z.enum(["text", "voice", "forum"]);
+const boolSchema = z.boolean().optional();
+const serverIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+});
+const channelIdParamSchema = z.object({
+  channelId: z.coerce.number().int().positive(),
+});
+const categoryIdParamSchema = z.object({
+  categoryId: z.coerce.number().int().positive(),
+});
+const channelUserPermissionParamSchema = z.object({
+  channelId: z.coerce.number().int().positive(),
+  userId: z.coerce.number().int().positive(),
+});
+const createChannelSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  server_id: z.coerce.number().int().positive(),
+  type: channelTypeSchema.optional(),
+  category_id: z.coerce.number().int().positive().optional().nullable(),
+});
+const createCategorySchema = z.object({
+  server_id: z.coerce.number().int().positive(),
+  name: z.string().trim().min(1).max(80),
+});
+const reorderChannelSchema = z.object({
+  server_id: z.coerce.number().int().positive(),
+  channel_id: z.coerce.number().int().positive(),
+  target_channel_id: z.coerce.number().int().positive().optional().nullable(),
+  target_category_id: z.coerce.number().int().positive().optional().nullable(),
+});
+const reorderCategorySchema = z.object({
+  server_id: z.coerce.number().int().positive(),
+  category_id: z.coerce.number().int().positive(),
+  target_category_id: z.coerce.number().int().positive().optional().nullable(),
+});
+const rolePermissionSchema = z.object({
+  role_id: z.coerce.number().int().positive(),
+  can_view: boolSchema,
+  can_send: boolSchema,
+  can_connect: boolSchema,
+});
+const userPermissionSchema = z.object({
+  can_view: boolSchema,
+  can_send: boolSchema,
+  can_connect: boolSchema,
+});
 
-router.post("/", async (req, res) => {
+router.post("/", validate({ body: createChannelSchema }), async (req, res) => {
   const { name, server_id, type = "text", category_id = null } = req.body;
-  if (!name || !server_id) {
-    return res.status(400).json({ error: "name and server_id required" });
-  }
-  if (!["text", "voice", "forum"].includes(type)) {
-    return res.status(400).json({ error: "Invalid channel type" });
-  }
   if (!(await isServerMember(req.user.id, server_id))) {
     return res.status(403).json({ error: "Not a member of this server" });
   }
@@ -41,11 +84,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.get("/server/:serverId", async (req, res) => {
-  const serverId = parseInt(req.params.serverId, 10);
-  if (Number.isNaN(serverId)) {
-    return res.status(400).json({ error: "Invalid server" });
-  }
+router.get("/server/:serverId", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
   if (!(await isServerMember(req.user.id, serverId))) {
     return res.status(403).json({ error: "Not a member of this server" });
   }
@@ -56,11 +96,8 @@ router.get("/server/:serverId", async (req, res) => {
   res.json(result.rows);
 });
 
-router.get("/server/:serverId/categories", async (req, res) => {
-  const serverId = parseInt(req.params.serverId, 10);
-  if (Number.isNaN(serverId)) {
-    return res.status(400).json({ error: "Invalid server" });
-  }
+router.get("/server/:serverId/categories", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
   if (!(await isServerMember(req.user.id, serverId))) {
     return res.status(403).json({ error: "Not a member of this server" });
   }
@@ -71,11 +108,8 @@ router.get("/server/:serverId/categories", async (req, res) => {
   res.json(result.rows);
 });
 
-router.post("/categories", async (req, res) => {
+router.post("/categories", validate({ body: createCategorySchema }), async (req, res) => {
   const { server_id, name } = req.body;
-  if (!server_id || !name) {
-    return res.status(400).json({ error: "server_id and name required" });
-  }
   if (!(await isServerMember(req.user.id, server_id))) {
     return res.status(403).json({ error: "Not a member of this server" });
   }
@@ -89,11 +123,8 @@ router.post("/categories", async (req, res) => {
   res.status(201).json(result.rows[0]);
 });
 
-router.delete("/categories/:categoryId", async (req, res) => {
-  const categoryId = parseInt(req.params.categoryId, 10);
-  if (Number.isNaN(categoryId)) {
-    return res.status(400).json({ error: "Invalid category" });
-  }
+router.delete("/categories/:categoryId", validate({ params: categoryIdParamSchema }), async (req, res) => {
+  const categoryId = req.params.categoryId;
   const category = await pool.query(
     "SELECT id, server_id FROM channel_categories WHERE id = $1",
     [categoryId]
@@ -124,11 +155,8 @@ router.delete("/categories/:categoryId", async (req, res) => {
   }
 });
 
-router.post("/reorder", async (req, res) => {
+router.post("/reorder", validate({ body: reorderChannelSchema }), async (req, res) => {
   const { server_id, channel_id, target_channel_id = null, target_category_id = null } = req.body;
-  if (!server_id || !channel_id) {
-    return res.status(400).json({ error: "server_id and channel_id required" });
-  }
   if (!(await isServerMember(req.user.id, server_id))) {
     return res.status(403).json({ error: "Not a member of this server" });
   }
@@ -192,11 +220,8 @@ router.post("/reorder", async (req, res) => {
   }
 });
 
-router.post("/categories/reorder", async (req, res) => {
+router.post("/categories/reorder", validate({ body: reorderCategorySchema }), async (req, res) => {
   const { server_id, category_id, target_category_id = null } = req.body;
-  if (!server_id || !category_id) {
-    return res.status(400).json({ error: "server_id and category_id required" });
-  }
   if (!(await isServerMember(req.user.id, server_id))) {
     return res.status(403).json({ error: "Not a member of this server" });
   }
@@ -249,11 +274,8 @@ router.post("/categories/reorder", async (req, res) => {
   }
 });
 
-router.get("/:channelId/permissions", async (req, res) => {
-  const channelId = parseInt(req.params.channelId, 10);
-  if (Number.isNaN(channelId)) {
-    return res.status(400).json({ error: "Invalid channel" });
-  }
+router.get("/:channelId/permissions", validate({ params: channelIdParamSchema }), async (req, res) => {
+  const channelId = req.params.channelId;
   const channel = await pool.query(
     "SELECT id, server_id FROM channels WHERE id = $1",
     [channelId]
@@ -278,12 +300,9 @@ router.get("/:channelId/permissions", async (req, res) => {
   res.json(roles.rows);
 });
 
-router.put("/:channelId/permissions", async (req, res) => {
-  const channelId = parseInt(req.params.channelId, 10);
+router.put("/:channelId/permissions", validate({ params: channelIdParamSchema, body: rolePermissionSchema }), async (req, res) => {
+  const channelId = req.params.channelId;
   const { role_id, can_view, can_send, can_connect } = req.body;
-  if (Number.isNaN(channelId) || !role_id) {
-    return res.status(400).json({ error: "channelId and role_id required" });
-  }
   const channel = await pool.query(
     "SELECT id, server_id FROM channels WHERE id = $1",
     [channelId]
@@ -313,11 +332,8 @@ router.put("/:channelId/permissions", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-router.get("/:channelId/user-permissions", async (req, res) => {
-  const channelId = parseInt(req.params.channelId, 10);
-  if (Number.isNaN(channelId)) {
-    return res.status(400).json({ error: "Invalid channel" });
-  }
+router.get("/:channelId/user-permissions", validate({ params: channelIdParamSchema }), async (req, res) => {
+  const channelId = req.params.channelId;
   const channel = await pool.query(
     "SELECT id, server_id FROM channels WHERE id = $1",
     [channelId]
@@ -338,13 +354,13 @@ router.get("/:channelId/user-permissions", async (req, res) => {
   res.json(result.rows);
 });
 
-router.put("/:channelId/user-permissions/:userId", async (req, res) => {
-  const channelId = parseInt(req.params.channelId, 10);
-  const userId = parseInt(req.params.userId, 10);
+router.put(
+  "/:channelId/user-permissions/:userId",
+  validate({ params: channelUserPermissionParamSchema, body: userPermissionSchema }),
+  async (req, res) => {
+  const channelId = req.params.channelId;
+  const userId = req.params.userId;
   const { can_view, can_send, can_connect } = req.body;
-  if (Number.isNaN(channelId) || Number.isNaN(userId)) {
-    return res.status(400).json({ error: "Invalid channel or user" });
-  }
   const channel = await pool.query(
     "SELECT id, server_id FROM channels WHERE id = $1",
     [channelId]
@@ -372,13 +388,11 @@ router.put("/:channelId/user-permissions/:userId", async (req, res) => {
     [channelId, userId, Boolean(can_view), Boolean(can_send), Boolean(can_connect)]
   );
   res.json(result.rows[0]);
-});
+}
+);
 
-router.delete("/:channelId", async (req, res) => {
-  const channelId = parseInt(req.params.channelId, 10);
-  if (Number.isNaN(channelId)) {
-    return res.status(400).json({ error: "Invalid channel" });
-  }
+router.delete("/:channelId", validate({ params: channelIdParamSchema }), async (req, res) => {
+  const channelId = req.params.channelId;
   const ch = await pool.query(
     "SELECT id, server_id, name FROM channels WHERE id = $1",
     [channelId]

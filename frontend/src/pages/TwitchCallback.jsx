@@ -6,18 +6,18 @@ export default function TwitchCallback() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const { loginWithToken } = useAuth()
-  const [status, setStatus] = useState('Conectando Twitch…')
+  const [status, setStatus] = useState('Connecting Twitch…')
 
   useEffect(() => {
     const token = params.get('token')
     const error = params.get('error')
 
     if (error) {
-      setStatus(`Error de Twitch: ${error}`)
+      setStatus(`Twitch error: ${error}`)
       return
     }
     if (!token) {
-      setStatus('No se recibió token de Twitch')
+      setStatus('No Twitch token received')
       return
     }
 
@@ -26,7 +26,7 @@ export default function TwitchCallback() {
         await loginWithToken(token)
         navigate('/', { replace: true })
       } catch {
-        setStatus('No se pudo completar el login con Twitch')
+        setStatus('Could not complete Twitch login')
       }
     })()
   }, [params, loginWithToken, navigate])

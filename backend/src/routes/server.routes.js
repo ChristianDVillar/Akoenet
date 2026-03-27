@@ -1,20 +1,47 @@
 const express = require("express");
+const crypto = require("crypto");
+const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const validate = require("../middleware/validate");
+const logger = require("../lib/logger");
+const { canManageChannels } = require("../lib/membership");
 
 const router = express.Router();
 const hiddenServerName = (process.env.HIDDEN_SYSTEM_SERVER_NAME || "Akonet").trim().toLowerCase();
+const createServerSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+});
+const serverIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+});
+const createInviteSchema = z.object({
+  max_uses: z.coerce.number().int().positive().max(1000).optional().nullable(),
+  expires_in_hours: z.coerce.number().int().positive().max(24 * 30).optional().nullable(),
+});
+const createEmojiSchema = z.object({
+  name: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{2,32}$/),
+  image_url: z.string().trim().max(2000),
+});
+const emojiIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  emojiId: z.coerce.number().int().positive(),
+});
+const inviteTokenParamSchema = z.object({
+  token: z.string().min(12).max(128),
+});
+const inviteIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  inviteId: z.coerce.number().int().positive(),
+});
 
 router.use(auth);
 
 /** Create server, default roles, owner membership + admin role */
-router.post("/", async (req, res) => {
+router.post("/", validate({ body: createServerSchema }), async (req, res) => {
   const client = await pool.connect();
   try {
     const { name } = req.body;
-    if (!name || !String(name).trim()) {
-      return res.status(400).json({ error: "name required" });
-    }
     await client.query("BEGIN");
     const serverResult = await client.query(
       `INSERT INTO servers (name, owner_id) VALUES ($1, $2) RETURNING *`,
@@ -55,7 +82,7 @@ router.post("/", async (req, res) => {
     res.status(201).json({ ...server, roles: roleIds });
   } catch (e) {
     await client.query("ROLLBACK");
-    console.error(e);
+    logger.error({ err: e }, "Create server failed");
     res.status(500).json({ error: "Could not create server" });
   } finally {
     client.release();
@@ -77,11 +104,8 @@ router.get("/", async (req, res) => {
 });
 
 /** Join server by id (invite flow MVP: user must know server id) */
-router.post("/:serverId/join", async (req, res) => {
-  const serverId = parseInt(req.params.serverId, 10);
-  if (Number.isNaN(serverId)) {
-    return res.status(400).json({ error: "Invalid server" });
-  }
+router.post("/:serverId/join", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
   const exists = await pool.query("SELECT id, name, is_system FROM servers WHERE id = $1", [serverId]);
   if (exists.rows.length === 0) {
     return res.status(404).json({ error: "Server not found" });
@@ -114,14 +138,226 @@ router.post("/:serverId/join", async (req, res) => {
     if (e.code === "23505") {
       return res.status(409).json({ error: "Already a member" });
     }
-    console.error(e);
+    logger.error({ err: e }, "Join server failed");
     res.status(500).json({ error: "Join failed" });
   }
 });
 
+router.post(
+  "/:serverId/invites",
+  validate({ params: serverIdParamSchema, body: createInviteSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to create invites" });
+    }
+    const token = crypto.randomBytes(18).toString("base64url");
+    const maxUses = req.body.max_uses ?? null;
+    const expiresInHours = req.body.expires_in_hours ?? null;
+    const expiresAt = expiresInHours ? new Date(Date.now() + expiresInHours * 3600 * 1000) : null;
+    const result = await pool.query(
+      `INSERT INTO server_invites (server_id, created_by, token, max_uses, expires_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, server_id, token, max_uses, used_count, expires_at, is_active, created_at`,
+      [serverId, req.user.id, token, maxUses, expiresAt]
+    );
+    res.status(201).json(result.rows[0]);
+  }
+);
+
+router.get("/:serverId/invites", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  if (!(await canManageChannels(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Insufficient role to list invites" });
+  }
+  const result = await pool.query(
+    `SELECT id, server_id, token, max_uses, used_count, expires_at, is_active, created_at
+     FROM server_invites
+     WHERE server_id = $1
+       AND is_active = true
+       AND (expires_at IS NULL OR expires_at > NOW())
+     ORDER BY created_at DESC`,
+    [serverId]
+  );
+  res.json(result.rows);
+});
+
+router.get("/:serverId/emojis", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  const { isServerMember } = require("../lib/membership");
+  if (!(await isServerMember(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Not a member" });
+  }
+  const result = await pool.query(
+    `SELECT id, server_id, name, image_url, created_by, created_at
+     FROM server_emojis
+     WHERE server_id = $1
+     ORDER BY name ASC`,
+    [serverId]
+  );
+  res.json(result.rows);
+});
+
+router.post(
+  "/:serverId/emojis",
+  validate({ params: serverIdParamSchema, body: createEmojiSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to manage emojis" });
+    }
+    try {
+      const result = await pool.query(
+        `INSERT INTO server_emojis (server_id, name, image_url, created_by)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, server_id, name, image_url, created_by, created_at`,
+        [serverId, req.body.name, req.body.image_url, req.user.id]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (e) {
+      if (e.code === "23505") {
+        return res.status(409).json({ error: "Emoji name already exists in this server" });
+      }
+      logger.error({ err: e }, "Create emoji failed");
+      res.status(500).json({ error: "Could not create emoji" });
+    }
+  }
+);
+
+router.delete(
+  "/:serverId/invites/:inviteId",
+  validate({ params: inviteIdParamSchema }),
+  async (req, res) => {
+    const { serverId, inviteId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to revoke invites" });
+    }
+    const result = await pool.query(
+      `UPDATE server_invites
+       SET is_active = false
+       WHERE id = $1 AND server_id = $2
+       RETURNING id, is_active`,
+      [inviteId, serverId]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+    res.json({ revoked: true, invite_id: inviteId });
+  }
+);
+
+router.delete(
+  "/:serverId/emojis/:emojiId",
+  validate({ params: emojiIdParamSchema }),
+  async (req, res) => {
+    const { serverId, emojiId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to manage emojis" });
+    }
+    const result = await pool.query(
+      `DELETE FROM server_emojis
+       WHERE id = $1 AND server_id = $2
+       RETURNING id`,
+      [emojiId, serverId]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Emoji not found" });
+    }
+    res.json({ deleted: true, emoji_id: emojiId });
+  }
+);
+
+router.post("/invite/:token/join", validate({ params: inviteTokenParamSchema }), async (req, res) => {
+  const token = req.params.token;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const inviteRes = await client.query(
+      `SELECT *
+       FROM server_invites
+       WHERE token = $1
+       FOR UPDATE`,
+      [token]
+    );
+    if (!inviteRes.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Invite not found" });
+    }
+    const invite = inviteRes.rows[0];
+    if (!invite.is_active) {
+      await client.query("ROLLBACK");
+      return res.status(410).json({ error: "Invite is inactive" });
+    }
+    if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
+      await client.query("ROLLBACK");
+      return res.status(410).json({ error: "Invite expired" });
+    }
+    if (invite.max_uses !== null && invite.used_count >= invite.max_uses) {
+      await client.query("ROLLBACK");
+      return res.status(410).json({ error: "Invite usage limit reached" });
+    }
+    const serverId = invite.server_id;
+    const exists = await client.query("SELECT id, name, is_system FROM servers WHERE id = $1", [serverId]);
+    if (exists.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Server not found" });
+    }
+    if (
+      String(exists.rows[0].name || "").trim().toLowerCase() === hiddenServerName ||
+      Boolean(exists.rows[0].is_system)
+    ) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ error: "Cannot join this server" });
+    }
+    const memberRole = await client.query(
+      `SELECT r.id FROM roles r WHERE r.server_id = $1 AND r.name = 'member'`,
+      [serverId]
+    );
+    if (memberRole.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(500).json({ error: "Server roles missing" });
+    }
+    try {
+      await client.query(
+        `INSERT INTO server_members (user_id, server_id) VALUES ($1, $2)`,
+        [req.user.id, serverId]
+      );
+      await client.query(
+        `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)
+         ON CONFLICT (user_id, role_id) DO NOTHING`,
+        [req.user.id, memberRole.rows[0].id]
+      );
+    } catch (e) {
+      if (e.code === "23505") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Already a member" });
+      }
+      throw e;
+    }
+    await client.query(
+      `UPDATE server_invites
+       SET used_count = used_count + 1,
+           is_active = CASE
+             WHEN max_uses IS NOT NULL AND used_count + 1 >= max_uses THEN false
+             ELSE is_active
+           END
+       WHERE id = $1`,
+      [invite.id]
+    );
+    await client.query("COMMIT");
+    res.status(201).json({ joined: true, server_id: serverId });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    logger.error({ err: e }, "Join by invite failed");
+    res.status(500).json({ error: "Join failed" });
+  } finally {
+    client.release();
+  }
+});
+
 /** Roles for a server (member only) */
-router.get("/:serverId/roles", async (req, res) => {
-  const serverId = parseInt(req.params.serverId, 10);
+router.get("/:serverId/roles", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
   const { isServerMember } = require("../lib/membership");
   if (!(await isServerMember(req.user.id, serverId))) {
     return res.status(403).json({ error: "Not a member" });
@@ -133,11 +369,8 @@ router.get("/:serverId/roles", async (req, res) => {
   res.json(result.rows);
 });
 
-router.get("/:serverId/members", async (req, res) => {
-  const serverId = parseInt(req.params.serverId, 10);
-  if (Number.isNaN(serverId)) {
-    return res.status(400).json({ error: "Invalid server" });
-  }
+router.get("/:serverId/members", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
   const { isServerMember } = require("../lib/membership");
   if (!(await isServerMember(req.user.id, serverId))) {
     return res.status(403).json({ error: "Not a member" });
