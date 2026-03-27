@@ -12,8 +12,8 @@ export default function ChannelPermissionsPanel({
   if (!permissions?.length) {
     return (
       <section className="perm-panel">
-        <header>Permisos del canal</header>
-        <p className="muted small">Selecciona un canal para editar permisos.</p>
+        <header>Channel permissions</header>
+        <p className="muted small">Select a channel to edit permissions.</p>
       </section>
     )
   }
@@ -21,7 +21,7 @@ export default function ChannelPermissionsPanel({
   return (
     <section className="perm-panel">
       <header>
-        Permisos: <strong>{channelName}</strong>
+        Permissions: <strong>{channelName}</strong>
       </header>
       <div className="perm-list">
         {permissions.map((role) => (
@@ -38,7 +38,7 @@ export default function ChannelPermissionsPanel({
                   })
                 }
               />
-              ver
+              view
             </label>
             <label>
               <input
@@ -51,7 +51,7 @@ export default function ChannelPermissionsPanel({
                   })
                 }
               />
-              escribir
+              send
             </label>
             {channelType === 'voice' && (
               <label>
@@ -65,20 +65,20 @@ export default function ChannelPermissionsPanel({
                     })
                   }
                 />
-                conectar
+                connect
               </label>
             )}
           </article>
         ))}
       </div>
       <div className="perm-user-box">
-        <h4>Permiso por usuario</h4>
+        <h4>Per-user permissions</h4>
         <select
           className="select-inline"
           value={selectedMemberId}
           onChange={(e) => setSelectedMemberId(e.target.value)}
         >
-          <option value="">Seleccionar miembro</option>
+          <option value="">Select member</option>
           {members.map((m) => (
             <option key={m.id} value={String(m.id)}>
               {m.username}
@@ -111,7 +111,7 @@ export default function ChannelPermissionsPanel({
                         })
                       }
                     />
-                    ver
+                    view
                   </label>
                   <label>
                     <input
@@ -124,7 +124,7 @@ export default function ChannelPermissionsPanel({
                         })
                       }
                     />
-                    escribir
+                    send
                   </label>
                   {channelType === 'voice' && (
                     <label>
@@ -138,7 +138,7 @@ export default function ChannelPermissionsPanel({
                           })
                         }
                       />
-                      conectar
+                      connect
                     </label>
                   )}
                 </>

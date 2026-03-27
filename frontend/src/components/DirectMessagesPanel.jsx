@@ -24,7 +24,7 @@ export default function DirectMessagesPanel({ user }) {
   }
 
   useEffect(() => {
-    loadConversations().catch(() => setError('No se pudieron cargar tus mensajes directos'))
+    loadConversations().catch(() => setError('Could not load your direct messages'))
   }, [])
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export default function DirectMessagesPanel({ user }) {
       const { data } = await api.get('/dm/users', { params: { q: userQuery.trim() } })
       setResults(data)
     } catch {
-      setError('No se pudo buscar usuarios')
+      setError('Could not search users')
     }
   }
 
@@ -117,7 +117,7 @@ export default function DirectMessagesPanel({ user }) {
       setUserQuery('')
       await loadConversations()
     } catch {
-      setError('No se pudo abrir conversación')
+      setError('Could not open conversation')
     }
   }
 
@@ -127,10 +127,18 @@ export default function DirectMessagesPanel({ user }) {
     setText('')
     const socket = getSocket()
     if (socket) {
-      socket.emit('send_direct_message', {
-        conversation_id: selectedConversationId,
-        content,
-      })
+      socket.emit(
+        'send_direct_message',
+        {
+          conversation_id: selectedConversationId,
+          content,
+        },
+        (ack) => {
+          if (ack?.error === 'rate_limited') {
+            setError('You are sending direct messages too fast')
+          }
+        }
+      )
       return
     }
     try {
@@ -139,7 +147,7 @@ export default function DirectMessagesPanel({ user }) {
       })
       setMessages((prev) => [...prev, data])
     } catch {
-      setError('No se pudo enviar el mensaje')
+      setError('Could not send message')
     }
   }
 
@@ -162,11 +170,19 @@ export default function DirectMessagesPanel({ user }) {
       if (!res.ok) throw new Error(data.error || 'upload')
       const socket = getSocket()
       if (socket) {
-        socket.emit('send_direct_message', {
-          conversation_id: selectedConversationId,
-          content: '',
-          image_url: data.url,
-        })
+        socket.emit(
+          'send_direct_message',
+          {
+            conversation_id: selectedConversationId,
+            content: '',
+            image_url: data.url,
+          },
+          (ack) => {
+            if (ack?.error === 'rate_limited') {
+              setError('You are sending direct messages too fast')
+            }
+          }
+        )
       } else {
         const { data: message } = await api.post(
           `/dm/conversations/${selectedConversationId}/messages`,
@@ -178,7 +194,7 @@ export default function DirectMessagesPanel({ user }) {
         setMessages((prev) => [...prev, message])
       }
     } catch {
-      setError('No se pudo enviar la imagen')
+      setError('Could not send image')
     } finally {
       setUploading(false)
     }
@@ -186,20 +202,22 @@ export default function DirectMessagesPanel({ user }) {
 
   return (
     <section className="card dm-panel">
-      <h2>Mensajes directos</h2>
+      <h2>Direct messages</h2>
+      <p className="muted small">Search users, open a conversation, and chat in real time.</p>
       {error && <div className="error-banner inline">{error}</div>}
       <form onSubmit={searchUsers} className="form-inline">
         <input
-          placeholder="Buscar usuario"
+          placeholder="Search user"
           value={userQuery}
           onChange={(e) => setUserQuery(e.target.value)}
         />
         <button type="submit" className="btn secondary">
-          Buscar
+          Search users
         </button>
       </form>
       {results.length > 0 && (
         <div className="dm-search-results">
+          <p className="muted small">Select a user below to start a new chat.</p>
           {results.map((u) => (
             <button
               key={u.id}
@@ -213,11 +231,14 @@ export default function DirectMessagesPanel({ user }) {
           ))}
         </div>
       )}
+      {userQuery.trim().length > 1 && results.length === 0 && (
+        <p className="muted small">No users found. Try another username or email fragment.</p>
+      )}
 
       <div className="dm-layout">
         <aside className="dm-conversations">
           {conversations.length === 0 ? (
-            <p className="muted small">No tienes conversaciones directas aún.</p>
+            <p className="muted small">You do not have direct conversations yet. Search someone to start one.</p>
           ) : (
             conversations.map((c) => (
               <button
@@ -235,7 +256,7 @@ export default function DirectMessagesPanel({ user }) {
 
         <div className="dm-chat">
           <div className="dm-chat-header">
-            {selectedConversation ? `Chat con ${selectedConversation.peer_username}` : 'Selecciona un chat'}
+            {selectedConversation ? `Chat with ${selectedConversation.peer_username}` : 'Select a chat'}
           </div>
           <div className="message-list">
             {messages.map((m) => (
@@ -282,7 +303,7 @@ export default function DirectMessagesPanel({ user }) {
             <input
               className="composer-input"
               placeholder={
-                selectedConversation ? `Mensaje directo a ${selectedConversation.peer_username}` : 'Selecciona un chat'
+                selectedConversation ? `Direct message to ${selectedConversation.peer_username}` : 'Select a chat'
               }
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -300,12 +321,12 @@ export default function DirectMessagesPanel({ user }) {
               onClick={sendMessage}
               disabled={!selectedConversationId || uploading || !text.trim()}
             >
-              Enviar
+              Send
             </button>
           </footer>
         </div>
       </div>
-      <p className="muted small">Sesión actual: {user?.username}</p>
+      <p className="muted small">Current session: {user?.username}</p>
     </section>
   )
 }

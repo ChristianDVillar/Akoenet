@@ -1,7 +1,7 @@
 export default function MembersPanel({ members }) {
   return (
     <aside className="members-column">
-      <header className="members-header">Miembros</header>
+      <header className="members-header">Members</header>
       <ul className="members-list">
         {members.map((member) => (
           <li key={member.id} className="member-item">

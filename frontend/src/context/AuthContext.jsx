@@ -10,6 +10,7 @@ import api from '../services/api'
 import { connectAkoNet, disconnectAkoNet } from '../services/socket'
 
 const AuthContext = createContext(null)
+const SESSION_NOTICE_KEY = 'akonet_session_notice'
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -32,7 +33,13 @@ export function AuthProvider({ children }) {
       const { data } = await api.get('/auth/me')
       setUser(data)
       connectAkoNet(token)
-    } catch {
+    } catch (err) {
+      if (err.response?.data?.error === 'Token expired, please login again') {
+        localStorage.setItem(
+          SESSION_NOTICE_KEY,
+          'Your session expired due to a security update. Please sign in again.'
+        )
+      }
       localStorage.removeItem('token')
       disconnectAkoNet()
       setUser(null)

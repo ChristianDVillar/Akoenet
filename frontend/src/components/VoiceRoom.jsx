@@ -1,23 +1,94 @@
 import { useEffect, useRef, useState } from 'react'
 import { getSocket } from '../services/socket'
+import { getVoiceAudioConstraints, getVoiceVideoConstraints } from '../lib/voiceConstraints'
+import { getSavedVoiceSettings } from './VoiceSettingsModal'
 
-const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+const fallbackIceServers = [{ urls: 'stun:stun.l.google.com:19302' }]
+
+function getRtcConfig() {
+  const raw = import.meta.env.VITE_ICE_SERVERS
+  if (!raw) return { iceServers: fallbackIceServers }
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return { iceServers: parsed }
+    }
+  } catch {
+    /* fallback to default STUN */
+  }
+  return { iceServers: fallbackIceServers }
+}
+
+const rtcConfig = getRtcConfig()
+
+function RemoteParticipantVideo({ stream, volume, onMediaRef }) {
+  const videoRef = useRef(null)
+  const [hasVideo, setHasVideo] = useState(false)
+
+  useEffect(() => {
+    if (!stream) return undefined
+    const sync = () => {
+      setHasVideo(stream.getVideoTracks().some((t) => t.readyState === 'live'))
+    }
+    sync()
+    stream.addEventListener('addtrack', sync)
+    stream.addEventListener('removetrack', sync)
+    return () => {
+      stream.removeEventListener('addtrack', sync)
+      stream.removeEventListener('removetrack', sync)
+    }
+  }, [stream])
+
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el || !stream) return
+    el.srcObject = stream
+    el.volume = volume / 100
+  }, [stream, volume])
+
+  if (!stream) return null
+
+  return (
+    <video
+      ref={(el) => {
+        videoRef.current = el
+        onMediaRef?.(el)
+      }}
+      autoPlay
+      playsInline
+      className={`voice-remote-media ${hasVideo ? 'has-video' : 'audio-only'}`}
+    />
+  )
+}
 
 export default function VoiceRoom({ channelId, user }) {
   const [joined, setJoined] = useState(false)
+  const [testingMic, setTestingMic] = useState(false)
   const [participants, setParticipants] = useState([])
   const [error, setError] = useState('')
   const [muted, setMuted] = useState(false)
   const [micLevel, setMicLevel] = useState(0)
   const [speakingMap, setSpeakingMap] = useState({})
+  const [remoteVolumes, setRemoteVolumes] = useState({})
+  const [remoteStreams, setRemoteStreams] = useState({})
+  const [cameraOn, setCameraOn] = useState(false)
   const localStreamRef = useRef(null)
+  const localVideoRef = useRef(null)
+  const micTestStreamRef = useRef(null)
   const peersRef = useRef(new Map())
-  const remoteAudioRef = useRef(new Map())
+  const remoteMediaRef = useRef(new Map())
   const audioContextRef = useRef(null)
   const localAnalyserRef = useRef(null)
   const localDataRef = useRef(null)
   const remoteAnalysersRef = useRef(new Map())
   const meterIntervalRef = useRef(null)
+  const micGainRef = useRef(100)
+  const volumeStorageKey = `akoe:voice:volumes:${user?.id || 'anon'}:${channelId || 'none'}`
+
+  useEffect(() => {
+    const s = getSavedVoiceSettings(user?.id)
+    micGainRef.current = s.micGain
+  }, [user?.id])
 
   useEffect(() => {
     return () => {
@@ -38,6 +109,11 @@ export default function VoiceRoom({ channelId, user }) {
 
   function removeParticipant(socketId) {
     setParticipants((prev) => prev.filter((p) => p.socketId !== socketId))
+    setRemoteStreams((prev) => {
+      const next = { ...prev }
+      delete next[socketId]
+      return next
+    })
     remoteAnalysersRef.current.delete(socketId)
     setSpeakingMap((prev) => {
       const next = { ...prev }
@@ -47,9 +123,7 @@ export default function VoiceRoom({ channelId, user }) {
   }
 
   function attachRemoteStream(socketId, stream) {
-    const current = remoteAudioRef.current.get(socketId)
-    if (!current) return
-    current.srcObject = stream
+    setRemoteStreams((prev) => ({ ...prev, [socketId]: stream }))
     setupRemoteAnalyser(socketId, stream)
   }
 
@@ -101,11 +175,21 @@ export default function VoiceRoom({ channelId, user }) {
     if (!ctx) return
     const source = ctx.createMediaStreamSource(stream)
     const analyser = ctx.createAnalyser()
-    analyser.fftSize = 1024
+    analyser.fftSize = 2048
+    analyser.smoothingTimeConstant = 0.5
     source.connect(analyser)
     localAnalyserRef.current = analyser
     localDataRef.current = new Uint8Array(analyser.fftSize)
     startMeterLoop()
+  }
+
+  function clearLocalMeter() {
+    localAnalyserRef.current = null
+    localDataRef.current = null
+    setMicLevel(0)
+    if (!remoteAnalysersRef.current.size) {
+      stopMeterLoop()
+    }
   }
 
   function setupRemoteAnalyser(socketId, stream) {
@@ -114,7 +198,8 @@ export default function VoiceRoom({ channelId, user }) {
     if (!ctx) return
     const source = ctx.createMediaStreamSource(stream)
     const analyser = ctx.createAnalyser()
-    analyser.fftSize = 1024
+    analyser.fftSize = 2048
+    analyser.smoothingTimeConstant = 0.5
     source.connect(analyser)
     remoteAnalysersRef.current.set(socketId, {
       analyser,
@@ -173,6 +258,30 @@ export default function VoiceRoom({ channelId, user }) {
     return pc
   }
 
+  async function renegotiateAllPeers() {
+    const socket = getSocket()
+    if (!socket || !channelId) return
+    const tasks = []
+    peersRef.current.forEach((pc, targetSocketId) => {
+      tasks.push(
+        (async () => {
+          try {
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            socket.emit('voice:signal', {
+              channelId,
+              targetSocketId,
+              description: pc.localDescription,
+            })
+          } catch {
+            /* ignore */
+          }
+        })(),
+      )
+    })
+    await Promise.all(tasks)
+  }
+
   async function handleSignal({ fromSocketId, description, candidate }) {
     const pc = createPeer(fromSocketId, false)
     if (!pc) return
@@ -199,14 +308,37 @@ export default function VoiceRoom({ channelId, user }) {
   async function joinVoice() {
     const socket = getSocket()
     if (!socket || !channelId || joined) return
+    if (testingMic) {
+      stopMicTest()
+    }
     setError('')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const settings = getSavedVoiceSettings(user?.id)
+      micGainRef.current = settings.micGain
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: getVoiceAudioConstraints(),
+          video: settings.cameraEnabled ? getVoiceVideoConstraints() : false,
+        })
+      } catch (firstErr) {
+        if (settings.cameraEnabled) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: getVoiceAudioConstraints(),
+            video: false,
+          })
+          setCameraOn(false)
+        } else {
+          throw firstErr
+        }
+      }
+      const hasVideo = stream.getVideoTracks().length > 0
+      setCameraOn(hasVideo)
       localStreamRef.current = stream
       setupLocalAnalyser(stream)
       socket.emit('voice:join', { channelId, username: user?.username }, (ack) => {
         if (!ack?.ok) {
-          setError('No se pudo entrar al canal de voz')
+          setError('Could not join voice channel')
           stream.getTracks().forEach((t) => t.stop())
           localStreamRef.current = null
           return
@@ -220,7 +352,7 @@ export default function VoiceRoom({ channelId, user }) {
           })
       })
     } catch {
-      setError('No hay acceso al microfono')
+      setError('No microphone access')
     }
   }
 
@@ -232,21 +364,22 @@ export default function VoiceRoom({ channelId, user }) {
     peersRef.current.forEach((pc) => pc.close())
     peersRef.current.clear()
     remoteAnalysersRef.current.clear()
-    localAnalyserRef.current = null
-    localDataRef.current = null
+    clearLocalMeter()
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().catch(() => {})
     }
     audioContextRef.current = null
-    stopMeterLoop()
-    setMicLevel(0)
     setSpeakingMap({})
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop())
       localStreamRef.current = null
     }
+    setRemoteStreams({})
+    setCameraOn(false)
     setParticipants([])
     setJoined(false)
+    setMuted(false)
+    stopMicTest()
   }
 
   function toggleMute() {
@@ -257,6 +390,87 @@ export default function VoiceRoom({ channelId, user }) {
     })
     setMuted(next)
   }
+
+  async function startMicTest() {
+    if (joined || testingMic) return
+    setError('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: getVoiceAudioConstraints(),
+        video: false,
+      })
+      micTestStreamRef.current = stream
+      setTestingMic(true)
+      setupLocalAnalyser(stream)
+    } catch {
+      setError('No microphone access for test')
+    }
+  }
+
+  function stopMicTest() {
+    if (micTestStreamRef.current) {
+      micTestStreamRef.current.getTracks().forEach((t) => t.stop())
+      micTestStreamRef.current = null
+    }
+    setTestingMic(false)
+    if (!joined) {
+      clearLocalMeter()
+    }
+  }
+
+  function updateParticipantVolume(socketId, value) {
+    const normalized = Math.max(0, Math.min(100, Number(value) || 0))
+    setRemoteVolumes((prev) => ({ ...prev, [socketId]: normalized }))
+    const mediaEl = remoteMediaRef.current.get(socketId)
+    if (mediaEl) {
+      mediaEl.volume = normalized / 100
+    }
+  }
+
+  async function toggleCamera() {
+    if (!joined || !localStreamRef.current) return
+    setError('')
+    const stream = localStreamRef.current
+    const hasVideo = stream.getVideoTracks().length > 0
+    try {
+      if (hasVideo) {
+        stream.getVideoTracks().forEach((t) => {
+          t.stop()
+          stream.removeTrack(t)
+        })
+        peersRef.current.forEach((pc) => {
+          pc.getSenders().forEach((sender) => {
+            if (sender.track && sender.track.kind === 'video') {
+              pc.removeTrack(sender)
+            }
+          })
+        })
+        setCameraOn(false)
+        await renegotiateAllPeers()
+      } else {
+        const vStream = await navigator.mediaDevices.getUserMedia({
+          video: getVoiceVideoConstraints(),
+          audio: false,
+        })
+        const vt = vStream.getVideoTracks()[0]
+        stream.addTrack(vt)
+        peersRef.current.forEach((pc) => {
+          pc.addTrack(vt, stream)
+        })
+        setCameraOn(true)
+        await renegotiateAllPeers()
+      }
+    } catch {
+      setError('Camera could not be toggled')
+    }
+  }
+
+  useEffect(() => {
+    const el = localVideoRef.current
+    const s = localStreamRef.current
+    if (!el || !s) return
+    el.srcObject = s
+  }, [joined, cameraOn, testingMic])
 
   useEffect(() => {
     const socket = getSocket()
@@ -284,64 +498,166 @@ export default function VoiceRoom({ channelId, user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId, joined])
 
+  useEffect(() => {
+    setRemoteVolumes((prev) => {
+      const next = { ...prev }
+      let changed = false
+      participants.forEach((p) => {
+        if (next[p.socketId] === undefined) {
+          next[p.socketId] = 100
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [participants])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(volumeStorageKey)
+      const parsed = raw ? JSON.parse(raw) : {}
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        setRemoteVolumes(parsed)
+      } else {
+        setRemoteVolumes({})
+      }
+    } catch {
+      setRemoteVolumes({})
+    }
+  }, [volumeStorageKey])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(volumeStorageKey, JSON.stringify(remoteVolumes))
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [remoteVolumes, volumeStorageKey])
+
+  useEffect(() => {
+    remoteMediaRef.current.forEach((el, socketId) => {
+      const v = remoteVolumes[socketId]
+      if (typeof v === 'number') el.volume = v / 100
+    })
+  }, [remoteVolumes])
+
+  function getInitial(name) {
+    return (name || '?').slice(0, 1).toUpperCase()
+  }
+
   return (
-    <div className="channel-mode-box">
-      <h3>Canal de voz activo</h3>
-      <p>Audio P2P con WebRTC. Puedes entrar/salir y silenciar microfono.</p>
-      {joined && (
+    <section className="channel-mode-box voice-room-discord">
+      <header className="voice-room-top">
+        <div>
+          <h3>Voice Channel</h3>
+          <p>
+            {joined
+              ? `${participants.length} connected • camera ${cameraOn ? 'on' : 'off'}`
+              : 'Join to start voice and optional camera'}
+          </p>
+        </div>
+        <div className="voice-room-chip">{joined ? 'LIVE' : 'IDLE'}</div>
+      </header>
+
+      <div className="voice-stage-grid">
+        {joined && (
+          <article className="voice-stage-tile self">
+            {cameraOn ? (
+              <video ref={localVideoRef} className="voice-stage-video" muted playsInline autoPlay />
+            ) : (
+              <div className="voice-stage-fallback">
+                {user?.avatar_url ? (
+                  <img className="voice-stage-avatar" src={user.avatar_url} alt={`${user?.username || 'You'} avatar`} />
+                ) : (
+                  <span className="voice-stage-initial">{getInitial(user?.username || 'You')}</span>
+                )}
+              </div>
+            )}
+            <footer className="voice-stage-meta">
+              <span>You</span>
+              {muted && <span className="voice-badge muted">Muted</span>}
+            </footer>
+          </article>
+        )}
+
+        {participants
+          .filter((p) => p.socketId !== getSocket()?.id)
+          .map((p) => (
+            <article key={p.socketId} className={`voice-stage-tile ${speakingMap[p.socketId] ? 'speaking' : ''}`}>
+              <RemoteParticipantVideo
+                stream={remoteStreams[p.socketId]}
+                volume={remoteVolumes[p.socketId] ?? 100}
+                onMediaRef={(el) => {
+                  if (el) remoteMediaRef.current.set(p.socketId, el)
+                  else remoteMediaRef.current.delete(p.socketId)
+                }}
+              />
+              {!remoteStreams[p.socketId]?.getVideoTracks()?.length && (
+                <div className="voice-stage-fallback">
+                  <span className="voice-stage-initial">{getInitial(p.username)}</span>
+                </div>
+              )}
+              <footer className="voice-stage-meta">
+                <span>{p.username}</span>
+                <span className={`voice-indicator ${speakingMap[p.socketId] ? 'active' : ''}`}>
+                  {speakingMap[p.socketId] ? 'speaking' : 'listening'}
+                </span>
+              </footer>
+              <label className="voice-volume">
+                <span>Vol</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={remoteVolumes[p.socketId] ?? 100}
+                  onChange={(e) => updateParticipantVolume(p.socketId, e.target.value)}
+                />
+                <span>{remoteVolumes[p.socketId] ?? 100}%</span>
+              </label>
+            </article>
+          ))}
+      </div>
+
+      {(joined || testingMic) && (
         <div className="mic-status">
-          <span className="muted small">{muted ? 'Microfono silenciado' : 'Nivel de microfono'}</span>
+          <span className="muted small">
+            {testingMic && !joined ? 'Microphone test active' : muted ? 'Microphone muted' : 'Microphone level'}
+          </span>
           <div className="mic-meter">
             <span
-              className={`mic-meter-fill ${muted ? 'muted' : ''}`}
+              className={`mic-meter-fill ${muted && joined ? 'muted' : ''}`}
               style={{ width: `${Math.max(6, Math.round(micLevel * 100))}%` }}
             />
           </div>
         </div>
       )}
+
       {error && <p className="error-banner">{error}</p>}
-      <div className="voice-controls">
+
+      <div className="voice-controls discord">
+        {!joined && (
+          <button type="button" className="btn secondary" onClick={testingMic ? stopMicTest : startMicTest}>
+            {testingMic ? 'Stop microphone test' : 'Test microphone'}
+          </button>
+        )}
         {!joined ? (
           <button type="button" className="btn primary" onClick={joinVoice}>
-            Unirse a voz
+            Join voice
           </button>
         ) : (
           <>
             <button type="button" className="btn secondary" onClick={toggleMute}>
-              {muted ? 'Activar microfono' : 'Silenciar microfono'}
+              {muted ? 'Unmute microphone' : 'Mute microphone'}
+            </button>
+            <button type="button" className="btn secondary" onClick={toggleCamera}>
+              {cameraOn ? 'Stop camera' : 'Start camera'}
             </button>
             <button type="button" className="btn ghost" onClick={leaveVoice}>
-              Salir del canal
+              Disconnect
             </button>
           </>
         )}
       </div>
-      <ul className="voice-users">
-        {participants.map((p) => (
-          <li key={p.socketId} className={speakingMap[p.socketId] ? 'speaking' : ''}>
-            <span className="voice-user">
-              <span>{p.username}</span>
-              {speakingMap[p.socketId] && (
-                <span className="voice-wave" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              )}
-            </span>
-            <span className="voice-indicator">
-              {speakingMap[p.socketId] ? 'hablando' : 'en silencio'}
-            </span>
-            <audio
-              autoPlay
-              ref={(el) => {
-                if (el) remoteAudioRef.current.set(p.socketId, el)
-                else remoteAudioRef.current.delete(p.socketId)
-              }}
-            />
-          </li>
-        ))}
-      </ul>
-    </div>
+    </section>
   )
 }

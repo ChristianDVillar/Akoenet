@@ -5,11 +5,33 @@ const {
   canSendToChannel,
   getChannelPermissionsForUser,
   getChannelServerId,
+  canManageChannels,
 } = require("../lib/membership");
+const { logAdminAction } = require("../lib/audit-log");
+const { getMessageReactions } = require("../lib/message-reactions");
 
 function initSocket(io) {
   const secret = process.env.JWT_SECRET || "dev-secret-change-me";
   const voiceRooms = new Map();
+  const messageWindowMs = 60 * 1000;
+  const messageLimitPerWindow = Number(process.env.SOCKET_MESSAGE_RATE_LIMIT_MAX || 40);
+  const directMessageLimitPerWindow = Number(process.env.SOCKET_DM_RATE_LIMIT_MAX || 30);
+  const socketRateState = new Map();
+
+  function canPassRateLimit(userId, bucket, maxAllowed) {
+    const now = Date.now();
+    const key = `${userId}:${bucket}`;
+    const current = socketRateState.get(key);
+    if (!current || current.resetAt <= now) {
+      socketRateState.set(key, { count: 1, resetAt: now + messageWindowMs });
+      return true;
+    }
+    if (current.count >= maxAllowed) {
+      return false;
+    }
+    current.count += 1;
+    return true;
+  }
 
   function getRoom(channelId) {
     if (!voiceRooms.has(channelId)) {
@@ -35,7 +57,11 @@ function initSocket(io) {
     }
     try {
       const decoded = jwt.verify(token, secret);
-      socket.userId = decoded.id;
+      const userId = Number(decoded.id);
+      if (!Number.isInteger(userId) || userId <= 0) {
+        return next(new Error("unauthorized"));
+      }
+      socket.userId = userId;
       next();
     } catch {
       next(new Error("unauthorized"));
@@ -83,6 +109,10 @@ function initSocket(io) {
     });
 
     socket.on("send_message", async (payload, ack) => {
+      if (!canPassRateLimit(socket.userId, "channel_message", messageLimitPerWindow)) {
+        if (typeof ack === "function") ack({ error: "rate_limited" });
+        return;
+      }
       const channelId = parseInt(payload?.channel_id, 10);
       const content = typeof payload?.content === "string" ? payload.content : "";
       const imageUrl = payload?.image_url || null;
@@ -121,6 +151,7 @@ function initSocket(io) {
           socket.userId,
         ]);
         const message = { ...row, username: u.rows[0]?.username };
+        message.reactions = [];
 
         io.to(`channel:${channelId}`).emit("receive_message", message);
 
@@ -137,6 +168,147 @@ function initSocket(io) {
         if (typeof ack === "function") ack({ ok: true, message });
       } catch (e) {
         console.error(e);
+        if (typeof ack === "function") ack({ error: "save_failed" });
+      }
+    });
+
+    socket.on("delete_message", async (payload, ack) => {
+      const messageId = parseInt(payload?.message_id, 10);
+      if (Number.isNaN(messageId)) {
+        if (typeof ack === "function") ack({ error: "invalid" });
+        return;
+      }
+      const row = await pool.query(
+        `SELECT id, user_id, channel_id
+         FROM messages
+         WHERE id = $1`,
+        [messageId]
+      );
+      if (!row.rows.length) {
+        if (typeof ack === "function") ack({ error: "not_found" });
+        return;
+      }
+      const msg = row.rows[0];
+      if (!(await canReadChannel(socket.userId, msg.channel_id))) {
+        if (typeof ack === "function") ack({ error: "forbidden" });
+        return;
+      }
+      const serverId = await getChannelServerId(msg.channel_id);
+      const canManage = serverId ? await canManageChannels(socket.userId, serverId) : false;
+      const isOwner = Number(msg.user_id) === Number(socket.userId);
+      if (!isOwner && !canManage) {
+        if (typeof ack === "function") ack({ error: "forbidden" });
+        return;
+      }
+      await pool.query("DELETE FROM messages WHERE id = $1", [messageId]);
+      if (canManage && !isOwner) {
+        await logAdminAction({
+          actorUserId: socket.userId,
+          action: "message_delete_moderation",
+          targetMessageId: Number(messageId),
+          channelId: Number(msg.channel_id),
+          serverId: serverId ? Number(serverId) : null,
+          metadata: { owner_user_id: Number(msg.user_id) },
+        });
+      }
+      io.to(`channel:${msg.channel_id}`).emit("message_deleted", { id: messageId, channel_id: msg.channel_id });
+      if (typeof ack === "function") ack({ ok: true, id: messageId });
+    });
+
+    socket.on("pin_message", async (payload, ack) => {
+      const messageId = parseInt(payload?.message_id, 10);
+      const pin = payload?.pin !== false;
+      if (Number.isNaN(messageId)) {
+        if (typeof ack === "function") ack({ error: "invalid" });
+        return;
+      }
+      const row = await pool.query(
+        `SELECT m.id, m.channel_id, u.username
+         FROM messages m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.id = $1`,
+        [messageId]
+      );
+      if (!row.rows.length) {
+        if (typeof ack === "function") ack({ error: "not_found" });
+        return;
+      }
+      const msg = row.rows[0];
+      const serverId = await getChannelServerId(msg.channel_id);
+      if (!serverId || !(await canManageChannels(socket.userId, serverId))) {
+        if (typeof ack === "function") ack({ error: "forbidden" });
+        return;
+      }
+      const updated = await pool.query(
+        `UPDATE messages
+         SET is_pinned = $2,
+             pinned_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+             pinned_by = CASE WHEN $2 THEN $3::int ELSE NULL END
+         WHERE id = $1
+         RETURNING *`,
+        [messageId, pin, socket.userId]
+      );
+      io.to(`channel:${msg.channel_id}`).emit("message_updated", {
+        ...updated.rows[0],
+        username: msg.username,
+      });
+      await logAdminAction({
+        actorUserId: socket.userId,
+        action: pin ? "message_pin" : "message_unpin",
+        targetMessageId: Number(messageId),
+        channelId: Number(msg.channel_id),
+        serverId: Number(serverId),
+      });
+      if (typeof ack === "function") ack({ ok: true, message: updated.rows[0] });
+    });
+
+    socket.on("react_message", async (payload, ack) => {
+      try {
+        const messageId = parseInt(payload?.message_id, 10);
+        const reactionKey = String(payload?.reaction_key || "").trim();
+        const active = payload?.active !== false;
+        if (Number.isNaN(messageId) || !reactionKey || reactionKey.length > 32) {
+          if (typeof ack === "function") ack({ error: "invalid" });
+          return;
+        }
+        const row = await pool.query(
+          `SELECT id, channel_id
+           FROM messages
+           WHERE id = $1`,
+          [messageId]
+        );
+        if (!row.rows.length) {
+          if (typeof ack === "function") ack({ error: "not_found" });
+          return;
+        }
+        const channelId = row.rows[0].channel_id;
+        if (!(await canReadChannel(socket.userId, channelId))) {
+          if (typeof ack === "function") ack({ error: "forbidden" });
+          return;
+        }
+        if (active) {
+          await pool.query(
+            `INSERT INTO message_reactions (message_id, user_id, reaction_key)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (message_id, user_id, reaction_key) DO NOTHING`,
+            [messageId, socket.userId, reactionKey]
+          );
+        } else {
+          await pool.query(
+            `DELETE FROM message_reactions
+             WHERE message_id = $1 AND user_id = $2 AND reaction_key = $3`,
+            [messageId, socket.userId, reactionKey]
+          );
+        }
+        const reactions = await getMessageReactions(messageId, socket.userId);
+        io.to(`channel:${channelId}`).emit("message_reactions_updated", {
+          message_id: messageId,
+          channel_id: channelId,
+          reactions,
+        });
+        if (typeof ack === "function") ack({ ok: true, reactions });
+      } catch (error) {
+        console.error("react_message failed", error);
         if (typeof ack === "function") ack({ error: "save_failed" });
       }
     });
@@ -166,6 +338,10 @@ function initSocket(io) {
     });
 
     socket.on("send_direct_message", async (payload, ack) => {
+      if (!canPassRateLimit(socket.userId, "direct_message", directMessageLimitPerWindow)) {
+        if (typeof ack === "function") ack({ error: "rate_limited" });
+        return;
+      }
       const conversationId = parseInt(payload?.conversation_id, 10);
       const content = String(payload?.content || "").trim();
       const imageUrl = payload?.image_url ? String(payload.image_url).trim() : null;

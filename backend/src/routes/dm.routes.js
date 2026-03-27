@@ -1,9 +1,25 @@
 const express = require("express");
+const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const validate = require("../middleware/validate");
 
 const router = express.Router();
 router.use(auth);
+
+const usersQuerySchema = z.object({
+  q: z.string().trim().max(60).optional().default(""),
+});
+const createConversationSchema = z.object({
+  target_user_id: z.coerce.number().int().positive(),
+});
+const conversationParamsSchema = z.object({
+  conversationId: z.coerce.number().int().positive(),
+});
+const createMessageSchema = z.object({
+  content: z.string().trim().max(4000).optional().default(""),
+  image_url: z.string().trim().max(2000).optional().nullable(),
+});
 
 function pairUsers(a, b) {
   const low = Math.min(a, b);
@@ -22,8 +38,8 @@ async function isConversationParticipant(conversationId, userId) {
   return result.rows.length > 0;
 }
 
-router.get("/users", async (req, res) => {
-  const q = String(req.query.q || "").trim();
+router.get("/users", validate({ query: usersQuerySchema }), async (req, res) => {
+  const q = req.query.q;
   const params = [req.user.id];
   let where = "WHERE u.id <> $1";
   if (q) {
@@ -42,11 +58,8 @@ router.get("/users", async (req, res) => {
   res.json(result.rows);
 });
 
-router.post("/conversations", async (req, res) => {
-  const targetUserId = parseInt(req.body?.target_user_id, 10);
-  if (Number.isNaN(targetUserId)) {
-    return res.status(400).json({ error: "target_user_id required" });
-  }
+router.post("/conversations", validate({ body: createConversationSchema }), async (req, res) => {
+  const targetUserId = req.body.target_user_id;
   if (targetUserId === req.user.id) {
     return res.status(400).json({ error: "Cannot create direct chat with self" });
   }
@@ -91,11 +104,11 @@ router.get("/conversations", async (req, res) => {
   res.json(result.rows);
 });
 
-router.get("/conversations/:conversationId/messages", async (req, res) => {
-  const conversationId = parseInt(req.params.conversationId, 10);
-  if (Number.isNaN(conversationId)) {
-    return res.status(400).json({ error: "Invalid conversation" });
-  }
+router.get(
+  "/conversations/:conversationId/messages",
+  validate({ params: conversationParamsSchema }),
+  async (req, res) => {
+  const conversationId = req.params.conversationId;
   const allowed = await isConversationParticipant(conversationId, req.user.id);
   if (!allowed) {
     return res.status(403).json({ error: "Forbidden" });
@@ -111,11 +124,14 @@ router.get("/conversations/:conversationId/messages", async (req, res) => {
   res.json(result.rows);
 });
 
-router.post("/conversations/:conversationId/messages", async (req, res) => {
-  const conversationId = parseInt(req.params.conversationId, 10);
-  const content = String(req.body?.content || "").trim();
-  const imageUrl = req.body?.image_url ? String(req.body.image_url).trim() : null;
-  if (Number.isNaN(conversationId) || (!content && !imageUrl)) {
+router.post(
+  "/conversations/:conversationId/messages",
+  validate({ params: conversationParamsSchema, body: createMessageSchema }),
+  async (req, res) => {
+  const conversationId = req.params.conversationId;
+  const content = req.body.content;
+  const imageUrl = req.body.image_url || null;
+  if (!content && !imageUrl) {
     return res.status(400).json({ error: "conversationId and content or image required" });
   }
   const allowed = await isConversationParticipant(conversationId, req.user.id);

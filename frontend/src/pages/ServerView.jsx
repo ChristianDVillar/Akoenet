@@ -8,6 +8,10 @@ import ChannelList from '../components/ChannelList'
 import Chat from '../components/Chat'
 import MembersPanel from '../components/MembersPanel'
 import ChannelPermissionsPanel from '../components/ChannelPermissionsPanel'
+import VoiceSettingsModal from '../components/VoiceSettingsModal'
+import UserSettingsModal from '../components/UserSettingsModal'
+import ServerEmojiManager from '../components/ServerEmojiManager'
+import ServerSettingsModal from '../components/ServerSettingsModal'
 
 export default function ServerView() {
   const { serverId } = useParams()
@@ -29,6 +33,10 @@ export default function ServerView() {
   const [userPermissions, setUserPermissions] = useState([])
   const [selectedMemberId, setSelectedMemberId] = useState('')
   const [collapsedCategories, setCollapsedCategories] = useState([])
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
+  const [userSettingsOpen, setUserSettingsOpen] = useState(false)
+  const [serverSettingsOpen, setServerSettingsOpen] = useState(false)
+  const [emojis, setEmojis] = useState([])
 
   useEffect(() => {
     if (Number.isNaN(id)) {
@@ -66,11 +74,23 @@ export default function ServerView() {
         setCategories(categoriesData)
         setMembers(membersData)
         setActiveChannelId(channelData[0]?.id ?? null)
+        const { data: emojiData } = await api.get(`/servers/${id}/emojis`)
+        setEmojis(emojiData)
       } catch {
         navigate('/')
       }
     })()
   }, [id, navigate])
+
+  async function loadEmojis() {
+    if (!id) return
+    try {
+      const { data } = await api.get(`/servers/${id}/emojis`)
+      setEmojis(data)
+    } catch {
+      setEmojis([])
+    }
+  }
 
   useEffect(() => {
     const s = getSocket()
@@ -126,14 +146,14 @@ export default function ServerView() {
   }
 
   async function deleteCategory(categoryId) {
-    if (!window.confirm('Quieres eliminar esta categoria? Sus canales quedaran sin categoria.')) return
+    if (!window.confirm('Delete this category? Its channels will become uncategorized.')) return
     try {
       await api.delete(`/channels/categories/${categoryId}`)
     } catch (err) {
       if (err.response?.status !== 404) {
         setToast({
-          username: 'Sistema',
-          snippet: 'No se pudo eliminar la categoria',
+          username: 'System',
+          snippet: 'Could not delete category',
           at: Date.now(),
         })
         return
@@ -154,7 +174,7 @@ export default function ServerView() {
   }
 
   async function deleteChannel(channelId) {
-    if (!window.confirm('Quieres eliminar este canal?')) return
+    if (!window.confirm('Delete this channel?')) return
     await api.delete(`/channels/${channelId}`)
     const { data } = await api.get(`/channels/server/${id}`)
     setChannels(data)
@@ -295,6 +315,10 @@ export default function ServerView() {
         onToggleCategory={toggleCategoryCollapse}
         user={user}
         onLogout={logout}
+        onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
+        onOpenUserSettings={() => setUserSettingsOpen(true)}
+        onOpenServerSettings={() => setServerSettingsOpen(true)}
+        onOpenAdminDashboard={() => navigate('/admin')}
       />
       <Chat
         channelId={activeChannelId}
@@ -302,6 +326,7 @@ export default function ServerView() {
         channelType={activeChannel?.type}
         serverId={id}
         user={user}
+        emojis={emojis}
       />
       <div className="right-column">
         <MembersPanel members={members} />
@@ -316,6 +341,7 @@ export default function ServerView() {
           setSelectedMemberId={setSelectedMemberId}
           onToggleUserPermission={toggleUserPermission}
         />
+        <ServerEmojiManager serverId={id} emojis={emojis} onReload={loadEmojis} />
       </div>
 
       {toast && (
@@ -326,6 +352,14 @@ export default function ServerView() {
           </span>
         </div>
       )}
+      <VoiceSettingsModal open={voiceSettingsOpen} onClose={() => setVoiceSettingsOpen(false)} user={user} />
+      <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />
+      <ServerSettingsModal
+        open={serverSettingsOpen}
+        onClose={() => setServerSettingsOpen(false)}
+        serverId={id}
+        serverName={serverName}
+      />
     </div>
   )
 }
