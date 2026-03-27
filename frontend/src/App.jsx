@@ -4,13 +4,14 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import ServerView from './pages/ServerView'
+import TwitchCallback from './pages/TwitchCallback'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Cargando Nexora…</p>
+        <p className="muted">Cargando AkoNet…</p>
       </div>
     )
   }
@@ -23,6 +24,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
       <Route
         path="/"
         element={

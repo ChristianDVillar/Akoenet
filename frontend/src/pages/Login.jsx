@@ -9,6 +9,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -28,8 +29,8 @@ export default function Login() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="brand-block">
-          <span className="brand-nexora">Nexora</span>
-          <span className="brand-echonet">EchoNet</span>
+          <span className="brand-akonet">AkoNet</span>
+          <span className="brand-sub">Comunidad</span>
         </div>
         <h1>Iniciar sesión</h1>
         <p className="muted">Comunidades y chat en tiempo real.</p>
@@ -57,6 +58,15 @@ export default function Login() {
           </label>
           <button type="submit" className="btn primary" disabled={busy}>
             {busy ? 'Entrando…' : 'Entrar'}
+          </button>
+          <button
+            type="button"
+            className="btn twitch"
+            onClick={() => {
+              window.location.href = `${apiBase}/auth/twitch/start`
+            }}
+          >
+            Entrar con Twitch
           </button>
         </form>
         <p className="muted small">

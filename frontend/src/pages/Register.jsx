@@ -33,8 +33,8 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="brand-block">
-          <span className="brand-nexora">Nexora</span>
-          <span className="brand-echonet">EchoNet</span>
+          <span className="brand-akonet">AkoNet</span>
+          <span className="brand-sub">Comunidad</span>
         </div>
         <h1>Crear cuenta</h1>
         <p className="muted">Un paso y ya estás dentro.</p>

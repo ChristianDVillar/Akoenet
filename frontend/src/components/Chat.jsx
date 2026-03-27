@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
+import VoiceRoom from './VoiceRoom'
 
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
-export default function Chat({ channelId, channelName, serverId }) {
+export default function Chat({ channelId, channelName, channelType = 'text', serverId, user }) {
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -96,21 +97,27 @@ export default function Chat({ channelId, channelName, serverId }) {
   if (!channelId) {
     return (
       <main className="chat-panel empty">
-        <p className="muted">Selecciona un canal para abrir EchoNet.</p>
+        <p className="muted">Selecciona un canal para abrir AkoNet.</p>
       </main>
     )
   }
+
+  const isVoice = channelType === 'voice'
+  const isForum = channelType === 'forum'
 
   return (
     <main className="chat-panel">
       <header className="chat-header">
         <div>
-          <span className="hash">#</span>
+          <span className="hash">{isVoice ? '🔊' : isForum ? '🗂' : '#'}</span>
           <span className="chat-title">{channelName || 'canal'}</span>
         </div>
-        <span className="echonet-pill">EchoNet · tiempo real</span>
+        <span className="akonet-pill">AkoNet · tiempo real</span>
       </header>
 
+      {isVoice ? (
+        <VoiceRoom channelId={channelId} user={user} />
+      ) : (
       <div className="message-list">
         {messages.map((m) => (
           <article key={m.id} className="message-row">
@@ -142,6 +149,7 @@ export default function Chat({ channelId, channelName, serverId }) {
         ))}
         <div ref={bottomRef} />
       </div>
+      )}
 
       <footer className="composer">
         <label className="file-btn">
@@ -150,7 +158,13 @@ export default function Chat({ channelId, channelName, serverId }) {
         </label>
         <input
           className="composer-input"
-          placeholder={`Mensaje en EchoNet · servidor ${serverId ?? ''}`}
+          placeholder={
+            isVoice
+              ? 'Canal de voz: chat auxiliar'
+              : isForum
+                ? 'Publica en este foro'
+                : `Mensaje en AkoNet · servidor ${serverId ?? ''}`
+          }
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -164,9 +178,9 @@ export default function Chat({ channelId, channelName, serverId }) {
           type="button"
           className="btn primary"
           onClick={send}
-          disabled={uploading || !text.trim()}
+          disabled={isVoice || uploading || !text.trim()}
         >
-          Enviar
+          {isForum ? 'Publicar' : 'Enviar'}
         </button>
       </footer>
     </main>

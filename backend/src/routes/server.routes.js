@@ -3,6 +3,7 @@ const pool = require("../config/db");
 const auth = require("../middleware/auth");
 
 const router = express.Router();
+const hiddenServerName = (process.env.HIDDEN_SYSTEM_SERVER_NAME || "Akonet").trim().toLowerCase();
 
 router.use(auth);
 
@@ -40,9 +41,14 @@ router.post("/", async (req, res) => {
       [req.user.id, roleIds.admin]
     );
 
-    await client.query(
-      `INSERT INTO channels (name, server_id, type) VALUES ('general', $1, 'text')`,
+    const defaultCategory = await client.query(
+      `INSERT INTO channel_categories (server_id, name, position) VALUES ($1, 'General', 0) RETURNING id`,
       [server.id]
+    );
+
+    await client.query(
+      `INSERT INTO channels (name, server_id, type, category_id) VALUES ('general', $1, 'text', $2)`,
+      [server.id, defaultCategory.rows[0].id]
     );
 
     await client.query("COMMIT");
@@ -62,8 +68,10 @@ router.get("/", async (req, res) => {
     `SELECT s.* FROM servers s
      INNER JOIN server_members m ON m.server_id = s.id
      WHERE m.user_id = $1
+       AND COALESCE(s.is_system, false) = false
+       AND LOWER(s.name) <> $2
      ORDER BY s.created_at ASC`,
-    [req.user.id]
+    [req.user.id, hiddenServerName]
   );
   res.json(result.rows);
 });
@@ -74,9 +82,15 @@ router.post("/:serverId/join", async (req, res) => {
   if (Number.isNaN(serverId)) {
     return res.status(400).json({ error: "Invalid server" });
   }
-  const exists = await pool.query("SELECT id FROM servers WHERE id = $1", [serverId]);
+  const exists = await pool.query("SELECT id, name, is_system FROM servers WHERE id = $1", [serverId]);
   if (exists.rows.length === 0) {
     return res.status(404).json({ error: "Server not found" });
+  }
+  if (
+    String(exists.rows[0].name || "").trim().toLowerCase() === hiddenServerName ||
+    Boolean(exists.rows[0].is_system)
+  ) {
+    return res.status(403).json({ error: "Cannot join this server" });
   }
   const memberRole = await pool.query(
     `SELECT r.id FROM roles r WHERE r.server_id = $1 AND r.name = 'member'`,
@@ -114,6 +128,30 @@ router.get("/:serverId/roles", async (req, res) => {
   }
   const result = await pool.query(
     `SELECT r.id, r.name FROM roles r WHERE r.server_id = $1 ORDER BY r.id`,
+    [serverId]
+  );
+  res.json(result.rows);
+});
+
+router.get("/:serverId/members", async (req, res) => {
+  const serverId = parseInt(req.params.serverId, 10);
+  if (Number.isNaN(serverId)) {
+    return res.status(400).json({ error: "Invalid server" });
+  }
+  const { isServerMember } = require("../lib/membership");
+  if (!(await isServerMember(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Not a member" });
+  }
+  const result = await pool.query(
+    `SELECT u.id, u.username, u.avatar_url,
+            ARRAY_REMOVE(ARRAY_AGG(r.name), NULL) AS roles
+     FROM server_members m
+     JOIN users u ON u.id = m.user_id
+     LEFT JOIN user_roles ur ON ur.user_id = u.id
+     LEFT JOIN roles r ON r.id = ur.role_id AND r.server_id = $1
+     WHERE m.server_id = $1
+     GROUP BY u.id
+     ORDER BY u.username ASC`,
     [serverId]
   );
   res.json(result.rows);

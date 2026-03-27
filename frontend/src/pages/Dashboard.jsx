@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import ServerSidebar from '../components/ServerSidebar'
+import DirectMessagesPanel from '../components/DirectMessagesPanel'
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
@@ -60,13 +61,15 @@ export default function Dashboard() {
           ? 'Ya eres miembro'
           : err.response?.status === 404
             ? 'Servidor no encontrado'
+            : err.response?.status === 403
+              ? 'No puedes unirte a ese servidor'
             : 'No se pudo unir'
       setError(msg)
     }
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell dashboard-shell">
       <ServerSidebar
         servers={servers}
         activeServerId={null}
@@ -75,8 +78,8 @@ export default function Dashboard() {
       <div className="main-panel home-panel">
         <header className="home-header">
           <div>
-            <h1>Nexora</h1>
-            <p className="echonet-tag">EchoNet · tus comunidades</p>
+            <h1>AkoNet</h1>
+            <p className="akonet-tag">AkoNet · tus comunidades</p>
           </div>
           <div className="user-bar">
             <span className="muted">{user?.username}</span>
@@ -146,6 +149,8 @@ export default function Dashboard() {
             </ul>
           )}
         </section>
+
+        <DirectMessagesPanel user={user} />
       </div>
     </div>
   )

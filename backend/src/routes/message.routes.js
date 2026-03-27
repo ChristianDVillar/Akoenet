@@ -1,20 +1,20 @@
 const express = require("express");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
-const { canAccessChannel } = require("../lib/membership");
+const { canReadChannel } = require("../lib/membership");
 
 const router = express.Router();
 router.use(auth);
 
 const DEFAULT_LIMIT = 100;
 
-/** Message history for EchoNet */
+/** Message history for AkoNet */
 router.get("/channel/:channelId", async (req, res) => {
   const channelId = parseInt(req.params.channelId, 10);
   if (Number.isNaN(channelId)) {
     return res.status(400).json({ error: "Invalid channel" });
   }
-  if (!(await canAccessChannel(req.user.id, channelId))) {
+  if (!(await canReadChannel(req.user.id, channelId))) {
     return res.status(403).json({ error: "No access to channel" });
   }
   const limit = Math.min(
