@@ -6,7 +6,7 @@ const connectionString =
   `postgresql://${process.env.PGUSER || "postgres"}:${
     process.env.PGPASSWORD || "1234"
   }@${process.env.PGHOST || "localhost"}:${process.env.PGPORT || 5432}/${
-    process.env.PGDATABASE || "nexora"
+    process.env.PGDATABASE || "akonet"
   }`;
 
 const pool = new Pool({

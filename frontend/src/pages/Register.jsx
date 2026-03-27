@@ -21,8 +21,8 @@ export default function Register() {
     } catch (err) {
       const msg =
         err.response?.data?.error === 'Email already registered'
-          ? 'Ese email ya está registrado'
-          : 'No se pudo registrar'
+          ? 'That email is already registered'
+          : 'Could not register'
       setError(msg)
     } finally {
       setBusy(false)
@@ -33,15 +33,15 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="brand-block">
-          <span className="brand-nexora">Nexora</span>
-          <span className="brand-echonet">EchoNet</span>
+          <span className="brand-akonet">AkoNet</span>
+          <span className="brand-sub">Community</span>
         </div>
-        <h1>Crear cuenta</h1>
-        <p className="muted">Un paso y ya estás dentro.</p>
+        <h1>Create account</h1>
+        <p className="muted">One step and you are in.</p>
         <form onSubmit={onSubmit} className="form-stack">
           {error && <div className="error-banner">{error}</div>}
           <label>
-            Usuario
+            Username
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -61,7 +61,7 @@ export default function Register() {
             />
           </label>
           <label>
-            Contraseña
+            Password
             <input
               type="password"
               value={password}
@@ -72,11 +72,11 @@ export default function Register() {
             />
           </label>
           <button type="submit" className="btn primary" disabled={busy}>
-            {busy ? 'Creando…' : 'Registrarme'}
+            {busy ? 'Creating…' : 'Sign up'}
           </button>
         </form>
         <p className="muted small">
-          ¿Ya tienes cuenta? <Link to="/login">Inicia sesión</Link>
+          Already have an account? <Link to="/login">Sign in</Link>
         </p>
       </div>
     </div>

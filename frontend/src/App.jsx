@@ -4,17 +4,33 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import ServerView from './pages/ServerView'
+import TwitchCallback from './pages/TwitchCallback'
+import DashboardAdmin from './pages/DashboardAdmin'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Cargando Nexora…</p>
+        <p className="muted">Loading AkoNet…</p>
       </div>
     )
   }
   if (!user) return <Navigate to="/login" replace />
+  return children
+}
+
+function AdminRoute({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) {
+    return (
+      <div className="auth-page">
+        <p className="muted">Loading AkoNet…</p>
+      </div>
+    )
+  }
+  if (!user) return <Navigate to="/login" replace />
+  if (!user.is_admin) return <Navigate to="/" replace />
   return children
 }
 
@@ -23,6 +39,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
       <Route
         path="/"
         element={
@@ -37,6 +54,14 @@ export default function App() {
           <PrivateRoute>
             <ServerView />
           </PrivateRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <DashboardAdmin />
+          </AdminRoute>
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />

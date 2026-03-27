@@ -4,7 +4,7 @@ const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 let socket = null
 
-export function connectEchoNet(token) {
+export function connectAkoNet(token) {
   if (socket?.connected) {
     socket.disconnect()
   }
@@ -20,7 +20,7 @@ export function getSocket() {
   return socket
 }
 
-export function disconnectEchoNet() {
+export function disconnectAkoNet() {
   if (socket) {
     socket.disconnect()
     socket = null

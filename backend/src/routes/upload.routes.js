@@ -1,43 +1,119 @@
 const express = require("express");
-const path = require("path");
 const multer = require("multer");
-const fs = require("fs");
+const { z } = require("zod");
+const pool = require("../config/db");
 const auth = require("../middleware/auth");
-const { canAccessChannel } = require("../lib/membership");
+const validate = require("../middleware/validate");
+const { uploadRateLimiter } = require("../middleware/rate-limit");
+const { canSendToChannel, canManageChannels } = require("../lib/membership");
+const { saveFile } = require("../services/storage");
+const logger = require("../lib/logger");
 
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, "..", "..", "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => {
-    const safe = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${path.extname(file.originalname) || ".bin"}`;
-    cb(null, safe);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
-
-router.post("/channel/:channelId", auth, upload.single("file"), async (req, res) => {
-  const channelId = parseInt(req.params.channelId, 10);
-  if (Number.isNaN(channelId)) {
-    return res.status(400).json({ error: "Invalid channel" });
-  }
-  if (!(await canAccessChannel(req.user.id, channelId))) {
-    return res.status(403).json({ error: "No access" });
-  }
-  if (!req.file) {
-    return res.status(400).json({ error: "file required" });
-  }
-  const publicPath = `/uploads/${req.file.filename}`;
-  res.json({ url: publicPath, filename: req.file.filename });
+const channelIdParamSchema = z.object({
+  channelId: z.coerce.number().int().positive(),
 });
+const conversationIdParamSchema = z.object({
+  conversationId: z.coerce.number().int().positive(),
+});
+const serverIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+});
+const allowedMimeTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+function validateImageFile(file) {
+  if (!file) {
+    return "file required";
+  }
+  if (!allowedMimeTypes.has(String(file.mimetype || "").toLowerCase())) {
+    return "Unsupported file type. Allowed: jpeg, png, webp, gif";
+  }
+  return null;
+}
+
+router.post("/channel/:channelId", auth, uploadRateLimiter, validate({ params: channelIdParamSchema }), upload.single("file"), async (req, res) => {
+  try {
+    const channelId = req.params.channelId;
+    if (!(await canSendToChannel(req.user.id, channelId))) {
+      return res.status(403).json({ error: "No access" });
+    }
+    const fileError = validateImageFile(req.file);
+    if (fileError) {
+      return res.status(400).json({ error: fileError });
+    }
+    const saved = await saveFile(req.file);
+    res.json({ url: saved.url, filename: saved.filename });
+  } catch (error) {
+    logger.error({ err: error }, "Channel upload failed");
+    res.status(500).json({ error: "upload failed" });
+  }
+});
+
+router.post(
+  "/direct/:conversationId",
+  auth,
+  uploadRateLimiter,
+  validate({ params: conversationIdParamSchema }),
+  upload.single("file"),
+  async (req, res) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const allowed = await pool.query(
+      `SELECT 1
+       FROM direct_conversations
+       WHERE id = $1
+         AND (user_low_id = $2 OR user_high_id = $2)`,
+      [conversationId, req.user.id]
+    );
+    if (!allowed.rows.length) {
+      return res.status(403).json({ error: "No access" });
+    }
+    const fileError = validateImageFile(req.file);
+    if (fileError) {
+      return res.status(400).json({ error: fileError });
+    }
+    const saved = await saveFile(req.file);
+    res.json({ url: saved.url, filename: saved.filename });
+  } catch (error) {
+    logger.error({ err: error }, "Direct upload failed");
+    res.status(500).json({ error: "upload failed" });
+  }
+}
+);
+
+router.post(
+  "/server/:serverId/emoji",
+  auth,
+  uploadRateLimiter,
+  validate({ params: serverIdParamSchema }),
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const serverId = req.params.serverId;
+      if (!(await canManageChannels(req.user.id, serverId))) {
+        return res.status(403).json({ error: "No access" });
+      }
+      const fileError = validateImageFile(req.file);
+      if (fileError) {
+        return res.status(400).json({ error: fileError });
+      }
+      const saved = await saveFile(req.file);
+      res.json({ url: saved.url, filename: saved.filename });
+    } catch (error) {
+      logger.error({ err: error }, "Server emoji upload failed");
+      res.status(500).json({ error: "upload failed" });
+    }
+  }
+);
 
 module.exports = router;

@@ -1,40 +1,45 @@
 require("dotenv").config();
-const path = require("path");
-const express = require("express");
 const http = require("http");
-const cors = require("cors");
 const { Server } = require("socket.io");
-
-const authRoutes = require("./routes/auth.routes");
-const serverRoutes = require("./routes/server.routes");
-const channelRoutes = require("./routes/channel.routes");
-const messageRoutes = require("./routes/message.routes");
-const uploadRoutes = require("./routes/upload.routes");
+const { createClient } = require("redis");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const { createApp } = require("./app");
 const initSocket = require("./sockets/chat.socket");
+const logger = require("./lib/logger");
 
-const app = express();
-const uploadDir = path.join(__dirname, "..", "uploads");
-
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
-app.use("/uploads", express.static(uploadDir));
-
-app.get("/health", (_req, res) => res.json({ ok: true, product: "Nexora", chat: "EchoNet" }));
-
-app.use("/auth", authRoutes);
-app.use("/servers", serverRoutes);
-app.use("/channels", channelRoutes);
-app.use("/messages", messageRoutes);
-app.use("/upload", uploadRoutes);
-
+const app = createApp();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: true, credentials: true },
 });
 
-initSocket(io);
+async function configureRedisAdapterIfNeeded() {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    app.locals.redisEnabled = false;
+    app.locals.redisClient = null;
+    return;
+  }
+  const pubClient = createClient({ url: redisUrl });
+  const subClient = pubClient.duplicate();
+  await pubClient.connect();
+  await subClient.connect();
+  io.adapter(createAdapter(pubClient, subClient));
+  app.locals.redisEnabled = true;
+  app.locals.redisClient = pubClient;
+  logger.info("Socket.IO Redis adapter enabled");
+}
 
 const port = parseInt(process.env.PORT || "3000", 10);
-server.listen(port, () => {
-  console.log(`Nexora backend on port ${port} (EchoNet socket ready)`);
-});
+
+configureRedisAdapterIfNeeded()
+  .then(() => {
+    initSocket(io);
+    server.listen(port, () => {
+      logger.info(`AkoNet backend on port ${port} (AkoNet socket ready, Twitch ready)`);
+    });
+  })
+  .catch((e) => {
+    logger.error({ err: e }, "Startup failed");
+    process.exit(1);
+  });
