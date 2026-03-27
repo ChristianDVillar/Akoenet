@@ -2,8 +2,9 @@ const express = require("express");
 const path = require("path");
 const multer = require("multer");
 const fs = require("fs");
+const pool = require("../config/db");
 const auth = require("../middleware/auth");
-const { canAccessChannel } = require("../lib/membership");
+const { canSendToChannel } = require("../lib/membership");
 
 const router = express.Router();
 
@@ -30,7 +31,29 @@ router.post("/channel/:channelId", auth, upload.single("file"), async (req, res)
   if (Number.isNaN(channelId)) {
     return res.status(400).json({ error: "Invalid channel" });
   }
-  if (!(await canAccessChannel(req.user.id, channelId))) {
+  if (!(await canSendToChannel(req.user.id, channelId))) {
+    return res.status(403).json({ error: "No access" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: "file required" });
+  }
+  const publicPath = `/uploads/${req.file.filename}`;
+  res.json({ url: publicPath, filename: req.file.filename });
+});
+
+router.post("/direct/:conversationId", auth, upload.single("file"), async (req, res) => {
+  const conversationId = parseInt(req.params.conversationId, 10);
+  if (Number.isNaN(conversationId)) {
+    return res.status(400).json({ error: "Invalid conversation" });
+  }
+  const allowed = await pool.query(
+    `SELECT 1
+     FROM direct_conversations
+     WHERE id = $1
+       AND (user_low_id = $2 OR user_high_id = $2)`,
+    [conversationId, req.user.id]
+  );
+  if (!allowed.rows.length) {
     return res.status(403).json({ error: "No access" });
   }
   if (!req.file) {

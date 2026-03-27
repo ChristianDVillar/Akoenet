@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 import api from '../services/api'
-import { connectEchoNet, disconnectEchoNet } from '../services/socket'
+import { connectAkoNet, disconnectAkoNet } from '../services/socket'
 
 const AuthContext = createContext(null)
 
@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem('token')
-    disconnectEchoNet()
+    disconnectAkoNet()
     setUser(null)
   }, [])
 
@@ -31,10 +31,10 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get('/auth/me')
       setUser(data)
-      connectEchoNet(token)
+      connectAkoNet(token)
     } catch {
       localStorage.removeItem('token')
-      disconnectEchoNet()
+      disconnectAkoNet()
       setUser(null)
     } finally {
       setLoading(false)
@@ -49,7 +49,15 @@ export function AuthProvider({ children }) {
     const { data } = await api.post('/auth/login', { email, password })
     localStorage.setItem('token', data.token)
     setUser(data.user)
-    connectEchoNet(data.token)
+    connectAkoNet(data.token)
+    return data
+  }, [])
+
+  const loginWithToken = useCallback(async (token) => {
+    localStorage.setItem('token', token)
+    connectAkoNet(token)
+    const { data } = await api.get('/auth/me')
+    setUser(data)
     return data
   }, [])
 
@@ -63,11 +71,12 @@ export function AuthProvider({ children }) {
       user,
       loading,
       login,
+      loginWithToken,
       register,
       logout,
       refreshUser,
     }),
-    [user, loading, login, register, logout, refreshUser]
+    [user, loading, login, loginWithToken, register, logout, refreshUser]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

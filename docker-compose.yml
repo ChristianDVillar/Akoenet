@@ -1,18 +1,18 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: nexora-db
+    container_name: akonet-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: "1234"
-      POSTGRES_DB: nexora
+      POSTGRES_DB: akonet
     ports:
       - "5432:5432"
     volumes:
-      - nexora_pg:/var/lib/postgresql/data
+      - akonet_pg:/var/lib/postgresql/data
       - ./backend/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d nexora"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d akonet"]
       interval: 3s
       timeout: 5s
       retries: 10
@@ -21,19 +21,23 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: nexora-backend
+    container_name: akonet-backend
     environment:
       PORT: "3000"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      DATABASE_URL: postgresql://postgres:1234@postgres:5432/nexora
+      DATABASE_URL: postgresql://postgres:1234@postgres:5432/akonet
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-i58yfqn5zmbvf6ks1uw7kjyblrddjl}
+      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-2xawdqo0kp0j4sqfugq6ewi6006lu7}
+      TWITCH_REDIRECT_URI: ${TWITCH_REDIRECT_URI:-http://localhost:3000/auth/twitch/callback}
+      FRONTEND_OAUTH_REDIRECT: ${FRONTEND_OAUTH_REDIRECT:-http://localhost:5173/auth/twitch/callback}
     ports:
       - "3000:3000"
     volumes:
-      - nexora_uploads:/app/uploads
+      - akonet_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
-  nexora_pg:
-  nexora_uploads:
+  akonet_pg:
+  akonet_uploads:
