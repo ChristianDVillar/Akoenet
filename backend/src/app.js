@@ -153,6 +153,8 @@ function createApp() {
   app.use("/admin", auth, requireAdmin, adminRoutes);
 
   app.use("/auth", authRoutes);
+  // Alias for Twitch OAuth URLs already registered as /api/user/auth/... (must match TWITCH_REDIRECT_URI exactly).
+  app.use("/api/user/auth", authRoutes);
   app.use("/servers", serverRoutes);
   app.use("/channels", channelRoutes);
   app.use("/messages", messageRoutes);
