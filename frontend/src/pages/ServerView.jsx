@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
@@ -13,6 +13,24 @@ import UserSettingsModal from '../components/UserSettingsModal'
 import ServerEmojiManager from '../components/ServerEmojiManager'
 import ServerSettingsModal from '../components/ServerSettingsModal'
 
+function normalizeVoicePresencePayload(presence) {
+  if (!presence || typeof presence !== 'object') return {}
+  const out = {}
+  Object.keys(presence).forEach((k) => {
+    const v = presence[k]
+    out[String(k)] = Array.isArray(v) ? v : []
+  })
+  return out
+}
+
+function collapsedCategoryStorageKey(serverId) {
+  return `akoenet_collapsed_${serverId}`
+}
+
+function collapsedCategoryLegacyKeys(serverId) {
+  return [`Akonet_collapsed_${serverId}`, `akonet_collapsed_${serverId}`, `akoe:collapsed:${serverId}`]
+}
+
 export default function ServerView() {
   const { serverId } = useParams()
   const id = parseInt(serverId, 10)
@@ -25,10 +43,6 @@ export default function ServerView() {
   const [activeChannelId, setActiveChannelId] = useState(null)
   const [serverName, setServerName] = useState('')
   const [toast, setToast] = useState(null)
-  const [newChannel, setNewChannel] = useState('')
-  const [newCategory, setNewCategory] = useState('')
-  const [newChannelType, setNewChannelType] = useState('text')
-  const [selectedCategory, setSelectedCategory] = useState('')
   const [channelPermissions, setChannelPermissions] = useState([])
   const [userPermissions, setUserPermissions] = useState([])
   const [selectedMemberId, setSelectedMemberId] = useState('')
@@ -37,6 +51,36 @@ export default function ServerView() {
   const [userSettingsOpen, setUserSettingsOpen] = useState(false)
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false)
   const [emojis, setEmojis] = useState([])
+  const [voicePresence, setVoicePresence] = useState({})
+  /** Voice channel id kept while user reads text channels (stay connected). Cleared on leave / server change. */
+  const [voicePersistChannelId, setVoicePersistChannelId] = useState(null)
+  /** Stops HTTP voice-presence polling after 404 (old API / wrong base URL) to avoid console spam */
+  const voicePresencePollStopped404 = useRef(false)
+
+  const rtcVoiceChannelId = useMemo(() => {
+    const active = channels.find((c) => c.id === activeChannelId)
+    if (active?.type === 'voice') return activeChannelId
+    return voicePersistChannelId
+  }, [channels, activeChannelId, voicePersistChannelId])
+
+  const rtcVoiceChannelMeta = useMemo(() => {
+    if (rtcVoiceChannelId == null) return null
+    return channels.find((c) => c.id === rtcVoiceChannelId) || null
+  }, [channels, rtcVoiceChannelId])
+
+  const rtcVoiceConnectedCount = useMemo(() => {
+    if (rtcVoiceChannelId == null) return undefined
+    const raw = voicePresence[String(rtcVoiceChannelId)] ?? voicePresence[rtcVoiceChannelId]
+    return Array.isArray(raw) ? raw.length : undefined
+  }, [voicePresence, rtcVoiceChannelId])
+
+  const handleVoiceSessionChange = useCallback(({ joined, channelId: cid }) => {
+    setVoicePersistChannelId(joined && cid != null ? Number(cid) : null)
+  }, [])
+
+  useEffect(() => {
+    setVoicePersistChannelId(null)
+  }, [id])
 
   useEffect(() => {
     if (Number.isNaN(id)) {
@@ -92,12 +136,65 @@ export default function ServerView() {
     }
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const s = getSocket()
-    if (!s || Number.isNaN(id)) return
-    s.emit('join_server', id)
+    if (!s || Number.isNaN(id)) return undefined
+    setVoicePresence({})
+
+    const onSnap = ({ serverId, presence }) => {
+      if (serverId !== id) return
+      setVoicePresence(normalizeVoicePresencePayload(presence))
+    }
+    const onPresence = ({ channelId, participants }) => {
+      if (channelId == null) return
+      const key = String(channelId)
+      setVoicePresence((prev) => ({ ...prev, [key]: participants || [] }))
+    }
+
+    const joinSrv = () => {
+      s.emit('join_server', id)
+    }
+
+    s.on('voice:presence_snapshot', onSnap)
+    s.on('voice:presence', onPresence)
+    s.on('connect', joinSrv)
+    if (s.connected) joinSrv()
+
     return () => {
+      s.off('voice:presence_snapshot', onSnap)
+      s.off('voice:presence', onPresence)
+      s.off('connect', joinSrv)
       s.emit('leave_server', id)
+    }
+  }, [id])
+
+  useEffect(() => {
+    if (Number.isNaN(id)) return undefined
+    voicePresencePollStopped404.current = false
+    let cancelled = false
+    let intervalId = null
+    async function fetchVoicePresence() {
+      if (voicePresencePollStopped404.current) return
+      try {
+        const { data } = await api.get(`/servers/${id}/voice-presence`)
+        if (cancelled) return
+        setVoicePresence(normalizeVoicePresencePayload(data))
+      } catch (e) {
+        if (!cancelled && e?.response?.status === 404) {
+          voicePresencePollStopped404.current = true
+          if (intervalId != null) window.clearInterval(intervalId)
+        }
+        /* other errors ignored — socket may still update */
+      }
+    }
+    ;(async () => {
+      await fetchVoicePresence()
+      if (cancelled || voicePresencePollStopped404.current) return
+      intervalId = window.setInterval(fetchVoicePresence, 5000)
+    })()
+    return () => {
+      cancelled = true
+      if (intervalId != null) window.clearInterval(intervalId)
     }
   }, [id])
 
@@ -118,29 +215,32 @@ export default function ServerView() {
     }
   }, [activeChannelId])
 
-  async function addChannel(e) {
-    e.preventDefault()
-    if (!newChannel.trim() || Number.isNaN(id)) return
+  async function createChannel({ name, type, categoryId, isPrivate }) {
+    if (!name?.trim() || Number.isNaN(id)) return
     await api.post('/channels', {
-      name: newChannel.trim(),
+      name: name.trim(),
       server_id: id,
-      type: newChannelType,
-      category_id: selectedCategory ? Number(selectedCategory) : null,
+      type,
+      category_id: categoryId != null ? Number(categoryId) : null,
+      is_private: Boolean(isPrivate),
     })
-    setNewChannel('')
-    setSelectedCategory('')
     const { data } = await api.get(`/channels/server/${id}`)
     setChannels(data)
   }
 
-  async function addCategory(e) {
-    e.preventDefault()
-    if (!newCategory.trim() || Number.isNaN(id)) return
+  async function updateChannel(channelId, payload) {
+    if (!channelId) return
+    await api.put(`/channels/${channelId}`, payload)
+    const { data } = await api.get(`/channels/server/${id}`)
+    setChannels(data)
+  }
+
+  async function createCategory({ name }) {
+    if (!name?.trim() || Number.isNaN(id)) return
     await api.post('/channels/categories', {
       server_id: id,
-      name: newCategory.trim(),
+      name: name.trim(),
     })
-    setNewCategory('')
     const { data } = await api.get(`/channels/server/${id}/categories`)
     setCategories(data)
   }
@@ -168,7 +268,7 @@ export default function ServerView() {
     setChannels(channelsData)
     setCollapsedCategories((prev) => {
       const next = prev.filter((cid) => cid !== categoryId)
-      localStorage.setItem(`akoe:collapsed:${id}`, JSON.stringify(next))
+      localStorage.setItem(collapsedCategoryStorageKey(id), JSON.stringify(next))
       return next
     })
   }
@@ -259,9 +359,15 @@ export default function ServerView() {
 
   useEffect(() => {
     if (!id) return
-    const key = `akoe:collapsed:${id}`
+    const key = collapsedCategoryStorageKey(id)
     try {
-      const raw = localStorage.getItem(key)
+      let raw = localStorage.getItem(key)
+      if (!raw) {
+        for (const lk of collapsedCategoryLegacyKeys(id)) {
+          raw = localStorage.getItem(lk)
+          if (raw) break
+        }
+      }
       const parsed = raw ? JSON.parse(raw) : []
       if (Array.isArray(parsed)) setCollapsedCategories(parsed)
     } catch {
@@ -274,7 +380,7 @@ export default function ServerView() {
       const next = prev.includes(categoryId)
         ? prev.filter((id) => id !== categoryId)
         : [...prev, categoryId]
-      localStorage.setItem(`akoe:collapsed:${id}`, JSON.stringify(next))
+      localStorage.setItem(collapsedCategoryStorageKey(id), JSON.stringify(next))
       return next
     })
   }
@@ -297,17 +403,9 @@ export default function ServerView() {
         channels={channels}
         activeChannelId={activeChannelId}
         onSelectChannel={setActiveChannelId}
-        newCategory={newCategory}
-        setNewCategory={setNewCategory}
-        onAddCategory={addCategory}
+        onCreateChannel={createChannel}
+        onCreateCategory={createCategory}
         onDeleteCategory={deleteCategory}
-        newChannel={newChannel}
-        setNewChannel={setNewChannel}
-        newChannelType={newChannelType}
-        setNewChannelType={setNewChannelType}
-        selectedCategory={selectedCategory}
-        setSelectedCategory={setSelectedCategory}
-        onAddChannel={addChannel}
         onDeleteChannel={deleteChannel}
         onMoveChannel={moveChannel}
         onMoveCategory={moveCategory}
@@ -319,14 +417,20 @@ export default function ServerView() {
         onOpenUserSettings={() => setUserSettingsOpen(true)}
         onOpenServerSettings={() => setServerSettingsOpen(true)}
         onOpenAdminDashboard={() => navigate('/admin')}
+        schedulerStreamerUsername={import.meta.env.VITE_SCHEDULER_STREAMER_USERNAME}
+        voicePresence={voicePresence}
       />
       <Chat
         channelId={activeChannelId}
         channelName={activeChannel?.name}
         channelType={activeChannel?.type}
-        serverId={id}
         user={user}
         emojis={emojis}
+        voiceUserLimit={rtcVoiceChannelMeta?.voice_user_limit}
+        voiceConnectedCount={rtcVoiceConnectedCount}
+        onVoiceSessionChange={handleVoiceSessionChange}
+        rtcVoiceChannelId={rtcVoiceChannelId}
+        rtcVoiceChannelName={rtcVoiceChannelMeta?.name}
       />
       <div className="right-column">
         <MembersPanel members={members} />
@@ -340,13 +444,16 @@ export default function ServerView() {
           selectedMemberId={selectedMemberId}
           setSelectedMemberId={setSelectedMemberId}
           onToggleUserPermission={toggleUserPermission}
+          categories={categories}
+          activeChannel={activeChannel}
+          onUpdateChannel={updateChannel}
         />
         <ServerEmojiManager serverId={id} emojis={emojis} onReload={loadEmojis} />
       </div>
 
       {toast && (
         <div className="toast" role="status">
-          <strong>AkoNet</strong>
+          <strong>AkoeNet</strong>
           <span>
             {toast.username}: {toast.snippet}
           </span>

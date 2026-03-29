@@ -38,7 +38,7 @@ async function canManageChannels(userId, serverId) {
 
 async function getChannelInfo(channelId) {
   const r = await pool.query(
-    "SELECT id, server_id, type FROM channels WHERE id = $1",
+    "SELECT id, server_id, type, is_private, voice_user_limit FROM channels WHERE id = $1",
     [channelId]
   );
   return r.rows[0] || null;
@@ -65,6 +65,7 @@ async function getChannelPermissionsForUser(userId, channelId) {
 
   const roles = await getUserServerRoles(userId, channel.server_id);
   const isAdmin = roles.includes("admin");
+  const isModerator = roles.includes("moderator");
   if (isAdmin) {
     return { allowed: true, can_view: true, can_send: true, can_connect: true, channel };
   }
@@ -77,26 +78,6 @@ async function getChannelPermissionsForUser(userId, channelId) {
      WHERE cp.channel_id = $1 AND ur.user_id = $2`,
     [channelId, userId]
   );
-
-  let basePermissions;
-  if (ruleRows.rows.length === 0) {
-    basePermissions = {
-      allowed: true,
-      can_view: true,
-      can_send: true,
-      can_connect: true,
-      channel,
-    };
-  } else {
-    const permissions = aggregatePermissionRows(ruleRows.rows);
-    basePermissions = {
-      allowed: permissions.can_view,
-      can_view: permissions.can_view,
-      can_send: permissions.can_send,
-      can_connect: permissions.can_connect,
-      channel,
-    };
-  }
 
   const userOverride = await pool.query(
     `SELECT can_view, can_send, can_connect
@@ -111,6 +92,37 @@ async function getChannelPermissionsForUser(userId, channelId) {
       can_view: Boolean(u.can_view),
       can_send: Boolean(u.can_send),
       can_connect: Boolean(u.can_connect),
+      channel,
+    };
+  }
+
+  let basePermissions;
+  if (ruleRows.rows.length === 0) {
+    if (channel.is_private) {
+      const canAccessByDefault = isModerator;
+      basePermissions = {
+        allowed: canAccessByDefault,
+        can_view: canAccessByDefault,
+        can_send: canAccessByDefault,
+        can_connect: canAccessByDefault,
+        channel,
+      };
+      return basePermissions;
+    }
+    basePermissions = {
+      allowed: true,
+      can_view: true,
+      can_send: true,
+      can_connect: true,
+      channel,
+    };
+  } else {
+    const permissions = aggregatePermissionRows(ruleRows.rows);
+    basePermissions = {
+      allowed: permissions.can_view,
+      can_view: permissions.can_view,
+      can_send: permissions.can_send,
+      can_connect: permissions.can_connect,
       channel,
     };
   }

@@ -51,6 +51,7 @@ CREATE TABLE channels (
   name TEXT NOT NULL,
   type TEXT NOT NULL DEFAULT 'text',
   position INT NOT NULL DEFAULT 0,
+  voice_user_limit INT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

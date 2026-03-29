@@ -48,20 +48,39 @@ const loginSchema = z.object({
   email: z.string().trim().email().max(120),
   password: z.string().min(1).max(200),
 });
+const emptyToNull = (v) => (v === "" ? null : v);
+
 const updateSettingsSchema = z
   .object({
     username: z.string().trim().min(2).max(40).optional(),
-    avatar_url: z.string().trim().url().max(2000).nullable().optional(),
-    banner_url: z.string().trim().url().max(2000).nullable().optional(),
-    accent_color: z
-      .string()
-      .trim()
-      .regex(/^#([0-9a-fA-F]{6})$/, "accent_color must be #RRGGBB")
-      .nullable()
-      .optional(),
-    bio: z.string().trim().max(240).nullable().optional(),
+    avatar_url: z.preprocess(
+      emptyToNull,
+      z.string().trim().url().max(2000).nullable().optional()
+    ),
+    banner_url: z.preprocess(
+      emptyToNull,
+      z.string().trim().url().max(2000).nullable().optional()
+    ),
+    accent_color: z.preprocess(
+      emptyToNull,
+      z
+        .string()
+        .trim()
+        .regex(/^#([0-9a-fA-F]{6})$/, "accent_color must be #RRGGBB")
+        .nullable()
+        .optional()
+    ),
+    bio: z.preprocess(emptyToNull, z.string().trim().max(240).nullable().optional()),
     presence_status: z.enum(["online", "idle", "dnd", "invisible"]).optional(),
-    custom_status: z.string().trim().max(120).nullable().optional(),
+    custom_status: z.preprocess(
+      emptyToNull,
+      z.string().trim().max(120).nullable().optional()
+    ),
+    /** Streamer Scheduler public slug if it differs from Twitch login (see User settings). */
+    scheduler_streamer_username: z.preprocess(
+      emptyToNull,
+      z.union([z.string().trim().min(1).max(80), z.null()]).optional()
+    ),
     current_password: z.string().min(1).max(200).optional(),
     new_password: z.string().min(6).max(200).optional(),
   })
@@ -119,6 +138,7 @@ router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (r
         presence_status: user.presence_status,
         custom_status: user.custom_status,
         is_admin: Boolean(user.is_admin),
+        twitch_username: user.twitch_username ?? null,
       },
     });
   } catch (e) {
@@ -129,7 +149,18 @@ router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (r
 
 router.get("/twitch/start", authRateLimiter, (req, res) => {
   if (!twitchClientId || !twitchClientSecret) {
-    return res.status(500).json({ error: "Twitch OAuth not configured on server" });
+    return res.status(503).json({
+      error: "Twitch OAuth not configured on server",
+      code: "TWITCH_OAUTH_NOT_CONFIGURED",
+      hint: "Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in the backend environment (e.g. backend/.env or docker-compose env). Register the same redirect URL in the Twitch Developer Console.",
+      checks: {
+        clientId: Boolean(twitchClientId),
+        clientSecret: Boolean(twitchClientSecret),
+      },
+      redirectUri: twitchRedirectUri,
+      frontendRedirect: frontendOAuthRedirect,
+      statusPath: "/auth/twitch/status",
+    });
   }
   const nonce = crypto.randomBytes(16).toString("hex");
   const state = jwt.sign({ nonce }, secret, { expiresIn: "10m" });
@@ -216,17 +247,30 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
     if (!userRes.rows.length) {
       const randomPass = crypto.randomBytes(24).toString("hex");
       const passHash = await bcrypt.hash(randomPass, 10);
+      const login = String(twitchUser.login || "").trim().toLowerCase();
       const created = await pool.query(
-        `INSERT INTO users (username, email, password, avatar_url)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO users (username, email, password, avatar_url, twitch_username)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [twitchUser.display_name || twitchUser.login, email, passHash, twitchUser.profile_image_url || null]
+        [
+          twitchUser.display_name || twitchUser.login,
+          email,
+          passHash,
+          twitchUser.profile_image_url || null,
+          login || null,
+        ]
       );
       userRes = created;
     } else {
+      const login = String(twitchUser.login || "").trim().toLowerCase();
       await pool.query(
-        `UPDATE users SET username = $1, avatar_url = $2 WHERE id = $3`,
-        [twitchUser.display_name || twitchUser.login, twitchUser.profile_image_url || null, userRes.rows[0].id]
+        `UPDATE users SET username = $1, avatar_url = $2, twitch_username = $3 WHERE id = $4`,
+        [
+          twitchUser.display_name || twitchUser.login,
+          twitchUser.profile_image_url || null,
+          login || null,
+          userRes.rows[0].id,
+        ]
       );
       userRes = await pool.query("SELECT * FROM users WHERE id = $1", [userRes.rows[0].id]);
     }
@@ -242,7 +286,7 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
 
 router.get("/me", auth, async (req, res) => {
   const result = await pool.query(
-    `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, created_at
+    `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at
      FROM users WHERE id = $1`,
     [req.user.id]
   );
@@ -261,6 +305,7 @@ router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, 
     bio,
     presence_status: presenceStatus,
     custom_status: customStatus,
+    scheduler_streamer_username: schedulerStreamerUsername,
     current_password: currentPassword,
     new_password: newPassword,
   } = req.body;
@@ -268,7 +313,7 @@ router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, 
   try {
     await client.query("BEGIN");
     const current = await client.query(
-      `SELECT id, username, email, password, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, created_at
+      `SELECT id, username, email, password, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at
        FROM users WHERE id = $1 FOR UPDATE`,
       [req.user.id]
     );
@@ -293,6 +338,8 @@ router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, 
     const nextBio = bio !== undefined ? bio : user.bio;
     const nextPresence = presenceStatus !== undefined ? presenceStatus : user.presence_status;
     const nextCustomStatus = customStatus !== undefined ? customStatus : user.custom_status;
+    const nextSchedulerSlug =
+      schedulerStreamerUsername !== undefined ? schedulerStreamerUsername : user.scheduler_streamer_username;
     const nextPasswordHash = newPassword ? await bcrypt.hash(newPassword, 10) : user.password;
 
     const updated = await client.query(
@@ -304,9 +351,10 @@ router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, 
            bio = $6,
            password = $7,
            presence_status = $8,
-           custom_status = $9
+           custom_status = $9,
+           scheduler_streamer_username = $10
        WHERE id = $1
-       RETURNING id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, created_at`,
+       RETURNING id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at`,
       [
         req.user.id,
         nextUsername,
@@ -317,6 +365,7 @@ router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, 
         nextPasswordHash,
         nextPresence,
         nextCustomStatus,
+        nextSchedulerSlug,
       ]
     );
     await client.query("COMMIT");

@@ -141,8 +141,8 @@ export default function Dashboard() {
       <div className="main-panel home-panel">
         <header className="home-header">
           <div>
-            <h1>AkoNet</h1>
-            <p className="akonet-tag">AkoNet · your communities</p>
+            <h1>AkoeNet</h1>
+            <p className="akoenet-tag">AkoeNet · your communities</p>
           </div>
           <div className="user-bar" ref={userMenuRef}>
             <button
@@ -220,6 +220,8 @@ export default function Dashboard() {
             <p className="muted small">Pick a clear name. You can rename and organize channels later.</p>
             <form onSubmit={createServer} className="form-inline">
               <input
+                id="dashboard-new-server-name"
+                name="server_name"
                 placeholder="Server name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -234,6 +236,8 @@ export default function Dashboard() {
             <p className="muted small">Use this if someone shared a numeric server ID with you.</p>
             <form onSubmit={joinServer} className="form-inline">
               <input
+                id="dashboard-join-server-id"
+                name="server_id"
                 placeholder="Numeric server ID"
                 value={joinId}
                 onChange={(e) => setJoinId(e.target.value)}
@@ -247,6 +251,8 @@ export default function Dashboard() {
             </p>
             <form onSubmit={joinByLink} className="form-inline invite-inline">
               <input
+                id="dashboard-join-invite-link"
+                name="invite_link"
                 placeholder="Paste invite link/token"
                 value={joinLink}
                 onChange={(e) => setJoinLink(e.target.value)}

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import ServerEmojiManager from './ServerEmojiManager'
 
 function toNullable(value) {
   const trimmed = value.trim()
@@ -16,11 +17,28 @@ export default function UserSettingsModal({ open, onClose }) {
   const [bio, setBio] = useState('')
   const [presenceStatus, setPresenceStatus] = useState('online')
   const [customStatus, setCustomStatus] = useState('')
+  const [schedulerStreamerUsername, setSchedulerStreamerUsername] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
+  const [servers, setServers] = useState([])
+  const [emojiServerId, setEmojiServerId] = useState('')
+  const [emojiList, setEmojiList] = useState([])
+
+  const loadEmojisForServer = useCallback(async (serverId) => {
+    if (!serverId) {
+      setEmojiList([])
+      return
+    }
+    try {
+      const { data } = await api.get(`/servers/${serverId}/emojis`)
+      setEmojiList(data)
+    } catch {
+      setEmojiList([])
+    }
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -31,11 +49,34 @@ export default function UserSettingsModal({ open, onClose }) {
     setBio(user?.bio || '')
     setPresenceStatus(user?.presence_status || 'online')
     setCustomStatus(user?.custom_status || '')
+    setSchedulerStreamerUsername(user?.scheduler_streamer_username || '')
     setCurrentPassword('')
     setNewPassword('')
     setError('')
     setInfo('')
+    ;(async () => {
+      try {
+        const { data } = await api.get('/servers')
+        setServers(data)
+        setEmojiServerId((prev) => {
+          const ids = new Set(data.map((s) => String(s.id)))
+          if (prev && ids.has(prev)) return prev
+          return data[0]?.id != null ? String(data[0].id) : ''
+        })
+      } catch {
+        setServers([])
+        setEmojiServerId('')
+      }
+    })()
   }, [open, user])
+
+  useEffect(() => {
+    if (!open || !emojiServerId) {
+      setEmojiList([])
+      return
+    }
+    loadEmojisForServer(emojiServerId)
+  }, [open, emojiServerId, loadEmojisForServer])
 
   const previewStyle = useMemo(
     () => ({
@@ -70,6 +111,7 @@ export default function UserSettingsModal({ open, onClose }) {
         bio: toNullable(bio),
         presence_status: presenceStatus,
         custom_status: toNullable(customStatus),
+        scheduler_streamer_username: toNullable(schedulerStreamerUsername),
         current_password: newPassword ? currentPassword : undefined,
         new_password: newPassword || undefined,
       })
@@ -147,11 +189,19 @@ export default function UserSettingsModal({ open, onClose }) {
         <form onSubmit={onSubmit} className="form-stack">
           <label>
             Username
-            <input value={username} onChange={(e) => setUsername(e.target.value)} maxLength={40} />
+            <input
+              id="settings-username"
+              name="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              maxLength={40}
+            />
           </label>
           <label>
             Avatar URL
             <input
+              id="settings-avatar-url"
+              name="avatar_url"
               value={avatarUrl}
               onChange={(e) => setAvatarUrl(e.target.value)}
               placeholder="https://..."
@@ -160,6 +210,8 @@ export default function UserSettingsModal({ open, onClose }) {
           <label>
             Banner URL
             <input
+              id="settings-banner-url"
+              name="banner_url"
               value={bannerUrl}
               onChange={(e) => setBannerUrl(e.target.value)}
               placeholder="https://..."
@@ -169,12 +221,16 @@ export default function UserSettingsModal({ open, onClose }) {
             Accent color
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
+                id="settings-accent-color-picker"
+                name="accent_color_picker"
                 type="color"
                 value={/^#([0-9a-fA-F]{6})$/.test(accentColor || '') ? accentColor : '#7c3aed'}
                 onChange={(e) => setAccentColor(e.target.value)}
                 style={{ width: 48, height: 34, padding: 2 }}
               />
               <input
+                id="settings-accent-color-text"
+                name="accent_color"
                 value={accentColor}
                 onChange={(e) => setAccentColor(e.target.value)}
                 placeholder="#7c3aed"
@@ -184,7 +240,13 @@ export default function UserSettingsModal({ open, onClose }) {
           </label>
           <label>
             Presence
-            <select value={presenceStatus} onChange={(e) => setPresenceStatus(e.target.value)} className="select-inline">
+            <select
+              id="settings-presence-status"
+              name="presence_status"
+              value={presenceStatus}
+              onChange={(e) => setPresenceStatus(e.target.value)}
+              className="select-inline"
+            >
               <option value="online">Online</option>
               <option value="idle">Idle</option>
               <option value="dnd">Do Not Disturb</option>
@@ -194,6 +256,8 @@ export default function UserSettingsModal({ open, onClose }) {
           <label>
             Custom status
             <input
+              id="settings-custom-status"
+              name="custom_status"
               value={customStatus}
               onChange={(e) => setCustomStatus(e.target.value)}
               maxLength={120}
@@ -202,20 +266,93 @@ export default function UserSettingsModal({ open, onClose }) {
           </label>
           <label>
             Bio
-            <input value={bio} onChange={(e) => setBio(e.target.value)} maxLength={240} placeholder="About you..." />
+            <input
+              id="settings-bio"
+              name="bio"
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              maxLength={240}
+              placeholder="About you..."
+            />
+          </label>
+          <label>
+            Streamer Scheduler username (public slug)
+            <input
+              id="settings-scheduler-slug"
+              name="scheduler_streamer_username"
+              value={schedulerStreamerUsername}
+              onChange={(e) => setSchedulerStreamerUsername(e.target.value)}
+              maxLength={80}
+              placeholder="e.g. Test — must match /streamer/… on Streamer Scheduler"
+              autoComplete="off"
+            />
+            <span className="muted small" style={{ display: 'block', marginTop: 4 }}>
+              If your Twitch login differs from your Scheduler profile URL, set the Scheduler account name here so the sidebar schedule and !schedule use the correct API.
+            </span>
           </label>
           <label>
             Current password (required only to change password)
-            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+            <input
+              id="settings-current-password"
+              name="current_password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+            />
           </label>
           <label>
             New password
-            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <input
+              id="settings-new-password"
+              name="new_password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
           </label>
           <button type="submit" className="btn primary" disabled={saving}>
             {saving ? 'Saving…' : 'Save settings'}
           </button>
         </form>
+
+        <div className="user-settings-emoji-block" style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <h4 style={{ margin: '0 0 0.35rem', fontSize: '1rem' }}>Server emojis</h4>
+          <p className="muted small" style={{ margin: '0 0 0.65rem' }}>
+            Create or delete custom emojis for a server where you have permission (e.g. admin).
+          </p>
+          {servers.length === 0 ? (
+            <p className="muted small">Join or create a server to manage emojis.</p>
+          ) : (
+            <>
+              <label style={{ display: 'block', marginBottom: '0.65rem' }}>
+                <span className="muted small" style={{ display: 'block', marginBottom: 4 }}>
+                  Server
+                </span>
+                <select
+                  id="settings-emoji-server"
+                  name="emoji_server_id"
+                  className="select-inline"
+                  value={emojiServerId}
+                  onChange={(e) => setEmojiServerId(e.target.value)}
+                  style={{ width: '100%', maxWidth: 320 }}
+                >
+                  {servers.map((s) => (
+                    <option key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {emojiServerId ? (
+                <ServerEmojiManager
+                  serverId={Number(emojiServerId)}
+                  emojis={emojiList}
+                  onReload={() => loadEmojisForServer(emojiServerId)}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

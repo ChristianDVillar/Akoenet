@@ -9,6 +9,17 @@ const {
 } = require("../lib/membership");
 const { logAdminAction } = require("../lib/audit-log");
 const { getMessageReactions } = require("../lib/message-reactions");
+const { broadcastChannelMessage } = require("../lib/channel-message-broadcast");
+const {
+  fetchUpcomingEvents,
+  formatScheduleReply,
+  parseSchedulerChatCommand,
+} = require("../lib/scheduler-client");
+const { resolveSchedulerStreamerSlug } = require("../lib/scheduler-resolve");
+const { appEvents } = require("../lib/app-events");
+
+/** Set on first initSocket(io) — used by GET /servers/:id/voice-presence */
+let getVoicePresenceSnapshotForServerImpl = null;
 
 function initSocket(io) {
   const secret = process.env.JWT_SECRET || "dev-secret-change-me";
@@ -16,7 +27,9 @@ function initSocket(io) {
   const messageWindowMs = 60 * 1000;
   const messageLimitPerWindow = Number(process.env.SOCKET_MESSAGE_RATE_LIMIT_MAX || 40);
   const directMessageLimitPerWindow = Number(process.env.SOCKET_DM_RATE_LIMIT_MAX || 30);
+  const schedulerCommandLimitPerWindow = Number(process.env.SCHEDULER_SOCKET_RATE_LIMIT_MAX || 15);
   const socketRateState = new Map();
+  const typingLastEmit = new Map();
 
   function canPassRateLimit(userId, bucket, maxAllowed) {
     const now = Date.now();
@@ -40,14 +53,78 @@ function initSocket(io) {
     return voiceRooms.get(channelId);
   }
 
+  function dedupeVoiceUsers(room) {
+    const byUser = new Map();
+    for (const p of room.values()) {
+      if (!byUser.has(p.userId)) {
+        byUser.set(p.userId, { userId: p.userId, username: p.username });
+      }
+    }
+    return Array.from(byUser.values());
+  }
+
+  async function enrichVoiceParticipants(partials) {
+    if (!partials.length) return [];
+    const ids = [...new Set(partials.map((p) => p.userId))];
+    const r = await pool.query(
+      `SELECT id, username, avatar_url FROM users WHERE id = ANY($1::int[])`,
+      [ids]
+    );
+    const dbMap = new Map(r.rows.map((row) => [row.id, row]));
+    return partials.map((p) => {
+      const db = dbMap.get(p.userId);
+      return {
+        userId: p.userId,
+        username: db?.username ?? p.username,
+        avatar_url: db?.avatar_url ?? null,
+      };
+    });
+  }
+
+  async function emitVoicePresence(channelId, notifySocket = null) {
+    const serverId = await getChannelServerId(channelId);
+    if (!serverId) return;
+    const room = voiceRooms.get(channelId);
+    const partial = room && room.size > 0 ? dedupeVoiceUsers(room) : [];
+    const participants = await enrichVoiceParticipants(partial);
+    const payload = { channelId, participants };
+    io.to(`server:${serverId}`).emit("voice:presence", payload);
+    /* Client may still not be in server:${serverId} if voice:join ran before join_server finished */
+    if (notifySocket && notifySocket.connected) {
+      notifySocket.emit("voice:presence", payload);
+    }
+  }
+
+  async function buildVoiceSnapshotForServer(serverId) {
+    const chRes = await pool.query(
+      `SELECT id FROM channels WHERE server_id = $1 AND type = 'voice'`,
+      [serverId]
+    );
+    const presence = {};
+    for (const row of chRes.rows) {
+      const room = voiceRooms.get(row.id);
+      if (room && room.size > 0) {
+        presence[row.id] = await enrichVoiceParticipants(dedupeVoiceUsers(room));
+      }
+    }
+    return presence;
+  }
+
+  getVoicePresenceSnapshotForServerImpl = buildVoiceSnapshotForServer;
+
   function removeFromVoiceRooms(socketId) {
+    const affected = [];
     for (const [channelId, room] of voiceRooms.entries()) {
       if (room.has(socketId)) {
         room.delete(socketId);
         io.to(`voice:${channelId}`).emit("voice:user-left", { socketId });
+        affected.push(channelId);
         if (room.size === 0) voiceRooms.delete(channelId);
       }
     }
+    affected.forEach((cid) => {
+      emitVoicePresence(cid, null).catch(() => {});
+    });
   }
 
   io.use((socket, next) => {
@@ -80,6 +157,12 @@ function initSocket(io) {
       );
       if (r.rows.length) {
         socket.join(`server:${id}`);
+        try {
+          const presence = await buildVoiceSnapshotForServer(id);
+          socket.emit("voice:presence_snapshot", { serverId: id, presence });
+        } catch {
+          /* ignore snapshot errors */
+        }
       }
     });
 
@@ -108,6 +191,28 @@ function initSocket(io) {
       if (!Number.isNaN(id)) socket.leave(`channel:${id}`);
     });
 
+    socket.on("channel_typing", async (payload) => {
+      const channelId = parseInt(payload?.channel_id, 10);
+      if (Number.isNaN(channelId)) return;
+      if (!(await canReadChannel(socket.userId, channelId))) return;
+      const typing = payload?.typing !== false;
+      if (typing) {
+        const key = `${socket.userId}:${channelId}`;
+        const now = Date.now();
+        const last = typingLastEmit.get(key) || 0;
+        if (now - last < 2000) return;
+        typingLastEmit.set(key, now);
+      }
+      const u = await pool.query("SELECT username FROM users WHERE id = $1", [socket.userId]);
+      const username = u.rows[0]?.username || `user_${socket.userId}`;
+      socket.to(`channel:${channelId}`).emit("channel_typing", {
+        channel_id: channelId,
+        user_id: socket.userId,
+        username,
+        typing,
+      });
+    });
+
     socket.on("send_message", async (payload, ack) => {
       if (!canPassRateLimit(socket.userId, "channel_message", messageLimitPerWindow)) {
         if (typeof ack === "function") ack({ error: "rate_limited" });
@@ -116,6 +221,18 @@ function initSocket(io) {
       const channelId = parseInt(payload?.channel_id, 10);
       const content = typeof payload?.content === "string" ? payload.content : "";
       const imageUrl = payload?.image_url || null;
+      const schCmd = !imageUrl && content.trim() ? parseSchedulerChatCommand(content.trim()) : null;
+
+      if (schCmd) {
+        if (!canPassRateLimit(socket.userId, "scheduler_command", schedulerCommandLimitPerWindow)) {
+          if (typeof ack === "function") ack({ error: "rate_limited" });
+          return;
+        }
+      } else if (!canPassRateLimit(socket.userId, "channel_message", messageLimitPerWindow)) {
+        if (typeof ack === "function") ack({ error: "rate_limited" });
+        return;
+      }
+
       if (Number.isNaN(channelId)) {
         if (typeof ack === "function") ack({ error: "invalid" });
         return;
@@ -140,6 +257,78 @@ function initSocket(io) {
 
       const serverId = await getChannelServerId(channelId);
       try {
+        if (schCmd) {
+          const result = await pool.query(
+            `INSERT INTO messages (channel_id, user_id, content, image_url)
+             VALUES ($1, $2, $3, NULL)
+             RETURNING *`,
+            [channelId, socket.userId, content.trim()]
+          );
+          const row = result.rows[0];
+          const u = await pool.query("SELECT username FROM users WHERE id = $1", [socket.userId]);
+          const userMessage = { ...row, username: u.rows[0]?.username, reactions: [] };
+          io.to(`channel:${channelId}`).emit("receive_message", userMessage);
+          const snippet = content.trim().slice(0, 80);
+          io.to(`server:${serverId}`).emit("echonet_notification", {
+            serverId,
+            channelId,
+            username: userMessage.username,
+            snippet,
+            messageId: userMessage.id,
+          });
+
+          const defaultStreamer = String(process.env.SCHEDULER_DEFAULT_STREAMER_USERNAME || "").trim();
+          const targetUser = (schCmd.username || defaultStreamer).trim();
+          const announcerId = Number(process.env.SCHEDULER_ANNOUNCER_USER_ID || 0);
+
+          let replyText;
+          if (!targetUser) {
+            replyText =
+              "📅 Specify the streamer: `!schedule username` or set SCHEDULER_DEFAULT_STREAMER_USERNAME.";
+          } else {
+            const schedulerSlug = await resolveSchedulerStreamerSlug(pool, targetUser);
+            const fetched = await fetchUpcomingEvents(schedulerSlug);
+            if (!fetched.ok) {
+              replyText =
+                "📅 Could not load the Scheduler calendar (check SCHEDULER_API_BASE_URL or your network).";
+            } else {
+              const mode = schCmd.mode === "next" ? "next" : "all";
+              replyText = formatScheduleReply(fetched.events, mode);
+            }
+          }
+
+          const replyUserId = Number.isInteger(announcerId) && announcerId > 0 ? announcerId : socket.userId;
+          const replyBody =
+            replyUserId === socket.userId ? `📅 [Scheduler]\n${replyText}` : replyText;
+          const botMessage = await broadcastChannelMessage(io, pool, {
+            channelId,
+            userId: replyUserId,
+            content: replyBody,
+          });
+
+          appEvents.emit("message.created", {
+            channelId,
+            messageId: userMessage.id,
+            userId: socket.userId,
+            serverId,
+          });
+          appEvents.emit("message.created", {
+            channelId,
+            messageId: botMessage.id,
+            userId: replyUserId,
+            serverId,
+          });
+
+          if (typeof ack === "function") {
+            ack({
+              ok: true,
+              message: userMessage,
+              scheduler_reply: botMessage,
+            });
+          }
+          return;
+        }
+
         const result = await pool.query(
           `INSERT INTO messages (channel_id, user_id, content, image_url)
            VALUES ($1, $2, $3, $4)
@@ -163,6 +352,13 @@ function initSocket(io) {
           username: message.username,
           snippet,
           messageId: message.id,
+        });
+
+        appEvents.emit("message.created", {
+          channelId,
+          messageId: message.id,
+          userId: socket.userId,
+          serverId,
         });
 
         if (typeof ack === "function") ack({ ok: true, message });
@@ -399,8 +595,23 @@ function initSocket(io) {
         if (typeof cb === "function") cb({ error: "forbidden" });
         return;
       }
-      socket.join(`voice:${id}`);
       const room = getRoom(id);
+      const distinctUsers = new Set(Array.from(room.values()).map((p) => p.userId));
+      const isNewUser = !distinctUsers.has(socket.userId);
+      const rawLimit = perms.channel?.voice_user_limit;
+      const limitNum =
+        rawLimit == null || rawLimit === "" ? null : Number.parseInt(String(rawLimit), 10);
+      if (
+        limitNum != null &&
+        Number.isFinite(limitNum) &&
+        limitNum > 0 &&
+        isNewUser &&
+        distinctUsers.size >= limitNum
+      ) {
+        if (typeof cb === "function") cb({ error: "voice_full" });
+        return;
+      }
+      socket.join(`voice:${id}`);
       room.set(socket.id, {
         socketId: socket.id,
         userId: socket.userId,
@@ -409,6 +620,7 @@ function initSocket(io) {
       const participants = Array.from(room.values());
       if (typeof cb === "function") cb({ ok: true, participants });
       socket.to(`voice:${id}`).emit("voice:user-joined", room.get(socket.id));
+      emitVoicePresence(id, socket).catch(() => {});
     });
 
     socket.on("voice:leave", ({ channelId }) => {
@@ -420,6 +632,7 @@ function initSocket(io) {
       room.delete(socket.id);
       io.to(`voice:${id}`).emit("voice:user-left", { socketId: socket.id });
       if (room.size === 0) voiceRooms.delete(id);
+      emitVoicePresence(id, socket).catch(() => {});
     });
 
     socket.on("voice:signal", ({ channelId, targetSocketId, description, candidate }) => {
@@ -440,3 +653,10 @@ function initSocket(io) {
 }
 
 module.exports = initSocket;
+
+module.exports.getVoicePresenceSnapshotForServer = async function getVoicePresenceSnapshotForServer(serverId) {
+  if (!getVoicePresenceSnapshotForServerImpl) return {};
+  const sid = parseInt(serverId, 10);
+  if (Number.isNaN(sid)) return {};
+  return getVoicePresenceSnapshotForServerImpl(sid);
+};

@@ -1,6 +1,6 @@
-# AkoNet (Espanol)
+# AkoeNet (Espanol)
 
-AkoNet es una plataforma de comunicacion en tiempo real para comunidades, con servidores, canales de texto/voz, mensajes directos, permisos por roles y soporte de camara opcional en canales de voz.
+AkoeNet es una plataforma de comunicacion en tiempo real para comunidades, con servidores, canales de texto/voz, mensajes directos, permisos por roles y soporte de camara opcional en canales de voz.
 
 ## Caracteristicas principales
 
@@ -17,6 +17,12 @@ AkoNet es una plataforma de comunicacion en tiempo real para comunidades, con se
   - camara opcional con toggle.
 - Documentacion API con Swagger/OpenAPI.
 
+## Documentacion legal
+
+- Indice: [`legal/README.md`](./legal/README.md).
+- Textos en `docs/legal/`: `PRIVACIDAD.md`, `TERMINOS_Y_CONDICIONES.md`, `PROTECCION_LEGAL.md`.
+- En el cliente (Vite), rutas publicas: `/legal/privacidad`, `/legal/terminos`, `/legal/proteccion`. La portada publica (`/` sin sesion) enlaza al pie y al FAQ.
+
 ## Stack tecnico
 
 - Frontend: React + Vite + React Router + Socket.IO Client
@@ -31,7 +37,6 @@ AkoNet es una plataforma de comunicacion en tiempo real para comunidades, con se
 - `frontend/`: cliente web.
 - `backend/`: API REST + Socket.IO + migraciones.
 - `docker-compose.yml`: servicios locales (Postgres, Redis, MinIO, Backend).
-- `ESTRUCTURA_Y_FUNCIONAMIENTO.md`: documento tecnico detallado.
 
 ## Requisitos
 
@@ -41,7 +46,7 @@ AkoNet es una plataforma de comunicacion en tiempo real para comunidades, con se
 
 ## Puesta en marcha rapida (Docker)
 
-1. Clona el repositorio.
+1. Clona el repositorio (recomendado: `git clone <url> AkoeNet` para que la carpeta se llame `AkoeNet`).
 2. Crea archivos de entorno:
    - copia `backend/.env.example` a `backend/.env`
    - copia `frontend/.env.example` a `frontend/.env`

@@ -1,19 +1,18 @@
-# AkoNet
+# AkoeNet
 
-Community real-time platform with servers, text/voice channels, direct messages, role permissions, and optional camera in voice channels.
+Plataforma de comunidad en tiempo real.
 
-Plataforma de comunicacion en tiempo real para comunidades, con servidores, canales de texto/voz, mensajes directos, permisos por roles y camara opcional en canales de voz.
+## Documentación
 
-## Documentation / Documentacion
+| | |
+|--|--|
+| Índice | [docs/README.md](./docs/README.md) |
+| Español | [docs/README.es.md](./docs/README.es.md) |
+| English | [docs/README.en.md](./docs/README.en.md) |
 
-- English: `README.en.md`
-- Espanol: `README.es.md`
-- Extended technical doc: `ESTRUCTURA_Y_FUNCIONAMIENTO.md`
+## Legal
 
-## Legal / Legal
-
-- `PROTECCION_LEGAL.md`
-- `TERMINOS_Y_CONDICIONES.md`
-- `PRIVACIDAD.md`
-- `LICENSE`
-
+| | |
+|--|--|
+| Índice | [docs/legal/README.md](./docs/legal/README.md) |
+| Licencia | [LICENSE](./LICENSE) |

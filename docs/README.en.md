@@ -1,6 +1,6 @@
-# AkoNet (English)
+# AkoeNet (English)
 
-AkoNet is a community-focused real-time communication platform with servers, text/voice channels, direct messages, role-based permissions, and optional camera support in voice rooms.
+AkoeNet is a community-focused real-time communication platform with servers, text/voice channels, direct messages, role-based permissions, and optional camera support in voice rooms.
 
 ## Main Features
 
@@ -17,6 +17,11 @@ AkoNet is a community-focused real-time communication platform with servers, tex
   - optional camera with toggle.
 - Backend API docs via Swagger/OpenAPI.
 
+## Legal
+
+- Index: [`legal/README.md`](./legal/README.md).
+- Source Markdown under `docs/legal/`: `PRIVACIDAD.md`, `TERMINOS_Y_CONDICIONES.md`, `PROTECCION_LEGAL.md` (also exposed in the Vite client at `/legal/privacidad`, `/legal/terminos`, `/legal/proteccion`).
+
 ## Tech Stack
 
 - Frontend: React + Vite + React Router + Socket.IO Client
@@ -31,7 +36,6 @@ AkoNet is a community-focused real-time communication platform with servers, tex
 - `frontend/`: web client.
 - `backend/`: REST API + Socket.IO + migrations.
 - `docker-compose.yml`: local services (Postgres, Redis, MinIO, Backend).
-- `ESTRUCTURA_Y_FUNCIONAMIENTO.md`: detailed technical architecture (Spanish).
 
 ## Requirements
 
@@ -41,7 +45,7 @@ AkoNet is a community-focused real-time communication platform with servers, tex
 
 ## Quick Start (Docker)
 
-1. Clone this repository.
+1. Clone this repository (recommended: `git clone <url> AkoeNet` so the folder is named `AkoeNet`).
 2. Create env files:
    - copy `backend/.env.example` to `backend/.env`
    - copy `frontend/.env.example` to `frontend/.env`

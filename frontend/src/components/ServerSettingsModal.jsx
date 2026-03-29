@@ -102,7 +102,13 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
         <form onSubmit={createInvite} className="form-stack">
           <label>
             Invite type
-            <select value={inviteType} onChange={(e) => setInviteType(e.target.value)} className="select-inline">
+            <select
+              id="server-invite-type"
+              name="invite_type"
+              value={inviteType}
+              onChange={(e) => setInviteType(e.target.value)}
+              className="select-inline"
+            >
               <option value="temporary">Temporary (1 week)</option>
               <option value="permanent">Permanent</option>
             </select>
@@ -110,6 +116,8 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
 
           <label className="invite-toggle">
             <input
+              id="server-invite-single-use"
+              name="invite_single_use"
               type="checkbox"
               checked={inviteSingleUse}
               disabled={inviteType !== 'temporary'}
@@ -131,7 +139,7 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
 
         {inviteLink && (
           <div className="invite-link-box">
-            <input value={inviteLink} readOnly />
+            <input id="server-invite-link-output" name="invite_link" value={inviteLink} readOnly />
             <button type="button" className="btn ghost" onClick={() => copyText(inviteLink)}>
               Copy
             </button>
@@ -149,7 +157,7 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
                 return (
                   <li key={inv.id}>
                     <div className="invite-meta">
-                      <input value={full} readOnly />
+                      <input id={`server-invite-active-${inv.id}`} name={`invite_token_${inv.id}`} value={full} readOnly />
                       <small className="muted">
                         Expires: {formatInviteExpiration(inv.expires_at)} · Uses:{' '}
                         {formatInviteRemainingUses(inv)}

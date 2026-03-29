@@ -3,7 +3,7 @@ const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
 const validate = require("../middleware/validate");
-const { canManageChannels, isServerMember } = require("../lib/membership");
+const { canManageChannels, isServerMember, getChannelPermissionsForUser } = require("../lib/membership");
 
 const router = express.Router();
 router.use(auth);
@@ -22,11 +22,20 @@ const channelUserPermissionParamSchema = z.object({
   channelId: z.coerce.number().int().positive(),
   userId: z.coerce.number().int().positive(),
 });
+const voiceUserLimitSchema = z.union([z.number().int().min(1).max(99), z.null()]);
 const createChannelSchema = z.object({
   name: z.string().trim().min(1).max(80),
   server_id: z.coerce.number().int().positive(),
   type: channelTypeSchema.optional(),
   category_id: z.coerce.number().int().positive().optional().nullable(),
+  is_private: boolSchema,
+  voice_user_limit: voiceUserLimitSchema.optional(),
+});
+const updateChannelSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  category_id: z.coerce.number().int().positive().optional().nullable(),
+  is_private: boolSchema,
+  voice_user_limit: voiceUserLimitSchema.optional(),
 });
 const createCategorySchema = z.object({
   server_id: z.coerce.number().int().positive(),
@@ -56,7 +65,7 @@ const userPermissionSchema = z.object({
 });
 
 router.post("/", validate({ body: createChannelSchema }), async (req, res) => {
-  const { name, server_id, type = "text", category_id = null } = req.body;
+  const { name, server_id, type = "text", category_id = null, is_private = false, voice_user_limit } = req.body;
   if (!(await isServerMember(req.user.id, server_id))) {
     return res.status(403).json({ error: "Not a member of this server" });
   }
@@ -73,9 +82,13 @@ router.post("/", validate({ body: createChannelSchema }), async (req, res) => {
         return res.status(400).json({ error: "Invalid category for server" });
       }
     }
+    let vLimit = null;
+    if (type === "voice" && voice_user_limit != null) {
+      vLimit = Number(voice_user_limit);
+    }
     const result = await pool.query(
-      `INSERT INTO channels (name, server_id, type, category_id) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [String(name).trim(), server_id, type, category_id]
+      `INSERT INTO channels (name, server_id, type, category_id, is_private, voice_user_limit) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [String(name).trim(), server_id, type, category_id, Boolean(is_private), vLimit]
     );
     res.status(201).json(result.rows[0]);
   } catch (e) {
@@ -93,7 +106,58 @@ router.get("/server/:serverId", validate({ params: serverIdParamSchema }), async
     `SELECT * FROM channels WHERE server_id = $1 ORDER BY category_id NULLS FIRST, position ASC, id ASC`,
     [serverId]
   );
-  res.json(result.rows);
+  const visibleChannels = [];
+  for (const channel of result.rows) {
+    const permissions = await getChannelPermissionsForUser(req.user.id, channel.id);
+    if (permissions.can_view) visibleChannels.push(channel);
+  }
+  res.json(visibleChannels);
+});
+
+router.put("/:channelId", validate({ params: channelIdParamSchema, body: updateChannelSchema }), async (req, res) => {
+  const channelId = req.params.channelId;
+  const { name, category_id, is_private, voice_user_limit } = req.body;
+  const ch = await pool.query(
+    "SELECT id, server_id, type FROM channels WHERE id = $1",
+    [channelId]
+  );
+  if (!ch.rows.length) return res.status(404).json({ error: "Channel not found" });
+  const serverId = ch.rows[0].server_id;
+  const channelType = ch.rows[0].type;
+  if (!(await canManageChannels(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Insufficient role to update channel" });
+  }
+  if (voice_user_limit !== undefined && channelType !== "voice") {
+    return res.status(400).json({ error: "User limit applies to voice channels only" });
+  }
+  if (category_id !== undefined && category_id !== null) {
+    const category = await pool.query(
+      "SELECT id, server_id FROM channel_categories WHERE id = $1",
+      [category_id]
+    );
+    if (!category.rows.length || category.rows[0].server_id !== Number(serverId)) {
+      return res.status(400).json({ error: "Invalid category for server" });
+    }
+  }
+  const result = await pool.query(
+    `UPDATE channels
+       SET name = COALESCE($1, name),
+           category_id = CASE WHEN $4 THEN $2::int ELSE category_id END,
+           is_private = COALESCE($3, is_private),
+           voice_user_limit = CASE WHEN $6 THEN $5::int ELSE voice_user_limit END
+     WHERE id = $7
+     RETURNING *`,
+    [
+      name !== undefined ? String(name).trim() : null,
+      category_id ?? null,
+      is_private,
+      category_id !== undefined,
+      voice_user_limit !== undefined ? voice_user_limit : null,
+      voice_user_limit !== undefined,
+      channelId,
+    ]
+  );
+  res.json(result.rows[0]);
 });
 
 router.get("/server/:serverId/categories", validate({ params: serverIdParamSchema }), async (req, res) => {

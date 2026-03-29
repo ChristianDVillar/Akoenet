@@ -207,6 +207,8 @@ export default function DirectMessagesPanel({ user }) {
       {error && <div className="error-banner inline">{error}</div>}
       <form onSubmit={searchUsers} className="form-inline">
         <input
+          id="dm-search-user"
+          name="user_query"
           placeholder="Search user"
           value={userQuery}
           onChange={(e) => setUserQuery(e.target.value)}
@@ -292,6 +294,8 @@ export default function DirectMessagesPanel({ user }) {
           <footer className="composer">
             <label className="file-btn">
               <input
+                id="dm-composer-attachment"
+                name="attachment"
                 type="file"
                 accept="image/*"
                 hidden
@@ -301,6 +305,8 @@ export default function DirectMessagesPanel({ user }) {
               📎
             </label>
             <input
+              id="dm-composer-message"
+              name="message"
               className="composer-input"
               placeholder={
                 selectedConversation ? `Direct message to ${selectedConversation.peer_username}` : 'Select a chat'

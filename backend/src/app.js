@@ -11,6 +11,7 @@ const messageRoutes = require("./routes/message.routes");
 const uploadRoutes = require("./routes/upload.routes");
 const dmRoutes = require("./routes/dm.routes");
 const adminRoutes = require("./routes/admin.routes");
+const integrationRoutes = require("./routes/integration.routes");
 const logger = require("./lib/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 const pool = require("./config/db");
@@ -18,6 +19,7 @@ const { getStorageStatus, resolveDownloadUrl } = require("./services/storage");
 const auth = require("./middleware/auth");
 const requireAdmin = require("./middleware/require-admin");
 const { buildOpenApiSpec } = require("./docs/openapi");
+const { fetchSchedulerDiscovery } = require("./lib/scheduler-client");
 
 async function buildDepsReport(app) {
   const startedAt = Date.now();
@@ -78,6 +80,33 @@ async function buildDepsReport(app) {
   };
   if (!report.deps.storage.ok) report.ok = false;
 
+  report.deps.scheduler = {
+    configured: Boolean(String(process.env.SCHEDULER_API_BASE_URL || "").trim()),
+    ok: true,
+    latency_ms: null,
+    service: null,
+    version: null,
+    error: null,
+  };
+  if (report.deps.scheduler.configured) {
+    const sch = await fetchSchedulerDiscovery();
+    report.deps.scheduler.latency_ms = sch.latency_ms ?? null;
+    if (sch.ok && sch.discovery) {
+      report.deps.scheduler.service = sch.discovery.service || null;
+      report.deps.scheduler.version = sch.discovery.version || null;
+      if (sch.discovery.discovery_status === "not_deployed") {
+        report.deps.scheduler.legacy = true;
+        report.deps.scheduler.hint = sch.discovery.hint || null;
+      }
+    } else {
+      report.deps.scheduler.ok = false;
+      report.deps.scheduler.error = sch.error || "unknown";
+      if (sch.status != null) report.deps.scheduler.httpStatus = sch.status;
+    }
+  } else {
+    report.deps.scheduler.error = "not_configured";
+  }
+
   report.total_latency_ms = Date.now() - startedAt;
   return report;
 }
@@ -85,7 +114,7 @@ async function buildDepsReport(app) {
 function createApp() {
   const app = express();
   const uploadDir = path.join(__dirname, "..", "uploads");
-  const twitchClientId = process.env.TWITCH_CLIENT_ID || "yecj656il7pktuhi3ts2frpz9j0gwv";
+  const twitchClientId = process.env.TWITCH_CLIENT_ID || "";
 
   app.use(cors({ origin: true, credentials: true }));
   app.use(pinoHttp({ logger }));
@@ -105,7 +134,7 @@ function createApp() {
   app.use("/uploads", express.static(uploadDir));
 
   app.get("/health", (_req, res) =>
-    res.json({ ok: true, product: "AkoNet", chat: "AkoNet", twitchClientId })
+    res.json({ ok: true, product: "AkoeNet", chat: "AkoeNet", twitchClientId })
   );
   app.get("/docs/openapi.json", (_req, res) => {
     res.json(buildOpenApiSpec());
@@ -129,6 +158,7 @@ function createApp() {
   app.use("/messages", messageRoutes);
   app.use("/upload", uploadRoutes);
   app.use("/dm", dmRoutes);
+  app.use("/integrations", integrationRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

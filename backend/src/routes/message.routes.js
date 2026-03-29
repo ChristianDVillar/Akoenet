@@ -29,7 +29,7 @@ const reactionBodySchema = z.object({
   reaction_key: z.string().trim().min(1).max(32),
 });
 
-/** Message history for AkoNet */
+/** Message history for AkoeNet */
 router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query: historyQuerySchema }), async (req, res) => {
   const channelId = req.params.channelId;
   if (!(await canReadChannel(req.user.id, channelId))) {

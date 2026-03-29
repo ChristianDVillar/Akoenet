@@ -6,9 +6,11 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "migrate": "node-pg-migrate up",
-    "migrate:down": "node-pg-migrate down",
-    "migrate:create": "node-pg-migrate create",
+    "migrate": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate.js up",
+    "migrate:down": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate.js down",
+    "migrate:create": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate.js create",
+    "migrate:fix-order": "node -r dotenv/config scripts/fix-pgmigrations-gap.js",
+    "migrate:fix-order:reseed": "node -r dotenv/config scripts/fix-pgmigrations-gap.js --reseed",
     "test": "jest --runInBand"
   },
   "dependencies": {

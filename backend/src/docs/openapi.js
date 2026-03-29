@@ -2,9 +2,9 @@ function buildOpenApiSpec() {
   return {
     openapi: "3.0.3",
     info: {
-      title: "AkoNet API",
+      title: "AkoeNet API",
       version: process.env.APP_VERSION || process.env.npm_package_version || "1.0.0",
-      description: "OpenAPI spec basica para endpoints clave de AkoNet.",
+      description: "Basic OpenAPI spec for key AkoeNet endpoints.",
     },
     servers: [
       {
@@ -32,17 +32,17 @@ function buildOpenApiSpec() {
     paths: {
       "/health": {
         get: {
-          summary: "Health basico",
+          summary: "Basic health check",
           responses: {
             200: {
-              description: "Backend activo",
+              description: "Backend is up",
             },
           },
         },
       },
       "/messages/channel/{channelId}": {
         get: {
-          summary: "Historial de mensajes de canal",
+          summary: "Channel message history",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -65,7 +65,7 @@ function buildOpenApiSpec() {
             },
           ],
           responses: {
-            200: { description: "Mensajes del canal" },
+            200: { description: "Channel messages" },
             400: { description: "Validation failed", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } },
             403: { description: "No access", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } },
           },
@@ -73,7 +73,7 @@ function buildOpenApiSpec() {
       },
       "/messages/channel/{channelId}/export": {
         get: {
-          summary: "Exportar historial de canal en JSON/CSV",
+          summary: "Export channel history as JSON or CSV",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -98,7 +98,7 @@ function buildOpenApiSpec() {
       },
       "/messages/{messageId}/reactions": {
         get: {
-          summary: "Listar reacciones agregadas de un mensaje",
+          summary: "List aggregated reactions for a message",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -109,13 +109,13 @@ function buildOpenApiSpec() {
             },
           ],
           responses: {
-            200: { description: "Reacciones agregadas" },
+            200: { description: "Aggregated reactions" },
             403: { description: "No access" },
             404: { description: "Message not found" },
           },
         },
         post: {
-          summary: "Agregar reaccion a un mensaje",
+          summary: "Add reaction to a message",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -147,7 +147,7 @@ function buildOpenApiSpec() {
           },
         },
         delete: {
-          summary: "Quitar reaccion de un mensaje",
+          summary: "Remove reaction from a message",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -172,7 +172,7 @@ function buildOpenApiSpec() {
             },
           },
           responses: {
-            200: { description: "Reaccion removida" },
+            200: { description: "Reaction removed" },
             403: { description: "No access" },
             404: { description: "Message not found" },
             429: { description: "Rate limited" },
@@ -181,7 +181,7 @@ function buildOpenApiSpec() {
       },
       "/admin/audit-logs": {
         get: {
-          summary: "Listar logs de auditoria de moderacion (admin)",
+          summary: "List moderation audit logs (admin)",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -222,14 +222,14 @@ function buildOpenApiSpec() {
             },
           ],
           responses: {
-            200: { description: "Lista paginada de auditoria" },
+            200: { description: "Paginated audit log" },
             403: { description: "Admin only" },
           },
         },
       },
       "/upload/channel/{channelId}": {
         post: {
-          summary: "Subir imagen para canal",
+          summary: "Upload image to channel",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -254,7 +254,7 @@ function buildOpenApiSpec() {
             },
           },
           responses: {
-            200: { description: "Upload exitoso" },
+            200: { description: "Upload successful" },
             400: { description: "Validation or mime error" },
             403: { description: "No access" },
             429: { description: "Rate limited" },
@@ -263,7 +263,7 @@ function buildOpenApiSpec() {
       },
       "/upload/direct/{conversationId}": {
         post: {
-          summary: "Subir imagen para conversacion directa",
+          summary: "Upload image to direct conversation",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -288,10 +288,49 @@ function buildOpenApiSpec() {
             },
           },
           responses: {
-            200: { description: "Upload exitoso" },
+            200: { description: "Upload successful" },
             400: { description: "Validation or mime error" },
             403: { description: "No access" },
             429: { description: "Rate limited" },
+          },
+        },
+      },
+      "/integrations/scheduler/discovery": {
+        get: {
+          summary: "Streamer Scheduler integration metadata (proxies GET /api/integration/akoenet)",
+          responses: {
+            200: { description: "Discovery JSON from remote Scheduler" },
+            502: { description: "Scheduler unreachable or invalid" },
+            503: { description: "SCHEDULER_API_BASE_URL not set" },
+          },
+        },
+      },
+      "/integrations/scheduler/upcoming": {
+        get: {
+          summary: "Upcoming streams from Streamer Scheduler (proxy)",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "username",
+              in: "query",
+              required: false,
+              description:
+                "Twitch login or Scheduler slug. If a user linked Twitch and set scheduler_streamer_username in profile, Twitch login is mapped to that slug before calling the Scheduler API.",
+              schema: { type: "string", minLength: 1, maxLength: 80 },
+            },
+            {
+              name: "mode",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["all", "next"], default: "all" },
+            },
+          ],
+          responses: {
+            200: { description: "Events and formatted text" },
+            400: { description: "No username (link Twitch or configure default)" },
+            401: { description: "No token" },
+            502: { description: "Scheduler unavailable" },
+            503: { description: "Scheduler not configured" },
           },
         },
       },
