@@ -214,6 +214,10 @@ function initSocket(io) {
     });
 
     socket.on("send_message", async (payload, ack) => {
+      if (!canPassRateLimit(socket.userId, "channel_message", messageLimitPerWindow)) {
+        if (typeof ack === "function") ack({ error: "rate_limited" });
+        return;
+      }
       const channelId = parseInt(payload?.channel_id, 10);
       const content = typeof payload?.content === "string" ? payload.content : "";
       const imageUrl = payload?.image_url || null;

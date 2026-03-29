@@ -1046,6 +1046,7 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
 .hash {
@@ -1112,6 +1113,97 @@ input:focus {
 .channel-create-inline--beside {
   margin: 0 0.35rem 0.35rem 0.25rem;
   padding: 0.45rem 0.55rem;
+  min-width: 100%;
+  background: rgba(15, 23, 42, 0.85);
+  color: #f3f4f6;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.new-category-form {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--nexora-border);
+}
+
+.new-category-form input {
+  flex: 1;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.55rem;
+  background: rgba(15, 23, 42, 0.85);
+  color: #f3f4f6;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.new-channel-form input::placeholder,
+.new-category-form input::placeholder {
+  color: #94a3b8;
+}
+
+.category-block {
+  margin-top: 0.45rem;
+}
+
+.category-title {
+  padding: 0.35rem 0.65rem;
+  color: #c4b5fd;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.category-title-btn {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: block;
+}
+
+.category-channels {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.category-channels.collapsed {
+  display: none;
+}
+
+.category-delete {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 0.78rem;
+  margin-left: 0.65rem;
+  opacity: 0;
+}
+
+.category-block:hover .category-delete {
+  opacity: 1;
+}
+
+.draggable-item.is-dragging {
+  opacity: 0.55;
+}
+
+.select-inline {
+  min-width: 120px;
+  border: 1px solid var(--nexora-border);
+  background: rgba(15, 23, 42, 0.9);
+  color: #f3f4f6;
+  border-radius: 8px;
+  padding: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.select-inline option {
+  background: #0f172a;
+  color: #f3f4f6;
 }
 
 .channel-create-inline-hint {
@@ -1489,6 +1581,12 @@ input:focus {
   50% {
     opacity: 0.55;
   }
+}
+
+.chat-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .chat-title {
