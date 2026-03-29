@@ -1,0 +1,3 @@
+# Netlify / algunos hosts: todas las rutas sirven la SPA (React Router).
+# En Render configura también un Rewrite en el panel: /* -> /index.html (200).
+/*    /index.html   200
