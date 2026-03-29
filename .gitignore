@@ -19,5 +19,7 @@ dist/
 
 # Notas locales (no subir)
 AkoeNet-notes.txt
+# Archivo suelto heredado de merges (p. ej. credenciales); no volver a añadir
+/AkoNet
 docs/notes/**
 !docs/notes/README.md
