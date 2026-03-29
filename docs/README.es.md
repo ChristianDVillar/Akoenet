@@ -37,7 +37,6 @@ AkoeNet es una plataforma de comunicacion en tiempo real para comunidades, con s
 - `frontend/`: cliente web.
 - `backend/`: API REST + Socket.IO + migraciones.
 - `docker-compose.yml`: servicios locales (Postgres, Redis, MinIO, Backend).
-- `docs/ESTRUCTURA_Y_FUNCIONAMIENTO.md`: documento tecnico detallado.
 
 ## Requisitos
 
