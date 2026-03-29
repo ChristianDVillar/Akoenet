@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getSocket } from '../services/socket'
 import { getVoiceAudioConstraints, getVoiceVideoConstraints } from '../lib/voiceConstraints'
+import { resolveImageUrl } from '../lib/resolveImageUrl'
 import { getSavedVoiceSettings } from './VoiceSettingsModal'
 
 const fallbackIceServers = [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -68,6 +69,12 @@ function voiceCapNumber(raw) {
   return Math.min(99, Math.floor(n))
 }
 
+/** True if WebRTC stream is sending a visible video track (not audio-only / black). */
+function streamHasLiveVideo(stream) {
+  if (!stream) return false
+  return stream.getVideoTracks().some((t) => t.readyState === 'live' && t.enabled)
+}
+
 function PhoneHangupIcon() {
   return (
     <svg
@@ -110,6 +117,7 @@ export default function VoiceRoom({
   const [speakingMap, setSpeakingMap] = useState({})
   const [remoteVolumes, setRemoteVolumes] = useState({})
   const [remoteStreams, setRemoteStreams] = useState({})
+  const [remoteAvatarFailed, setRemoteAvatarFailed] = useState(() => new Set())
   const [cameraOn, setCameraOn] = useState(false)
   const localStreamRef = useRef(null)
   const localVideoRef = useRef(null)
@@ -682,7 +690,11 @@ export default function VoiceRoom({
             ) : (
               <div className="voice-stage-fallback">
                 {user?.avatar_url ? (
-                  <img className="voice-stage-avatar" src={user.avatar_url} alt={`${user?.username || 'You'} avatar`} />
+                  <img
+                    className="voice-stage-avatar"
+                    src={resolveImageUrl(user.avatar_url)}
+                    alt={`${user?.username || 'You'} avatar`}
+                  />
                 ) : (
                   <span className="voice-stage-initial">{getInitial(user?.username || 'You')}</span>
                 )}
@@ -707,9 +719,20 @@ export default function VoiceRoom({
                   else remoteMediaRef.current.delete(p.socketId)
                 }}
               />
-              {!remoteStreams[p.socketId]?.getVideoTracks()?.length && (
+              {!streamHasLiveVideo(remoteStreams[p.socketId]) && (
                 <div className="voice-stage-fallback">
-                  <span className="voice-stage-initial">{getInitial(p.username)}</span>
+                  {p.avatar_url && !remoteAvatarFailed.has(String(p.userId)) ? (
+                    <img
+                      className="voice-stage-avatar"
+                      src={resolveImageUrl(p.avatar_url)}
+                      alt=""
+                      onError={() => {
+                        setRemoteAvatarFailed((prev) => new Set(prev).add(String(p.userId)))
+                      }}
+                    />
+                  ) : (
+                    <span className="voice-stage-initial">{getInitial(p.username)}</span>
+                  )}
                 </div>
               )}
               <footer className="voice-stage-meta">

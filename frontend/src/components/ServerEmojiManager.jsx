@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import api from '../services/api'
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+import { getApiBaseUrl } from '../lib/apiBase'
+
+const baseURL = getApiBaseUrl()
 
 export default function ServerEmojiManager({ serverId, emojis, onReload }) {
   const [name, setName] = useState('')

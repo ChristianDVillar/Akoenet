@@ -14,10 +14,20 @@ const secret = process.env.JWT_SECRET || "dev-secret-change-me";
 const tokenVersion = parseInt(process.env.TOKEN_VERSION || "2", 10);
 const twitchClientId = process.env.TWITCH_CLIENT_ID || "";
 const twitchClientSecret = process.env.TWITCH_CLIENT_SECRET || "";
+
+function stripTrailingSlash(s) {
+  return String(s || "").replace(/\/$/, "");
+}
+/** Public API origin: explicit, or Render’s auto URL, or local dev. */
+const publicApiBase = stripTrailingSlash(
+  process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:3000"
+);
 const twitchRedirectUri =
-  process.env.TWITCH_REDIRECT_URI || "http://localhost:3000/auth/twitch/callback";
+  process.env.TWITCH_REDIRECT_URI || `${publicApiBase}/auth/twitch/callback`;
+/** Where Twitch OAuth sends the user after the backend exchanges the code (SPA route). */
+const frontendBase = stripTrailingSlash(process.env.FRONTEND_URL || "http://localhost:5173");
 const frontendOAuthRedirect =
-  process.env.FRONTEND_OAUTH_REDIRECT || "http://localhost:5173/auth/twitch/callback";
+  process.env.FRONTEND_OAUTH_REDIRECT || `${frontendBase}/auth/twitch/callback`;
 
 function signAppToken(user) {
   return jwt.sign(
@@ -152,7 +162,7 @@ router.get("/twitch/start", authRateLimiter, (req, res) => {
     return res.status(503).json({
       error: "Twitch OAuth not configured on server",
       code: "TWITCH_OAUTH_NOT_CONFIGURED",
-      hint: "Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in the backend environment (e.g. backend/.env or docker-compose env). Register the same redirect URL in the Twitch Developer Console.",
+      hint: "Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in the backend environment. On Render, set FRONTEND_URL to your SPA URL (or FRONTEND_OAUTH_REDIRECT). Register the backend callback URL in the Twitch Developer Console (same as TWITCH_REDIRECT_URI or {PUBLIC_API_URL|RENDER_EXTERNAL_URL}/auth/twitch/callback).",
       checks: {
         clientId: Boolean(twitchClientId),
         clientSecret: Boolean(twitchClientSecret),

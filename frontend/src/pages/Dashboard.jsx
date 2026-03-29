@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
+import { resolveImageUrl } from '../lib/resolveImageUrl'
 import ServerSidebar from '../components/ServerSidebar'
 import DirectMessagesPanel from '../components/DirectMessagesPanel'
 import VoiceSettingsModal from '../components/VoiceSettingsModal'
@@ -153,7 +154,7 @@ export default function Dashboard() {
               <span className="user-trigger-content">
                 <img
                   className="user-avatar-tiny"
-                  src={user?.avatar_url || '/vite.svg'}
+                  src={user?.avatar_url ? resolveImageUrl(user.avatar_url) : '/vite.svg'}
                   alt="User avatar"
                   onError={(e) => {
                     e.currentTarget.src = '/vite.svg'

@@ -1,6 +1,7 @@
 import { io } from 'socket.io-client'
+import { getApiBaseUrl } from '../lib/apiBase'
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const baseURL = getApiBaseUrl()
 
 let socket = null
 

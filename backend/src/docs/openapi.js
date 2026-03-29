@@ -8,7 +8,10 @@ function buildOpenApiSpec() {
     },
     servers: [
       {
-        url: process.env.PUBLIC_API_URL || "http://localhost:3000",
+        url:
+          process.env.PUBLIC_API_URL ||
+          process.env.RENDER_EXTERNAL_URL ||
+          "http://localhost:3000",
       },
     ],
     components: {
