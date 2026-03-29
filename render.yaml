@@ -1,0 +1,16 @@
+# Blueprint opcional: Static Site (SPA). Si el servicio ya existe en el panel, añade las mismas reglas a mano:
+# Redirects/Rewrites → Rewrite: Source /* → Destination /index.html (acción Rewrite, no Redirect).
+services:
+  - type: web
+    name: akoenet-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: redirect
+        source: /favicon.ico
+        destination: /favicon.svg
+      - type: rewrite
+        source: /*
+        destination: /index.html
