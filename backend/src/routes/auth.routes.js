@@ -18,18 +18,66 @@ const twitchClientSecret = process.env.TWITCH_CLIENT_SECRET || "";
 function stripTrailingSlash(s) {
   return String(s || "").replace(/\/$/, "");
 }
-/** Public API origin: explicit, or Render’s auto URL, or local dev. */
-const publicApiBase = stripTrailingSlash(
-  process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:3000"
-);
-const twitchRedirectUri =
-  process.env.TWITCH_REDIRECT_URI || `${publicApiBase}/auth/twitch/callback`;
-/** SPA origin after Twitch login. On Render, default to the deployed frontend (override with FRONTEND_URL). */
+
+function isLocalhostUrl(u) {
+  if (!u || typeof u !== "string") return false;
+  try {
+    const h = new URL(u).hostname;
+    return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+const renderExternalUrl = stripTrailingSlash(process.env.RENDER_EXTERNAL_URL || "");
+const onHostedRender = Boolean(renderExternalUrl || process.env.RENDER === "true");
+
+/**
+ * Public API origin for OAuth redirect_uri. On Render, never let a copied
+ * PUBLIC_API_URL=http://localhost:* win over RENDER_EXTERNAL_URL (common footgun).
+ */
+function resolvePublicApiBase() {
+  const explicit = stripTrailingSlash(process.env.PUBLIC_API_URL || "");
+  if (explicit && !(onHostedRender && isLocalhostUrl(explicit))) {
+    return explicit;
+  }
+  if (renderExternalUrl) return renderExternalUrl;
+  if (explicit) return explicit;
+  return "http://localhost:3000";
+}
+
+const publicApiBase = resolvePublicApiBase();
+
 const defaultFrontendBase =
   process.env.RENDER === "true" ? "https://akoenet-frontend.onrender.com" : "http://localhost:5173";
-const frontendBase = stripTrailingSlash(process.env.FRONTEND_URL || defaultFrontendBase);
-const frontendOAuthRedirect =
-  process.env.FRONTEND_OAUTH_REDIRECT || `${frontendBase}/auth/twitch/callback`;
+
+function resolveFrontendBase() {
+  const raw = stripTrailingSlash(process.env.FRONTEND_URL || "");
+  if (raw && !(onHostedRender && isLocalhostUrl(raw))) {
+    return raw;
+  }
+  return stripTrailingSlash(defaultFrontendBase);
+}
+
+const frontendBase = resolveFrontendBase();
+
+/** Twitch OAuth redirect: must match Twitch Developer Console exactly (HTTPS on Render). */
+const twitchRedirectUri = (() => {
+  const override = stripTrailingSlash(process.env.TWITCH_REDIRECT_URI || "");
+  if (override && !(onHostedRender && isLocalhostUrl(override))) {
+    return override;
+  }
+  return `${publicApiBase}/auth/twitch/callback`;
+})();
+
+/** Where Twitch callback sends the user after issuing the app JWT (SPA /auth/twitch/callback). */
+const frontendOAuthRedirect = (() => {
+  const override = stripTrailingSlash(process.env.FRONTEND_OAUTH_REDIRECT || "");
+  if (override && !(onHostedRender && isLocalhostUrl(override))) {
+    return override;
+  }
+  return `${frontendBase}/auth/twitch/callback`;
+})();
 
 function signAppToken(user) {
   return jwt.sign(
