@@ -5,12 +5,22 @@ import { landingContent } from '../lib/landingContent'
 
 const FEATURE_ICONS = ['💬', '🎙️', '🛡️', '✉️']
 
-export default function Landing() {
+export default function Landing({ apiUnreachable = false, onRetryApi }) {
   const { locale, setLocale } = useLandingLocale()
   const t = landingContent[locale]
 
   return (
     <div className="landing-page">
+      {apiUnreachable && (
+        <div className="landing-api-offline" role="alert">
+          <p>{t.apiOfflineBanner.message}</p>
+          {typeof onRetryApi === 'function' && (
+            <button type="button" className="btn secondary small" onClick={() => onRetryApi()}>
+              {t.apiOfflineBanner.retry}
+            </button>
+          )}
+        </div>
+      )}
       <header className="landing-nav">
         <div className="landing-nav-inner">
           <span className="landing-logo">AkoeNet</span>

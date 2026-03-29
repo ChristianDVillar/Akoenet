@@ -59,6 +59,11 @@ export const landingContent = {
         a: 'Links are in the footer (Terms, Privacy, Legal). The Markdown sources live in `docs/legal/` in the repository.',
       },
     ],
+    apiOfflineBanner: {
+      message:
+        'We can’t reach the API server. Sign-in may not work until the backend is available (check VITE_API_URL or wait for the service to wake up).',
+      retry: 'Retry connection',
+    },
   },
   es: {
     nav: {
@@ -119,6 +124,11 @@ export const landingContent = {
         a: 'En el pie de página hay enlaces a Términos, Privacidad y el documento de protección legal. Los Markdown fuente están en `docs/legal/` del repositorio.',
       },
     ],
+    apiOfflineBanner: {
+      message:
+        'No hay conexión con el servidor. El inicio de sesión puede fallar hasta que el backend esté disponible (revisa VITE_API_URL o espera a que el servicio arranque).',
+      retry: 'Reintentar',
+    },
   },
 }
 

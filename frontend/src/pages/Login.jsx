@@ -6,7 +6,7 @@ const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_notice']
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, user, loading } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -15,6 +15,12 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [twitchConfigured, setTwitchConfigured] = useState(null)
   const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/', { replace: true })
+    }
+  }, [loading, user, navigate])
 
   useEffect(() => {
     let msg = localStorage.getItem(SESSION_NOTICE_KEY)
@@ -71,6 +77,14 @@ export default function Login() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="auth-page">
+        <p className="muted">Loading…</p>
+      </div>
+    )
+  }
+
   return (
     <div className="auth-page">
       <div className="auth-card">
@@ -78,6 +92,9 @@ export default function Login() {
           <span className="brand-akoenet">AkoeNet</span>
           <span className="brand-sub">Community</span>
         </div>
+        <p className="muted small" style={{ marginBottom: '0.75rem' }}>
+          <Link to="/">← Home</Link>
+        </p>
         <h1>Sign in</h1>
         <p className="muted">Communities and real-time chat.</p>
         <form onSubmit={onSubmit} className="form-stack">
