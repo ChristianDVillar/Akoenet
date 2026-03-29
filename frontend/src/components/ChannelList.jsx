@@ -205,7 +205,8 @@ export default function ChannelList({
             </div>
             <ul className="voice-channel-connected" aria-label={`Connected in ${c.name}`}>
               {vSorted.map((p) => {
-                const showImg = p.avatar_url && !voiceAvatarFailed.has(p.userId)
+                const uidKey = p.userId != null ? String(p.userId) : ''
+                const showImg = p.avatar_url && !voiceAvatarFailed.has(uidKey)
                 return (
                   <li key={`${c.id}-${p.userId}`} className="voice-channel-connected-user">
                     {showImg ? (
@@ -214,7 +215,7 @@ export default function ChannelList({
                         src={resolveImageUrl(p.avatar_url)}
                         alt=""
                         onError={() => {
-                          setVoiceAvatarFailed((prev) => new Set(prev).add(p.userId))
+                          setVoiceAvatarFailed((prev) => new Set(prev).add(uidKey))
                         }}
                       />
                     ) : (
@@ -528,7 +529,7 @@ export default function ChannelList({
               <span className="user-trigger-content">
                 <img
                   className="user-avatar-tiny"
-                  src={user?.avatar_url || '/vite.svg'}
+                  src={user?.avatar_url ? resolveImageUrl(user.avatar_url) : '/vite.svg'}
                   alt="User avatar"
                   onError={(e) => {
                     e.currentTarget.src = '/vite.svg'

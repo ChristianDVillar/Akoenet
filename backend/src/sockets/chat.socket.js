@@ -74,7 +74,7 @@ function initSocket(io) {
     return partials.map((p) => {
       const db = dbMap.get(p.userId);
       return {
-        userId: p.userId,
+        ...p,
         username: db?.username ?? p.username,
         avatar_url: db?.avatar_url ?? null,
       };
@@ -617,9 +617,10 @@ function initSocket(io) {
         userId: socket.userId,
         username: username || `user_${socket.userId}`,
       });
-      const participants = Array.from(room.values());
+      const participants = await enrichVoiceParticipants(Array.from(room.values()));
       if (typeof cb === "function") cb({ ok: true, participants });
-      socket.to(`voice:${id}`).emit("voice:user-joined", room.get(socket.id));
+      const joinedPayload = participants.find((p) => p.socketId === socket.id) || room.get(socket.id);
+      socket.to(`voice:${id}`).emit("voice:user-joined", joinedPayload);
       emitVoicePresence(id, socket).catch(() => {});
     });
 

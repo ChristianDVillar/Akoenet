@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { getApiBaseUrl } from '../lib/apiBase'
 
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_notice']
@@ -14,7 +15,7 @@ export default function Login() {
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [twitchConfigured, setTwitchConfigured] = useState(null)
-  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+  const apiBase = getApiBaseUrl()
 
   useEffect(() => {
     if (!loading && user) {

@@ -1,19 +1,27 @@
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+import { getApiBaseUrl } from './apiBase'
+
+const baseURL = getApiBaseUrl()
 
 export function resolveImageUrl(rawUrl) {
   if (!rawUrl) return ''
-  if (!rawUrl.startsWith('http')) {
-    return `${baseURL}${rawUrl}`
+  const s = String(rawUrl).trim()
+  if (!s.startsWith('http')) {
+    const path = s.startsWith('/') ? s : `/${s}`
+    return `${baseURL}${path}`
   }
   try {
-    const parsed = new URL(rawUrl)
+    const parsed = new URL(s)
+    const apiOrigin = new URL(baseURL).origin
+    if (parsed.origin !== apiOrigin) {
+      return s
+    }
     const pathParts = parsed.pathname.split('/').filter(Boolean)
     if (pathParts.length >= 2) {
       const key = pathParts.slice(1).join('/')
       return `${baseURL}/uploads/${encodeURIComponent(key)}`
     }
-    return rawUrl
+    return s
   } catch {
-    return rawUrl
+    return s
   }
 }

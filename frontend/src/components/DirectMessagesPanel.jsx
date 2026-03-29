@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+import { getApiBaseUrl } from '../lib/apiBase'
+
+const baseURL = getApiBaseUrl()
 
 export default function DirectMessagesPanel({ user }) {
   const [conversations, setConversations] = useState([])

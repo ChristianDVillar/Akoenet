@@ -6,7 +6,9 @@ import EmojiText from './EmojiText'
 import RichMessageText from './RichMessageText'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+import { getApiBaseUrl } from '../lib/apiBase'
+
+const baseURL = getApiBaseUrl()
 
 export default function Chat({
   channelId,
