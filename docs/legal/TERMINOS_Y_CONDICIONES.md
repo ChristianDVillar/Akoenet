@@ -1,18 +1,18 @@
-# Terminos y Condiciones de Uso - AkoNet
+# Terminos y Condiciones de Uso - AkoeNet
 
 Ultima actualizacion: 2026-03-27
 
-Este documento regula el uso de la plataforma AkoNet. Al crear una cuenta o usar el servicio, aceptas estos terminos.
+Este documento regula el uso de la plataforma AkoeNet. Al crear una cuenta o usar el servicio, aceptas estos terminos.
 
 ## 1. Titular del servicio
 
 Titular: Christian  
-Correo de contacto: [CONTACTO_LEGAL] (placeholder: legal@akonet.local)  
+Correo de contacto: [CONTACTO_LEGAL] (placeholder: legal@akoenet.local)  
 Pais/Jurisdiccion: Espana
 
 ## 2. Objeto del servicio
 
-AkoNet ofrece una plataforma de comunicacion en tiempo real, con servidores, canales, mensajeria directa, voz y funcionalidades relacionadas.
+AkoeNet ofrece una plataforma de comunicacion en tiempo real, con servidores, canales, mensajeria directa, voz y funcionalidades relacionadas.
 
 ## 3. Elegibilidad y cuentas
 
@@ -37,7 +37,7 @@ Queda prohibido:
 
 ## 6. Propiedad intelectual
 
-- El software, codigo, diseno, marca, logos y documentacion de AkoNet pertenecen a su titular o licenciantes.
+- El software, codigo, diseno, marca, logos y documentacion de AkoeNet pertenecen a su titular o licenciantes.
 - Queda prohibida la reproduccion, modificacion, ingenieria inversa, distribucion o explotacion comercial sin permiso escrito.
 
 ## 7. Suspensiones y terminacion
@@ -51,7 +51,7 @@ Nos reservamos el derecho de suspender o cerrar cuentas en caso de incumplimient
 
 ## 9. Limitacion de responsabilidad
 
-En la maxima medida permitida por la ley, AkoNet no sera responsable por danos indirectos, lucro cesante o perdida de datos derivada del uso del servicio.
+En la maxima medida permitida por la ley, AkoeNet no sera responsable por danos indirectos, lucro cesante o perdida de datos derivada del uso del servicio.
 
 ## 10. Privacidad
 
@@ -63,5 +63,5 @@ Estos terminos se rigen por las leyes de Espana, y cualquier disputa se somete a
 
 ## 12. Contacto legal
 
-Para consultas legales o notificaciones: [CONTACTO_LEGAL] (placeholder: legal@akonet.local)
+Para consultas legales o notificaciones: [CONTACTO_LEGAL] (placeholder: legal@akoenet.local)
 

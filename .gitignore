@@ -1,7 +1,23 @@
 node_modules/
 **/node_modules/
+
+# --- Variables de entorno ---
+# Cubre .env en raíz y subcarpetas, y variantes (.env.local, .env.production, etc.).
 .env
 **/.env
+.env.*
+**/.env.*
+# Plantillas de ejemplo (sin secretos): suelen subirse al repo; quita estas dos
+# líneas si también quieres ignorar *.example.
+!.env.example
+!**/.env.example
+
 backend/uploads/
 dist/
+**/dist/
 *.log
+
+# Notas locales (no subir)
+AkoeNet-notes.txt
+docs/notes/**
+!docs/notes/README.md

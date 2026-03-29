@@ -1,11 +1,11 @@
-# Proteccion legal de AkoNet
+# Proteccion legal de AkoeNet
 
-Este documento define una base legal operativa para proteger el software, la marca y el contenido de AkoNet.  
+Este documento define una base legal operativa para proteger el software, la marca y el contenido de AkoeNet.  
 No constituye asesoria legal profesional. Se recomienda validarlo con un abogado de tu jurisdiccion antes de publicarlo en produccion.
 
 ## 1) Titularidad y derechos de autor
 
-- Todo el codigo fuente, arquitectura, diseno, textos, logos, nombre comercial y activos asociados a AkoNet son propiedad de su titular.
+- Todo el codigo fuente, arquitectura, diseno, textos, logos, nombre comercial y activos asociados a AkoeNet son propiedad de su titular.
 - Se prohíbe la copia, distribucion, ingenieria inversa, publicacion o explotacion comercial sin autorizacion escrita.
 - El uso del software se concede bajo licencia limitada, revocable y no exclusiva, segun los terminos que se publiquen.
 
@@ -56,7 +56,7 @@ Publicar una politica de privacidad con:
 
 Para reforzar proteccion de marca:
 
-- Registrar nombre/logo de AkoNet ante la oficina de marcas de tu pais/region.
+- Registrar nombre/logo de AkoeNet ante la oficina de marcas de tu pais/region.
 - Usar consistentemente la denominacion y simbolos de marca en web/app.
 - Documentar uso permitido de la marca por terceros.
 

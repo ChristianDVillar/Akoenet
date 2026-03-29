@@ -5,10 +5,11 @@ const pool = require("../config/db");
 const auth = require("../middleware/auth");
 const validate = require("../middleware/validate");
 const logger = require("../lib/logger");
-const { canManageChannels } = require("../lib/membership");
+const { canManageChannels, isServerMember } = require("../lib/membership");
+const { getVoicePresenceSnapshotForServer } = require("../sockets/chat.socket");
 
 const router = express.Router();
-const hiddenServerName = (process.env.HIDDEN_SYSTEM_SERVER_NAME || "Akonet").trim().toLowerCase();
+const hiddenServerName = (process.env.HIDDEN_SYSTEM_SERVER_NAME || "AkoeNet").trim().toLowerCase();
 const createServerSchema = z.object({
   name: z.string().trim().min(2).max(80),
 });
@@ -36,6 +37,25 @@ const inviteIdParamSchema = z.object({
 });
 
 router.use(auth);
+
+/** Live voice occupancy (same source as Socket.IO); HTTP fallback for sidebar UI */
+router.get(
+  "/:serverId/voice-presence",
+  validate({ params: serverIdParamSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await isServerMember(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Not a member" });
+    }
+    try {
+      const presence = await getVoicePresenceSnapshotForServer(serverId);
+      res.json(presence);
+    } catch (e) {
+      logger.error({ err: e }, "voice-presence HTTP failed");
+      res.status(500).json({ error: "Could not load voice presence" });
+    }
+  }
+);
 
 /** Create server, default roles, owner membership + admin role */
 router.post("/", validate({ body: createServerSchema }), async (req, res) => {
@@ -74,7 +94,12 @@ router.post("/", validate({ body: createServerSchema }), async (req, res) => {
     );
 
     await client.query(
-      `INSERT INTO channels (name, server_id, type, category_id) VALUES ('general', $1, 'text', $2)`,
+      `INSERT INTO channels (name, server_id, type, category_id, position) VALUES ('general', $1, 'text', $2, 0)`,
+      [server.id, defaultCategory.rows[0].id]
+    );
+
+    await client.query(
+      `INSERT INTO channels (name, server_id, type, category_id, position) VALUES ('Voice Chat', $1, 'voice', $2, 1)`,
       [server.id, defaultCategory.rows[0].id]
     );
 

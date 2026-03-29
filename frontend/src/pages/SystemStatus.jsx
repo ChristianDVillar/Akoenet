@@ -109,7 +109,37 @@ export default function SystemStatus() {
                   <Latency ms={deps?.deps?.storage?.latency_ms} />
                 </div>
               </div>
+              <div className="status-item">
+                <strong>Streamer Scheduler API</strong>
+                <div className="status-right">
+                  <StatusBadge
+                    ok={
+                      !deps?.deps?.scheduler?.configured ||
+                      Boolean(deps?.deps?.scheduler?.ok)
+                    }
+                    label={
+                      !deps?.deps?.scheduler?.configured
+                        ? 'NOT SET'
+                        : deps?.deps?.scheduler?.ok
+                          ? 'OK'
+                          : 'ERROR'
+                    }
+                  />
+                  <Latency ms={deps?.deps?.scheduler?.latency_ms} />
+                  {deps?.deps?.scheduler?.version ? (
+                    <span className="muted small" style={{ marginLeft: '0.35rem' }}>
+                      {deps.deps.scheduler.service || 'scheduler'} v{deps.deps.scheduler.version}
+                      {deps?.deps?.scheduler?.legacy ? ' (legacy API)' : ''}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
+            {deps?.deps?.scheduler?.hint ? (
+              <p className="muted small" style={{ marginTop: '0.5rem' }}>
+                {deps.deps.scheduler.hint}
+              </p>
+            ) : null}
 
             <div className="status-actions">
               <button type="button" className="btn secondary" onClick={load}>

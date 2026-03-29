@@ -3,10 +3,23 @@ import api from '../services/api'
 import { getSocket } from '../services/socket'
 import VoiceRoom from './VoiceRoom'
 import EmojiText from './EmojiText'
+import RichMessageText from './RichMessageText'
+import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
-export default function Chat({ channelId, channelName, channelType = 'text', serverId, user, emojis = [] }) {
+export default function Chat({
+  channelId,
+  channelName,
+  channelType = 'text',
+  user,
+  emojis = [],
+  voiceUserLimit,
+  voiceConnectedCount,
+  rtcVoiceChannelId,
+  rtcVoiceChannelName,
+  onVoiceSessionChange,
+}) {
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -17,24 +30,14 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
   const messageNodeRef = useRef(new Map())
   const emojiPickerWrapRef = useRef(null)
   const reactionPickerWrapRef = useRef(null)
-  function resolveImageUrl(rawUrl) {
-    if (!rawUrl) return ''
-    if (!rawUrl.startsWith('http')) {
-      return `${baseURL}${rawUrl}`
-    }
-    try {
-      const parsed = new URL(rawUrl)
-      const pathParts = parsed.pathname.split('/').filter(Boolean)
-      // Backward compatibility: old records may store direct MinIO URLs (/bucket/key).
-      if (pathParts.length >= 2) {
-        const key = pathParts.slice(1).join('/')
-        return `${baseURL}/uploads/${encodeURIComponent(key)}`
-      }
-      return rawUrl
-    } catch {
-      return rawUrl
-    }
-  }
+  const typingStopTimerRef = useRef(null)
+  const lastTypingEmitRef = useRef(0)
+  const currentUserIdRef = useRef(null)
+  const [typingPeers, setTypingPeers] = useState({})
+
+  useEffect(() => {
+    currentUserIdRef.current = user?.id != null ? Number(user.id) : null
+  }, [user?.id])
 
   const emojiMap = Object.fromEntries(emojis.map((e) => [e.name, resolveImageUrl(e.image_url)]))
 
@@ -86,13 +89,34 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
     s.on('message_deleted', onDeleted)
     s.on('message_updated', onUpdated)
     s.on('message_reactions_updated', onReactionsUpdated)
+    const onTyping = (payload) => {
+      if (String(payload?.channel_id) !== String(channelId)) return
+      const myId = currentUserIdRef.current
+      if (myId != null && Number(payload.user_id) === myId) return
+      setTypingPeers((prev) => {
+        const next = { ...prev }
+        const uid = String(payload.user_id)
+        if (payload.typing) {
+          next[uid] = payload.username || `user_${uid}`
+        } else {
+          delete next[uid]
+        }
+        return next
+      })
+    }
+    s.on('channel_typing', onTyping)
     return () => {
       s.off('receive_message', onMsg)
       s.off('message_deleted', onDeleted)
       s.off('message_updated', onUpdated)
       s.off('message_reactions_updated', onReactionsUpdated)
+      s.off('channel_typing', onTyping)
       s.emit('leave_channel', channelId)
     }
+  }, [channelId])
+
+  useEffect(() => {
+    setTypingPeers({})
   }, [channelId])
 
   useEffect(() => {
@@ -122,16 +146,41 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
     }
   }, [])
 
+  function emitTyping(typing) {
+    const s = getSocket()
+    if (!s || !channelId) return
+    s.emit('channel_typing', { channel_id: channelId, typing })
+  }
+
+  function handleComposerChange(e) {
+    const v = e.target.value
+    setText(v)
+    if (channelType === 'voice' || !channelId) return
+    const s = getSocket()
+    if (!s) return
+    const now = Date.now()
+    if (v.trim() && now - lastTypingEmitRef.current > 2000) {
+      emitTyping(true)
+      lastTypingEmitRef.current = now
+    }
+    clearTimeout(typingStopTimerRef.current)
+    typingStopTimerRef.current = setTimeout(() => {
+      emitTyping(false)
+    }, 3000)
+  }
+
   function send() {
     const s = getSocket()
     if (!s || !channelId || !text.trim()) return
+    clearTimeout(typingStopTimerRef.current)
+    emitTyping(false)
     setSendError('')
     s.emit(
       'send_message',
       { channel_id: channelId, content: text.trim() },
       (ack) => {
         if (ack?.error === 'rate_limited') {
-          setSendError('You are sending messages too fast')
+          setSendError('Slow down a little — you are sending a bit too fast.')
         }
       }
     )
@@ -152,7 +201,7 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
     if (!s) return
     s.emit('delete_message', { message_id: messageId }, (ack) => {
       if (ack?.error === 'forbidden') {
-        setSendError('You do not have permission to delete this message')
+        setSendError("You can't delete that message.")
       }
     })
   }
@@ -162,7 +211,7 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
     if (!s) return
     s.emit('pin_message', { message_id: messageId, pin }, (ack) => {
       if (ack?.error === 'forbidden') {
-        setSendError('You do not have permission to pin messages')
+        setSendError("You can't pin messages here.")
       }
     })
   }
@@ -221,7 +270,7 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
         },
         (ack) => {
           if (ack?.error === 'rate_limited') {
-            setSendError('You are sending messages too fast')
+            setSendError('Slow down a little — you are sending a bit too fast.')
           }
         }
       )
@@ -235,7 +284,10 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
   if (!channelId) {
     return (
       <main className="chat-panel empty">
-        <p className="muted">Select a channel to open AkoNet.</p>
+        <div className="chat-empty-hero">
+          <p className="chat-empty-title">Choose a channel</p>
+          <p className="chat-empty-sub">Pick one on the left and jump into the conversation.</p>
+        </div>
       </main>
     )
   }
@@ -252,35 +304,58 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
     node.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
+  const typingNames = Object.values(typingPeers)
+  let typingLine = ''
+  if (typingNames.length === 1) typingLine = `${typingNames[0]} is writing…`
+  else if (typingNames.length === 2) typingLine = `${typingNames[0]} and ${typingNames[1]} are writing…`
+  else if (typingNames.length > 2) {
+    const n = typingNames.length - 2
+    typingLine = `${typingNames[0]}, ${typingNames[1]} and ${n} other${n === 1 ? '' : 's'} are writing…`
+  }
+
   return (
     <main className="chat-panel">
       <header className="chat-header">
-        <div>
-          <span className="hash">{isVoice ? '🔊' : isForum ? '🗂' : '#'}</span>
-          <span className="chat-title">{channelName || 'channel'}</span>
+        <div className="chat-header-topic">
+          <span className="hash" aria-hidden="true">
+            {isVoice ? '🔊' : isForum ? '🗂' : '#'}
+          </span>
+          <div>
+            <span className="chat-title">{channelName || 'Channel'}</span>
+            {!isVoice && (
+              <p className="chat-header-hint">Messages update live for everyone here</p>
+            )}
+          </div>
         </div>
         <div className="chat-header-actions">
           {!isVoice && (
-            <>
-              <button type="button" className="btn ghost small" onClick={() => exportHistory('json')}>
-                Export JSON
+            <div className="chat-save-row" role="group" aria-label="Download chat history">
+              <button type="button" className="btn link chat-save-link" onClick={() => exportHistory('csv')}>
+                Spreadsheet
               </button>
-              <button type="button" className="btn ghost small" onClick={() => exportHistory('csv')}>
-                Export CSV
+              <span className="chat-save-dot" aria-hidden="true">
+                ·
+              </span>
+              <button type="button" className="btn link chat-save-link" onClick={() => exportHistory('json')}>
+                JSON backup
               </button>
-            </>
+            </div>
           )}
-          <span className="akonet-pill">AkoNet · real-time</span>
+          <span className="chat-live-pill" title="Connected in real time">
+            <span className="chat-live-dot" aria-hidden="true" />
+            Live
+          </span>
         </div>
       </header>
 
-      {isVoice ? (
-        <VoiceRoom channelId={channelId} user={user} />
-      ) : (
+      {!isVoice && (
       <>
       {pinnedMessages.length > 0 && (
         <section className="pinned-strip">
-          <strong>{pinnedMessages.length} pinned</strong>
+          <div className="pinned-strip-head">
+            <span className="pinned-strip-label">Pinned for everyone</span>
+            <span className="pinned-strip-badge">{pinnedMessages.length}</span>
+          </div>
           <div className="pinned-strip-list">
             {pinnedMessages.map((m) => (
               <button
@@ -288,12 +363,12 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
                 type="button"
                 className="pinned-chip"
                 onClick={() => jumpToMessage(m.id)}
-                title="Jump to message"
+                title="Go to this message"
               >
                 <span className="pinned-chip-user">{m.username}:</span>
                 {m.content && m.content !== '(imagen)' && (
                   <span className="pinned-chip-text">
-                    <EmojiText text={m.content.slice(0, 80)} emojis={emojiMap} />
+                    <RichMessageText text={m.content.slice(0, 80)} emojis={emojiMap} />
                   </span>
                 )}
                 {m.image_url && (
@@ -315,10 +390,21 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
         </section>
       )}
       <div className="message-list">
+        {typingLine && (
+          <div className="typing-bar" role="status">
+            <span className="typing-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            {typingLine}
+          </div>
+        )}
         {sendError && <div className="error-banner inline">{sendError}</div>}
         {messages.length === 0 && (
           <div className="empty-chat-tip">
-            No messages yet. Start the conversation.
+            <p className="empty-chat-title">Quiet here for now</p>
+            <p className="empty-chat-sub">Say hello — your message shows up for everyone instantly.</p>
           </div>
         )}
         {messages.map((m) => (
@@ -334,7 +420,7 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
             <div>
               <div className="message-meta">
                 <strong>{m.username}</strong>
-                {m.is_pinned && <span className="pin-badge">PIN</span>}
+                {m.is_pinned && <span className="pin-badge">Pinned</span>}
                 <time>
                   {new Date(m.created_at).toLocaleString(undefined, {
                     hour: '2-digit',
@@ -344,7 +430,7 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
               </div>
               {m.content && m.content !== '(imagen)' && (
                 <p className="message-body">
-                  <EmojiText text={m.content} emojis={emojiMap} />
+                  <RichMessageText text={m.content} emojis={emojiMap} />
                 </p>
               )}
               {m.image_url && (
@@ -356,25 +442,6 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
                   />
                 </a>
               )}
-              <div className="message-actions">
-                <button type="button" className="btn link" onClick={() => deleteMessage(m.id)}>
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  className="btn link"
-                  onClick={() => pinMessage(m.id, !m.is_pinned)}
-                >
-                  {m.is_pinned ? 'Unpin' : 'Pin'}
-                </button>
-                <button
-                  type="button"
-                  className="btn link"
-                  onClick={() => setReactionPickerId((prev) => (prev === m.id ? null : m.id))}
-                >
-                  React
-                </button>
-              </div>
               <div className="reaction-row" ref={reactionPickerId === m.id ? reactionPickerWrapRef : undefined}>
                 {(m.reactions || []).map((r) => (
                   <button
@@ -409,6 +476,35 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
                   </div>
                 )}
               </div>
+              <div className="message-actions" aria-label="Message actions">
+                <button
+                  type="button"
+                  className="message-action-icon"
+                  title="Delete"
+                  aria-label="Delete message"
+                  onClick={() => deleteMessage(m.id)}
+                >
+                  🗑️
+                </button>
+                <button
+                  type="button"
+                  className={`message-action-icon${m.is_pinned ? ' message-action-icon--on' : ''}`}
+                  title={m.is_pinned ? 'Unpin' : 'Pin'}
+                  aria-label={m.is_pinned ? 'Unpin message' : 'Pin message'}
+                  onClick={() => pinMessage(m.id, !m.is_pinned)}
+                >
+                  📌
+                </button>
+                <button
+                  type="button"
+                  className="message-action-icon"
+                  title="React"
+                  aria-label="Add reaction"
+                  onClick={() => setReactionPickerId((prev) => (prev === m.id ? null : m.id))}
+                >
+                  ➕
+                </button>
+              </div>
             </div>
           </article>
         ))}
@@ -417,9 +513,29 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
       </>
       )}
 
+      {rtcVoiceChannelId != null && (
+        <VoiceRoom
+          channelId={rtcVoiceChannelId}
+          user={user}
+          autoJoin={isVoice}
+          compact={!isVoice}
+          channelLabel={rtcVoiceChannelName}
+          voiceUserLimit={voiceUserLimit}
+          voiceConnectedCount={voiceConnectedCount}
+          onVoiceSessionChange={onVoiceSessionChange}
+        />
+      )}
+
       <footer className="composer">
         <label className="file-btn">
-          <input type="file" accept="image/*" hidden onChange={onFile} />
+          <input
+            id="chat-composer-attachment"
+            name="attachment"
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={onFile}
+          />
           📎
         </label>
         {!isVoice && emojis.length > 0 && (
@@ -454,16 +570,20 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
           </div>
         )}
         <input
+          id="chat-composer-message"
+          name="message"
           className="composer-input"
           placeholder={
             isVoice
-              ? 'Voice channel: side chat'
+              ? 'Side chat for this voice room…'
               : isForum
-                ? 'Post in this forum'
-                : `Message in AkoNet · server ${serverId ?? ''}`
+                ? 'Start a thread…'
+                : channelName
+                  ? `Message #${channelName}`
+                  : 'Write a message…'
           }
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleComposerChange}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -473,7 +593,7 @@ export default function Chat({ channelId, channelName, channelType = 'text', ser
         />
         <button
           type="button"
-          className="btn primary"
+          className="btn primary chat-send-btn"
           onClick={send}
           disabled={isVoice || uploading || !text.trim()}
         >

@@ -1,3 +1,9 @@
+# AkoeNet stack. Base de datos en Supabase: pon DATABASE_URL en backend/.env y puedes usar
+# solo Redis/MinIO sin depender del servicio postgres:
+#   docker compose up -d redis
+#   docker compose up -d redis minio
+# Backend en contenedor: docker compose up -d (sube postgres+redis+minio+backend; postgres local
+# solo hace falta si DATABASE_URL apunta a postgres:5432, no a Supabase).
 services:
   postgres:
     image: postgres:16-alpine
@@ -21,10 +27,14 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: akonet-backend
+    # Loads DATABASE_URL, TWITCH_*, etc. from backend/.env. Do not set DATABASE_URL
+    # below or it would override Supabase / custom URLs. For DB in this compose file use:
+    # DATABASE_URL=postgresql://postgres:1234@postgres:5432/akonet in backend/.env
+    env_file:
+      - ./backend/.env
     environment:
       PORT: "3000"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      DATABASE_URL: postgresql://postgres:1234@postgres:5432/akonet
       REDIS_URL: redis://redis:6379
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
@@ -34,12 +44,24 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
       STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-http://localhost:9000/akonet}
-      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-REDACTED_TWITCH_CLIENT_ID}
-      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-REDACTED_TWITCH_CLIENT_SECRET}
+      # TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET: from env_file (backend/.env) or add
+      # them to the repo root .env for Compose substitution.
       TWITCH_REDIRECT_URI: ${TWITCH_REDIRECT_URI:-http://localhost:3000/auth/twitch/callback}
       FRONTEND_OAUTH_REDIRECT: ${FRONTEND_OAUTH_REDIRECT:-http://localhost:5173/auth/twitch/callback}
     ports:
       - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
     volumes:
       - akonet_uploads:/app/uploads
     depends_on:

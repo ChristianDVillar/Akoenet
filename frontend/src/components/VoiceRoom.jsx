@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getSocket } from '../services/socket'
 import { getVoiceAudioConstraints, getVoiceVideoConstraints } from '../lib/voiceConstraints'
 import { getSavedVoiceSettings } from './VoiceSettingsModal'
@@ -61,7 +61,46 @@ function RemoteParticipantVideo({ stream, volume, onMediaRef }) {
   )
 }
 
-export default function VoiceRoom({ channelId, user }) {
+function voiceCapNumber(raw) {
+  if (raw == null || raw === '') return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 1) return null
+  return Math.min(99, Math.floor(n))
+}
+
+function PhoneHangupIcon() {
+  return (
+    <svg
+      className="voice-hangup-icon"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export default function VoiceRoom({
+  channelId,
+  user,
+  autoJoin = false,
+  compact = false,
+  channelLabel,
+  voiceUserLimit,
+  voiceConnectedCount,
+  onVoiceSessionChange,
+}) {
   const [joined, setJoined] = useState(false)
   const [testingMic, setTestingMic] = useState(false)
   const [participants, setParticipants] = useState([])
@@ -83,7 +122,17 @@ export default function VoiceRoom({ channelId, user }) {
   const remoteAnalysersRef = useRef(new Map())
   const meterIntervalRef = useRef(null)
   const micGainRef = useRef(100)
-  const volumeStorageKey = `akoe:voice:volumes:${user?.id || 'anon'}:${channelId || 'none'}`
+  const voiceJoinedChannelRef = useRef(null)
+  const joinInProgressRef = useRef(false)
+  const volumeStorageKey = `akoenet_voice_volumes_${user?.id || 'anon'}_${channelId || 'none'}`
+  const legacyVolumeStorageKeys = useMemo(
+    () => [
+      `Akonet_voice_volumes_${user?.id || 'anon'}_${channelId || 'none'}`,
+      `akonet_voice_volumes_${user?.id || 'anon'}_${channelId || 'none'}`,
+      `akoe:voice:volumes:${user?.id || 'anon'}:${channelId || 'none'}`,
+    ],
+    [user?.id, channelId]
+  )
 
   useEffect(() => {
     const s = getSavedVoiceSettings(user?.id)
@@ -305,45 +354,63 @@ export default function VoiceRoom({ channelId, user }) {
     }
   }
 
-  async function joinVoice() {
+  async function joinVoice(opts = {}) {
+    const discordStyle = Boolean(opts.discordStyle)
     const socket = getSocket()
-    if (!socket || !channelId || joined) return
+    if (!socket || !channelId) return
+    if (voiceJoinedChannelRef.current === channelId && localStreamRef.current) return
+    if (joinInProgressRef.current) return
     if (testingMic) {
       stopMicTest()
     }
     setError('')
+    joinInProgressRef.current = true
     try {
       const settings = getSavedVoiceSettings(user?.id)
       micGainRef.current = settings.micGain
+      const wantVideo = discordStyle || settings.cameraEnabled
       let stream
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: getVoiceAudioConstraints(),
-          video: settings.cameraEnabled ? getVoiceVideoConstraints() : false,
+          video: wantVideo ? getVoiceVideoConstraints() : false,
         })
       } catch (firstErr) {
-        if (settings.cameraEnabled) {
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: getVoiceAudioConstraints(),
-            video: false,
-          })
-          setCameraOn(false)
+        if (wantVideo) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: getVoiceAudioConstraints(),
+              video: false,
+            })
+            setCameraOn(false)
+          } catch {
+            throw firstErr
+          }
         } else {
           throw firstErr
         }
       }
       const hasVideo = stream.getVideoTracks().length > 0
       setCameraOn(hasVideo)
+      stream.getAudioTracks().forEach((t) => {
+        t.enabled = true
+      })
+      setMuted(false)
       localStreamRef.current = stream
       setupLocalAnalyser(stream)
       socket.emit('voice:join', { channelId, username: user?.username }, (ack) => {
+        joinInProgressRef.current = false
         if (!ack?.ok) {
-          setError('Could not join voice channel')
+          const err = ack?.error
+          setError(err === 'voice_full' ? 'This voice channel is full' : 'Could not join voice channel')
           stream.getTracks().forEach((t) => t.stop())
           localStreamRef.current = null
+          voiceJoinedChannelRef.current = null
           return
         }
+        voiceJoinedChannelRef.current = channelId
         setJoined(true)
+        onVoiceSessionChange?.({ joined: true, channelId })
         setParticipants(ack.participants || [])
         ;(ack.participants || [])
           .filter((p) => p.socketId !== socket.id)
@@ -352,13 +419,33 @@ export default function VoiceRoom({ channelId, user }) {
           })
       })
     } catch {
-      setError('No microphone access')
+      joinInProgressRef.current = false
+      setError(discordStyle ? 'No microphone or camera access' : 'No microphone access')
     }
   }
 
+  useEffect(() => {
+    if (!autoJoin || !channelId) return undefined
+    let cancelled = false
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (cancelled) return
+        joinVoice({ discordStyle: true })
+      })
+    })
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId, autoJoin])
+
   function leaveVoice() {
+    const hadServerSession = voiceJoinedChannelRef.current != null
+    joinInProgressRef.current = false
+    voiceJoinedChannelRef.current = null
     const socket = getSocket()
-    if (socket && channelId) {
+    if (socket && channelId && hadServerSession) {
       socket.emit('voice:leave', { channelId })
     }
     peersRef.current.forEach((pc) => pc.close())
@@ -380,6 +467,9 @@ export default function VoiceRoom({ channelId, user }) {
     setJoined(false)
     setMuted(false)
     stopMicTest()
+    if (hadServerSession) {
+      onVoiceSessionChange?.({ joined: false, channelId })
+    }
   }
 
   function toggleMute() {
@@ -514,7 +604,13 @@ export default function VoiceRoom({ channelId, user }) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(volumeStorageKey)
+      let raw = localStorage.getItem(volumeStorageKey)
+      if (!raw) {
+        for (const lk of legacyVolumeStorageKeys) {
+          raw = localStorage.getItem(lk)
+          if (raw) break
+        }
+      }
       const parsed = raw ? JSON.parse(raw) : {}
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         setRemoteVolumes(parsed)
@@ -524,7 +620,7 @@ export default function VoiceRoom({ channelId, user }) {
     } catch {
       setRemoteVolumes({})
     }
-  }, [volumeStorageKey])
+  }, [volumeStorageKey, legacyVolumeStorageKeys])
 
   useEffect(() => {
     try {
@@ -545,15 +641,34 @@ export default function VoiceRoom({ channelId, user }) {
     return (name || '?').slice(0, 1).toUpperCase()
   }
 
+  const voiceCap = voiceCapNumber(voiceUserLimit)
+  const showVoiceCap = voiceCap != null && typeof voiceConnectedCount === 'number'
+  const displayTitle = channelLabel || 'Voice Channel'
+
   return (
-    <section className="channel-mode-box voice-room-discord">
+    <section
+      className={`channel-mode-box voice-room-discord${compact ? ' voice-room-compact' : ''}`}
+    >
       <header className="voice-room-top">
         <div>
-          <h3>Voice Channel</h3>
+          <h3>{compact ? `En voz: ${displayTitle}` : 'Voice Channel'}</h3>
+          {showVoiceCap && (
+            <p
+              className={`voice-room-cap-line ${voiceConnectedCount >= voiceCap ? 'voice-room-cap-line--full' : ''}`}
+              aria-live="polite"
+            >
+              <strong>
+                ({voiceConnectedCount}/{voiceCap})
+              </strong>{' '}
+              usuarios en el canal
+            </p>
+          )}
           <p>
             {joined
               ? `${participants.length} connected • camera ${cameraOn ? 'on' : 'off'}`
-              : 'Join to start voice and optional camera'}
+              : autoJoin
+                ? 'Connecting with microphone and camera (like Discord)…'
+                : 'Join to start voice and optional camera'}
           </p>
         </div>
         <div className="voice-room-chip">{joined ? 'LIVE' : 'IDLE'}</div>
@@ -606,6 +721,8 @@ export default function VoiceRoom({ channelId, user }) {
               <label className="voice-volume">
                 <span>Vol</span>
                 <input
+                  id={`voice-remote-vol-${p.userId}`}
+                  name={`voice_remote_volume_${p.userId}`}
                   type="range"
                   min="0"
                   max="100"
@@ -641,7 +758,7 @@ export default function VoiceRoom({ channelId, user }) {
           </button>
         )}
         {!joined ? (
-          <button type="button" className="btn primary" onClick={joinVoice}>
+          <button type="button" className="btn primary" onClick={() => joinVoice()}>
             Join voice
           </button>
         ) : (
@@ -652,8 +769,15 @@ export default function VoiceRoom({ channelId, user }) {
             <button type="button" className="btn secondary" onClick={toggleCamera}>
               {cameraOn ? 'Stop camera' : 'Start camera'}
             </button>
-            <button type="button" className="btn ghost" onClick={leaveVoice}>
-              Disconnect
+            <button
+              type="button"
+              className="btn ghost voice-hangup-btn"
+              onClick={leaveVoice}
+              title="Salir del canal de voz"
+              aria-label="Salir del canal de voz"
+            >
+              <PhoneHangupIcon />
+              {!compact && <span className="voice-hangup-label">Colgar</span>}
             </button>
           </>
         )}

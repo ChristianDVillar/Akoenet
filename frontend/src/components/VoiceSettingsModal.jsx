@@ -2,13 +2,29 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { getVoiceAudioConstraints } from '../lib/voiceConstraints'
 
 function getStorageKey(userId) {
-  return `akoe:voice:settings:${userId || 'anon'}`
+  return `akoenet_voice_settings_${userId || 'anon'}`
+}
+
+function getLegacyStorageKeys(userId) {
+  const uid = userId || 'anon'
+  return [
+    `akoe:voice:settings:${uid}`,
+    `akonet_voice_settings_${uid}`,
+    `Akonet_voice_settings_${uid}`,
+  ]
 }
 
 function readSettings(userId) {
   const fallback = { micGain: 100, monitorMic: true, cameraEnabled: false }
   try {
-    const raw = localStorage.getItem(getStorageKey(userId))
+    let raw = localStorage.getItem(getStorageKey(userId))
+    if (!raw) {
+      const legacyKeys = getLegacyStorageKeys(userId)
+      for (const legacyKey of legacyKeys) {
+        raw = localStorage.getItem(legacyKey)
+        if (raw) break
+      }
+    }
     if (!raw) return fallback
     const parsed = JSON.parse(raw)
     const gain = Number(parsed?.micGain)
@@ -177,6 +193,8 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
         <div className="voice-settings-row">
           <label>Microphone volume ({micGain}%)</label>
           <input
+            id="voice-settings-mic-gain"
+            name="mic_gain"
             type="range"
             min="0"
             max="200"
@@ -186,6 +204,8 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
         </div>
         <label className="invite-toggle" style={{ marginTop: '0.5rem' }}>
           <input
+            id="voice-settings-monitor-mic"
+            name="monitor_mic"
             type="checkbox"
             checked={monitorMic}
             onChange={(e) => setMonitorMic(e.target.checked)}
@@ -194,6 +214,8 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
         </label>
         <label className="invite-toggle">
           <input
+            id="voice-settings-camera-enabled"
+            name="camera_enabled"
             type="checkbox"
             checked={cameraEnabled}
             onChange={(e) => setCameraEnabled(e.target.checked)}

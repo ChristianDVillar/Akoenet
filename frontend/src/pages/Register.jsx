@@ -33,7 +33,7 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="brand-block">
-          <span className="brand-akonet">AkoNet</span>
+          <span className="brand-akoenet">AkoeNet</span>
           <span className="brand-sub">Community</span>
         </div>
         <h1>Create account</h1>
@@ -43,6 +43,8 @@ export default function Register() {
           <label>
             Username
             <input
+              id="register-username"
+              name="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -53,6 +55,8 @@ export default function Register() {
           <label>
             Email
             <input
+              id="register-email"
+              name="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -63,6 +67,8 @@ export default function Register() {
           <label>
             Password
             <input
+              id="register-password"
+              name="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -75,6 +81,11 @@ export default function Register() {
             {busy ? 'Creating…' : 'Sign up'}
           </button>
         </form>
+        <p className="muted small legal-register-note">
+          Al registrarte aceptas los{' '}
+          <Link to="/legal/terminos">términos</Link> y la{' '}
+          <Link to="/legal/privacidad">política de privacidad</Link>.
+        </p>
         <p className="muted small">
           Already have an account? <Link to="/login">Sign in</Link>
         </p>

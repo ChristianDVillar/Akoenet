@@ -56,7 +56,9 @@ export default function ServerEmojiManager({ serverId, emojis, onReload }) {
         <label>
           Name (you will use <code>:name:</code>)
           <input
-            placeholder="e.g. akonet_hype"
+            id="server-emoji-name"
+            name="emoji_name"
+            placeholder="e.g. akoenet_hype"
             value={name}
             onChange={(e) => setName(e.target.value.replace(/\s+/g, '_'))}
           />

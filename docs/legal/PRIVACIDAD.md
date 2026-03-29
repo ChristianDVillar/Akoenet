@@ -1,13 +1,13 @@
-# Politica de Privacidad - AkoNet
+# Politica de Privacidad - AkoeNet
 
 Ultima actualizacion: 2026-03-27
 
-Esta Politica explica como AkoNet recopila, usa y protege datos personales.
+Esta Politica explica como AkoeNet recopila, usa y protege datos personales.
 
 ## 1. Responsable del tratamiento
 
 Responsable: Christian  
-Contacto: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akonet.local)  
+Contacto: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akoenet.local)  
 Pais/Jurisdiccion: Espana
 
 ## 2. Datos que podemos recopilar
@@ -62,7 +62,7 @@ Puedes ejercer, segun corresponda:
 - Limitacion del tratamiento
 - Portabilidad
 
-Para ejercer derechos: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akonet.local)
+Para ejercer derechos: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akoenet.local)
 
 ## 9. Seguridad
 
@@ -83,5 +83,5 @@ Podemos actualizar esta Politica. Publicaremos la version vigente con su fecha d
 
 ## 13. Contacto
 
-Consultas de privacidad: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akonet.local)
+Consultas de privacidad: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akoenet.local)
 
