@@ -24,8 +24,10 @@ const publicApiBase = stripTrailingSlash(
 );
 const twitchRedirectUri =
   process.env.TWITCH_REDIRECT_URI || `${publicApiBase}/auth/twitch/callback`;
-/** Where Twitch OAuth sends the user after the backend exchanges the code (SPA route). */
-const frontendBase = stripTrailingSlash(process.env.FRONTEND_URL || "http://localhost:5173");
+/** SPA origin after Twitch login. On Render, default to the deployed frontend (override with FRONTEND_URL). */
+const defaultFrontendBase =
+  process.env.RENDER === "true" ? "https://akoenet-frontend.onrender.com" : "http://localhost:5173";
+const frontendBase = stripTrailingSlash(process.env.FRONTEND_URL || defaultFrontendBase);
 const frontendOAuthRedirect =
   process.env.FRONTEND_OAUTH_REDIRECT || `${frontendBase}/auth/twitch/callback`;
 
