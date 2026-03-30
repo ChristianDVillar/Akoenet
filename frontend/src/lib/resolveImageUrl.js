@@ -1,7 +1,5 @@
 import { getApiBaseUrl } from './apiBase'
 
-const baseURL = getApiBaseUrl()
-
 function isLocalDevStorageHost(hostname) {
   const h = String(hostname || '').toLowerCase()
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]'
@@ -15,7 +13,7 @@ function rewriteDevStorageUrlToApiUploads(s) {
     const segments = parsed.pathname.split('/').filter(Boolean)
     const key = segments[segments.length - 1]
     if (!key || !/^[a-zA-Z0-9._-]+$/.test(key)) return null
-    return `${baseURL}/uploads/${encodeURIComponent(key)}`
+    return `${getApiBaseUrl()}/uploads/${encodeURIComponent(key)}`
   } catch {
     return null
   }
@@ -23,6 +21,7 @@ function rewriteDevStorageUrlToApiUploads(s) {
 
 export function resolveImageUrl(rawUrl) {
   if (!rawUrl) return ''
+  const baseURL = getApiBaseUrl()
   const s = String(rawUrl).trim()
   if (!s.startsWith('http')) {
     const path = s.startsWith('/') ? s : `/${s}`

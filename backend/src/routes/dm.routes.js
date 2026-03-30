@@ -3,6 +3,7 @@ const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
 const validate = require("../middleware/validate");
+const { sanitizeMediaUrl, sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 
 const router = express.Router();
 router.use(auth);
@@ -55,7 +56,7 @@ router.get("/users", validate({ query: usersQuerySchema }), async (req, res) => 
      LIMIT $${params.length}`,
     params
   );
-  res.json(result.rows);
+  res.json(result.rows.map((row) => sanitizeUserMediaFields(row)));
 });
 
 router.post("/conversations", validate({ body: createConversationSchema }), async (req, res) => {
@@ -101,7 +102,13 @@ router.get("/conversations", async (req, res) => {
      ORDER BY lm.created_at DESC NULLS LAST, c.created_at DESC`,
     [req.user.id]
   );
-  res.json(result.rows);
+  res.json(
+    result.rows.map((row) => ({
+      ...row,
+      peer_avatar_url:
+        row.peer_avatar_url != null ? sanitizeMediaUrl(row.peer_avatar_url) : row.peer_avatar_url,
+    }))
+  );
 });
 
 router.get(
@@ -121,7 +128,7 @@ router.get(
      ORDER BY dm.created_at ASC`,
     [conversationId]
   );
-  res.json(result.rows);
+  res.json(result.rows.map((row) => sanitizeImageUrlField(row)));
 });
 
 router.post(
@@ -146,7 +153,9 @@ router.post(
   );
   const row = result.rows[0];
   const user = await pool.query("SELECT username FROM users WHERE id = $1", [req.user.id]);
-  res.status(201).json({ ...row, username: user.rows[0]?.username || "user" });
+  res.status(201).json(
+    sanitizeImageUrlField({ ...row, username: user.rows[0]?.username || "user" })
+  );
 });
 
 module.exports = router;

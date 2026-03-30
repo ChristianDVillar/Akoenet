@@ -2,6 +2,7 @@ import { useState } from 'react'
 import api from '../services/api'
 
 import { getApiBaseUrl } from '../lib/apiBase'
+import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 const baseURL = getApiBaseUrl()
 
@@ -79,7 +80,7 @@ export default function ServerEmojiManager({ serverId, emojis, onReload }) {
         ) : (
           emojis.map((emoji) => (
             <div key={emoji.id} className="emoji-row">
-              <img src={emoji.image_url.startsWith('http') ? emoji.image_url : `${baseURL}${emoji.image_url}`} alt={emoji.name} />
+              <img src={resolveImageUrl(emoji.image_url)} alt={emoji.name} />
               <code>:{emoji.name}:</code>
               <button type="button" className="btn small ghost" onClick={() => removeEmoji(emoji.id)}>
                 Delete

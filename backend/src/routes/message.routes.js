@@ -7,6 +7,7 @@ const { reactionRateLimiter } = require("../middleware/rate-limit");
 const { canReadChannel, canManageChannels, getChannelServerId } = require("../lib/membership");
 const { logAdminAction } = require("../lib/audit-log");
 const { withReactionsOnMessages, getMessageReactions } = require("../lib/message-reactions");
+const { sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 
 const router = express.Router();
 router.use(auth);
@@ -55,7 +56,7 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
   const result = await pool.query(query, params);
   const rows = result.rows.reverse();
   const enriched = await withReactionsOnMessages(rows, req.user.id);
-  res.json(enriched);
+  res.json(enriched.map((m) => sanitizeImageUrlField(m)));
 });
 
 router.get(
@@ -88,7 +89,9 @@ router.get(
        ORDER BY m.created_at ASC`,
       [channelId]
     );
-    const rows = await withReactionsOnMessages(result.rows, req.user.id);
+    const rows = (await withReactionsOnMessages(result.rows, req.user.id)).map((m) =>
+      sanitizeImageUrlField(m)
+    );
     if (format === "csv") {
       const esc = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
       const header = [

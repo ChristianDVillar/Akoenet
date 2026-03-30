@@ -329,11 +329,13 @@ function buildOpenApiSpec() {
             },
           ],
           responses: {
-            200: { description: "Events and formatted text" },
+            200: {
+              description:
+                "Events and formatted text. If SCHEDULER_API_BASE_URL is unset, scheduler_configured is false and events/formatted are empty.",
+            },
             400: { description: "No username (link Twitch or configure default)" },
             401: { description: "No token" },
-            502: { description: "Scheduler unavailable" },
-            503: { description: "Scheduler not configured" },
+            502: { description: "Scheduler unreachable or bad response" },
           },
         },
       },

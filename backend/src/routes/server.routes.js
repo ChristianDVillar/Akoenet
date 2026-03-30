@@ -8,6 +8,8 @@ const logger = require("../lib/logger");
 const { canManageChannels, isServerMember } = require("../lib/membership");
 const { getVoicePresenceSnapshotForServer } = require("../sockets/chat.socket");
 
+const { sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
+
 const router = express.Router();
 const hiddenServerName = (process.env.HIDDEN_SYSTEM_SERVER_NAME || "AkoeNet").trim().toLowerCase();
 const createServerSchema = z.object({
@@ -220,7 +222,7 @@ router.get("/:serverId/emojis", validate({ params: serverIdParamSchema }), async
      ORDER BY name ASC`,
     [serverId]
   );
-  res.json(result.rows);
+  res.json(result.rows.map((row) => sanitizeImageUrlField(row)));
 });
 
 router.post(
@@ -238,7 +240,7 @@ router.post(
          RETURNING id, server_id, name, image_url, created_by, created_at`,
         [serverId, req.body.name, req.body.image_url, req.user.id]
       );
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(sanitizeImageUrlField(result.rows[0]));
     } catch (e) {
       if (e.code === "23505") {
         return res.status(409).json({ error: "Emoji name already exists in this server" });
@@ -412,7 +414,7 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
      ORDER BY u.username ASC`,
     [serverId]
   );
-  res.json(result.rows);
+  res.json(result.rows.map((row) => sanitizeUserMediaFields(row)));
 });
 
 module.exports = router;

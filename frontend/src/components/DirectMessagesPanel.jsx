@@ -3,6 +3,7 @@ import api from '../services/api'
 import { getSocket } from '../services/socket'
 
 import { getApiBaseUrl } from '../lib/apiBase'
+import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 const baseURL = getApiBaseUrl()
 
@@ -280,9 +281,9 @@ export default function DirectMessagesPanel({ user }) {
                     <p className="message-body">{m.content}</p>
                   )}
                   {m.image_url && (
-                    <a href={m.image_url} target="_blank" rel="noreferrer">
+                    <a href={resolveImageUrl(m.image_url)} target="_blank" rel="noreferrer">
                       <img
-                        src={m.image_url.startsWith('http') ? m.image_url : `${baseURL}${m.image_url}`}
+                        src={resolveImageUrl(m.image_url)}
                         alt=""
                         className="message-image"
                       />

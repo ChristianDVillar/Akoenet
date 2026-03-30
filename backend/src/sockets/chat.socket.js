@@ -17,6 +17,7 @@ const {
 } = require("../lib/scheduler-client");
 const { resolveSchedulerStreamerSlug } = require("../lib/scheduler-resolve");
 const { appEvents } = require("../lib/app-events");
+const { sanitizeMediaUrl, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 
 /** Set on first initSocket(io) — used by GET /servers/:id/voice-presence */
 let getVoicePresenceSnapshotForServerImpl = null;
@@ -73,10 +74,11 @@ function initSocket(io) {
     const dbMap = new Map(r.rows.map((row) => [row.id, row]));
     return partials.map((p) => {
       const db = dbMap.get(p.userId);
+      const rawAvatar = db?.avatar_url ?? null;
       return {
         ...p,
         username: db?.username ?? p.username,
-        avatar_url: db?.avatar_url ?? null,
+        avatar_url: rawAvatar != null ? sanitizeMediaUrl(rawAvatar) : null,
       };
     });
   }
@@ -339,8 +341,10 @@ function initSocket(io) {
         const u = await pool.query("SELECT username FROM users WHERE id = $1", [
           socket.userId,
         ]);
-        const message = { ...row, username: u.rows[0]?.username };
-        message.reactions = [];
+        const message = {
+          ...sanitizeImageUrlField({ ...row, username: u.rows[0]?.username }),
+          reactions: [],
+        };
 
         io.to(`channel:${channelId}`).emit("receive_message", message);
 

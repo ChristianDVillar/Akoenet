@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 function EmojiToken({ token, url }) {
   const [failed, setFailed] = useState(false)
   if (failed || !url) return token
   return (
     <img
-      src={url}
+      src={resolveImageUrl(url)}
       alt={token}
       title={token}
       className="inline-emoji"
