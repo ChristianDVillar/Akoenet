@@ -156,9 +156,19 @@ router.get(
     const schedulerSlug = await resolveSchedulerStreamerSlug(pool, requestedUsername);
     const mode = req.query.mode === "next" ? "next" : "all";
     const fetched = await fetchUpcomingEvents(schedulerSlug);
+    if (!fetched.ok && fetched.error === "scheduler_api_not_configured") {
+      return res.json({
+        ok: true,
+        scheduler_configured: false,
+        username: requestedUsername,
+        scheduler_slug: schedulerSlug,
+        mode,
+        events: [],
+        formatted: "",
+      });
+    }
     if (!fetched.ok) {
-      const status = fetched.error === "scheduler_api_not_configured" ? 503 : 502;
-      return res.status(status).json({
+      return res.status(502).json({
         error: fetched.error,
         httpStatus: fetched.status,
         contentType: fetched.contentType,
@@ -167,6 +177,7 @@ router.get(
     const formatted = formatScheduleReply(fetched.events, mode);
     return res.json({
       ok: true,
+      scheduler_configured: true,
       username: requestedUsername,
       scheduler_slug: schedulerSlug,
       mode,
