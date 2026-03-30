@@ -1,5 +1,9 @@
-# Blueprint opcional: Static Site (SPA). Si el servicio ya existe en el panel, añade las mismas reglas a mano:
-# Redirects/Rewrites → Rewrite: Source /* → Destination /index.html (acción Rewrite, no Redirect).
+# Static SPA (AkoeNet frontend). REQUIRED for deep links (/invite/..., /server/...) to load index.html.
+# Si el servicio se creó a mano en Render: Dashboard → Static Site → Redirects/Rewrites →
+#   Source: /*   Destination: /index.html   Action: Rewrite (200).
+# Los enlaces de invitación compartibles usan /?invite=TOKEN (siempre sirve /); sin esta regla,
+# rutas como /invite/abc pueden devolver 404 del CDN.
+# Blueprint opcional: si ya existe el servicio, sincroniza estas reglas con el panel.
 services:
   - type: web
     name: akoenet-frontend

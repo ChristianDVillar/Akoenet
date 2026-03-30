@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { getApiBaseUrl } from '../lib/apiBase'
 import api from '../services/api'
+import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
 
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_notice']
@@ -82,7 +83,7 @@ export default function Login() {
     try {
       await login(email, password)
       const inv =
-        searchParams.get('invite') ||
+        searchParams.get(INVITE_QUERY_PARAM) ||
         (() => {
           try {
             return sessionStorage.getItem(PENDING_INVITE_KEY)
@@ -103,7 +104,7 @@ export default function Login() {
             return
           }
         } catch {
-          navigate(`/invite/${encodeURIComponent(inv)}`, { replace: true })
+          navigate(inviteLandingPath(inv), { replace: true })
           return
         }
       }
@@ -135,7 +136,7 @@ export default function Login() {
         </p>
         <h1>Sign in</h1>
         <p className="muted">
-          {searchParams.get('invite')
+          {searchParams.get(INVITE_QUERY_PARAM)
             ? 'After signing in you will join the server from your invite.'
             : 'Communities and real-time chat.'}
         </p>
@@ -179,7 +180,7 @@ export default function Login() {
                 : undefined
             }
             onClick={() => {
-              const inv = searchParams.get('invite')
+              const inv = searchParams.get(INVITE_QUERY_PARAM)
               if (inv) {
                 try {
                   sessionStorage.setItem(PENDING_INVITE_KEY, inv)
@@ -208,8 +209,8 @@ export default function Login() {
           Do not have an account?{' '}
           <Link
             to={
-              searchParams.get('invite')
-                ? `/register?invite=${encodeURIComponent(searchParams.get('invite'))}`
+              searchParams.get(INVITE_QUERY_PARAM)
+                ? `/register?${INVITE_QUERY_PARAM}=${encodeURIComponent(searchParams.get(INVITE_QUERY_PARAM))}`
                 : '/register'
             }
           >

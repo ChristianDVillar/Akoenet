@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
@@ -28,7 +29,7 @@ export default function Register() {
     try {
       await register(username, email, password)
       const inv =
-        searchParams.get('invite') ||
+        searchParams.get(INVITE_QUERY_PARAM) ||
         (() => {
           try {
             return sessionStorage.getItem(PENDING_INVITE_KEY)
@@ -49,7 +50,7 @@ export default function Register() {
             return
           }
         } catch {
-          navigate(`/invite/${encodeURIComponent(inv)}`, { replace: true })
+          navigate(inviteLandingPath(inv), { replace: true })
           return
         }
       }
@@ -85,7 +86,7 @@ export default function Register() {
         </p>
         <h1>Create account</h1>
         <p className="muted">
-          {searchParams.get('invite')
+          {searchParams.get(INVITE_QUERY_PARAM)
             ? 'Create your account, then we will add you to the invited server.'
             : 'One step and you are in.'}
         </p>
@@ -141,8 +142,8 @@ export default function Register() {
           Already have an account?{' '}
           <Link
             to={
-              searchParams.get('invite')
-                ? `/login?invite=${encodeURIComponent(searchParams.get('invite'))}`
+              searchParams.get(INVITE_QUERY_PARAM)
+                ? `/login?${INVITE_QUERY_PARAM}=${encodeURIComponent(searchParams.get(INVITE_QUERY_PARAM))}`
                 : '/login'
             }
           >
