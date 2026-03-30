@@ -85,6 +85,50 @@ a:hover {
   font-size: 1.5rem;
 }
 
+.invite-landing-card {
+  width: min(440px, 100%);
+  text-align: center;
+}
+
+.invite-landing-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--echonet);
+}
+
+.invite-landing-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--nexora-text);
+}
+
+.invite-landing-sub {
+  margin: 0 0 1rem;
+  line-height: 1.45;
+}
+
+.invite-landing-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.invite-landing-actions .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.invite-landing-cta {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
 .api-offline-card {
   width: min(480px, 100%);
   text-align: left;

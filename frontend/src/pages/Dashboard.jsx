@@ -9,8 +9,10 @@ import DirectMessagesPanel from '../components/DirectMessagesPanel'
 import VoiceSettingsModal from '../components/VoiceSettingsModal'
 import UserSettingsModal from '../components/UserSettingsModal'
 
+const PENDING_INVITE_KEY = 'akoenet_pending_invite'
+
 export default function Dashboard() {
-  const { user, logout } = useAuth()
+  const { user, logout, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [servers, setServers] = useState([])
   const [newName, setNewName] = useState('')
@@ -43,6 +45,36 @@ export default function Dashboard() {
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    if (!user || authLoading) return
+    let t
+    try {
+      t = sessionStorage.getItem(PENDING_INVITE_KEY)
+    } catch {
+      return
+    }
+    if (!t) return
+    try {
+      sessionStorage.removeItem(PENDING_INVITE_KEY)
+    } catch {
+      /* ignore */
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.post(`/servers/invite/${encodeURIComponent(t)}/join`)
+        if (!cancelled && data?.server_id != null) {
+          navigate(`/server/${data.server_id}`, { replace: true })
+        }
+      } catch {
+        if (!cancelled) navigate(`/invite/${encodeURIComponent(t)}`, { replace: true })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, authLoading, navigate])
 
   async function createServer(e) {
     e.preventDefault()
