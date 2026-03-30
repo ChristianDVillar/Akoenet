@@ -3,7 +3,7 @@ function buildOpenApiSpec() {
     openapi: "3.0.3",
     info: {
       title: "AkoeNet API",
-      version: process.env.APP_VERSION || process.env.npm_package_version || "1.0.0",
+      version: process.env.APP_VERSION || process.env.npm_package_version || "1.1.0",
       description: "Basic OpenAPI spec for key AkoeNet endpoints.",
     },
     servers: [
