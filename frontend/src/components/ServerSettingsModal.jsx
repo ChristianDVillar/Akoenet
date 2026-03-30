@@ -6,12 +6,14 @@ import {
   formatInviteRemainingUses,
   inviteFullUrl,
 } from '../lib/invites'
+import ServerEmojiManager from './ServerEmojiManager'
 
 export default function ServerSettingsModal({ open, onClose, serverId, serverName }) {
   const [inviteType, setInviteType] = useState('temporary')
   const [inviteSingleUse, setInviteSingleUse] = useState(false)
   const [inviteLink, setInviteLink] = useState('')
   const [activeInvites, setActiveInvites] = useState([])
+  const [emojiList, setEmojiList] = useState([])
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [busy, setBusy] = useState(false)
@@ -21,6 +23,7 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
   useEffect(() => {
     if (!open || !serverId) return
     loadInvites()
+    loadEmojis()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serverId])
 
@@ -32,6 +35,16 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
     } catch {
       setActiveInvites([])
       setError('Could not load invites for this server')
+    }
+  }
+
+  async function loadEmojis() {
+    if (!serverId) return
+    try {
+      const { data } = await api.get(`/servers/${serverId}/emojis`)
+      setEmojiList(data)
+    } catch {
+      setEmojiList([])
     }
   }
 
@@ -174,6 +187,16 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
               })}
             </ul>
           )}
+        </div>
+
+        <div className="invite-list" style={{ marginTop: '1rem' }}>
+          <h3>Server emojis</h3>
+          <p className="muted small" style={{ margin: '0 0 0.6rem' }}>
+            Manage emojis for this server here.
+          </p>
+          {serverId ? (
+            <ServerEmojiManager serverId={Number(serverId)} emojis={emojiList} onReload={loadEmojis} />
+          ) : null}
         </div>
       </div>
     </div>

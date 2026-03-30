@@ -31,6 +31,46 @@ function initSocket(io) {
   const schedulerCommandLimitPerWindow = Number(process.env.SCHEDULER_SOCKET_RATE_LIMIT_MAX || 15);
   const socketRateState = new Map();
   const typingLastEmit = new Map();
+  /** serverId -> Map<userId, socketCount> */
+  const serverPresence = new Map();
+
+  function getServerPresenceMap(serverId) {
+    if (!serverPresence.has(serverId)) {
+      serverPresence.set(serverId, new Map());
+    }
+    return serverPresence.get(serverId);
+  }
+
+  function buildConnectedUserIds(serverId) {
+    const map = serverPresence.get(serverId);
+    if (!map) return [];
+    return [...map.entries()]
+      .filter(([, count]) => Number(count) > 0)
+      .map(([uid]) => Number(uid));
+  }
+
+  function emitServerPresence(serverId) {
+    io.to(`server:${serverId}`).emit("server:presence_update", {
+      serverId,
+      connectedUserIds: buildConnectedUserIds(serverId),
+    });
+  }
+
+  function addUserToServerPresence(serverId, userId) {
+    const map = getServerPresenceMap(serverId);
+    map.set(userId, (map.get(userId) || 0) + 1);
+    emitServerPresence(serverId);
+  }
+
+  function removeUserFromServerPresence(serverId, userId) {
+    const map = serverPresence.get(serverId);
+    if (!map) return;
+    const next = (map.get(userId) || 0) - 1;
+    if (next <= 0) map.delete(userId);
+    else map.set(userId, next);
+    if (map.size === 0) serverPresence.delete(serverId);
+    emitServerPresence(serverId);
+  }
 
   function canPassRateLimit(userId, bucket, maxAllowed) {
     const now = Date.now();
@@ -148,6 +188,7 @@ function initSocket(io) {
   });
 
   io.on("connection", (socket) => {
+    socket.data.joinedServers = new Set();
     socket.join(`user:${socket.userId}`);
 
     socket.on("join_server", async (serverId) => {
@@ -158,10 +199,18 @@ function initSocket(io) {
         [socket.userId, id]
       );
       if (r.rows.length) {
+        if (!socket.data.joinedServers.has(id)) {
+          socket.data.joinedServers.add(id);
+          addUserToServerPresence(id, socket.userId);
+        }
         socket.join(`server:${id}`);
         try {
           const presence = await buildVoiceSnapshotForServer(id);
           socket.emit("voice:presence_snapshot", { serverId: id, presence });
+          socket.emit("server:presence_snapshot", {
+            serverId: id,
+            connectedUserIds: buildConnectedUserIds(id),
+          });
         } catch {
           /* ignore snapshot errors */
         }
@@ -170,7 +219,13 @@ function initSocket(io) {
 
     socket.on("leave_server", (serverId) => {
       const id = parseInt(serverId, 10);
-      if (!Number.isNaN(id)) socket.leave(`server:${id}`);
+      if (!Number.isNaN(id)) {
+        socket.leave(`server:${id}`);
+        if (socket.data.joinedServers.has(id)) {
+          socket.data.joinedServers.delete(id);
+          removeUserFromServerPresence(id, socket.userId);
+        }
+      }
     });
 
     socket.on("join_channel", async (channelId, cb) => {
@@ -205,7 +260,7 @@ function initSocket(io) {
         if (now - last < 2000) return;
         typingLastEmit.set(key, now);
       }
-      const u = await pool.query("SELECT username FROM users WHERE id = $1", [socket.userId]);
+      const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
       const username = u.rows[0]?.username || `user_${socket.userId}`;
       socket.to(`channel:${channelId}`).emit("channel_typing", {
         channel_id: channelId,
@@ -267,8 +322,13 @@ function initSocket(io) {
             [channelId, socket.userId, content.trim()]
           );
           const row = result.rows[0];
-          const u = await pool.query("SELECT username FROM users WHERE id = $1", [socket.userId]);
-          const userMessage = { ...row, username: u.rows[0]?.username, reactions: [] };
+          const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
+          const userMessage = {
+            ...row,
+            username: u.rows[0]?.username,
+            avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+            reactions: [],
+          };
           io.to(`channel:${channelId}`).emit("receive_message", userMessage);
           const snippet = content.trim().slice(0, 80);
           io.to(`server:${serverId}`).emit("echonet_notification", {
@@ -338,11 +398,15 @@ function initSocket(io) {
           [channelId, socket.userId, content.trim() || "(imagen)", imageUrl]
         );
         const row = result.rows[0];
-        const u = await pool.query("SELECT username FROM users WHERE id = $1", [
+        const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [
           socket.userId,
         ]);
         const message = {
-          ...sanitizeImageUrlField({ ...row, username: u.rows[0]?.username }),
+          ...sanitizeImageUrlField({
+            ...row,
+            username: u.rows[0]?.username,
+            avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+          }),
           reactions: [],
         };
 
@@ -653,6 +717,11 @@ function initSocket(io) {
 
     socket.on("disconnect", () => {
       removeFromVoiceRooms(socket.id);
+      if (socket.data.joinedServers && socket.data.joinedServers.size > 0) {
+        for (const sid of socket.data.joinedServers) {
+          removeUserFromServerPresence(sid, socket.userId);
+        }
+      }
     });
   });
 }

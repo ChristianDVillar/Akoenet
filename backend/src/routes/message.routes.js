@@ -7,7 +7,7 @@ const { reactionRateLimiter } = require("../middleware/rate-limit");
 const { canReadChannel, canManageChannels, getChannelServerId } = require("../lib/membership");
 const { logAdminAction } = require("../lib/audit-log");
 const { withReactionsOnMessages, getMessageReactions } = require("../lib/message-reactions");
-const { sanitizeImageUrlField } = require("../lib/sanitize-media-url");
+const { sanitizeImageUrlField, sanitizeUserMediaFields } = require("../lib/sanitize-media-url");
 
 const router = express.Router();
 router.use(auth);
@@ -40,7 +40,7 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
   const beforeId = req.query.before || null;
 
   let query = `
-    SELECT m.*, u.username
+    SELECT m.*, u.username, u.avatar_url
     FROM messages m
     JOIN users u ON u.id = m.user_id
     WHERE m.channel_id = $1
@@ -56,7 +56,7 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
   const result = await pool.query(query, params);
   const rows = result.rows.reverse();
   const enriched = await withReactionsOnMessages(rows, req.user.id);
-  res.json(enriched.map((m) => sanitizeImageUrlField(m)));
+  res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
 });
 
 router.get(
@@ -82,7 +82,7 @@ router.get(
       });
     }
     const result = await pool.query(
-      `SELECT m.id, m.channel_id, m.user_id, u.username, m.content, m.image_url, m.created_at, m.is_pinned, m.pinned_at
+      `SELECT m.id, m.channel_id, m.user_id, u.username, u.avatar_url, m.content, m.image_url, m.created_at, m.is_pinned, m.pinned_at
        FROM messages m
        JOIN users u ON u.id = m.user_id
        WHERE m.channel_id = $1
@@ -90,7 +90,7 @@ router.get(
       [channelId]
     );
     const rows = (await withReactionsOnMessages(result.rows, req.user.id)).map((m) =>
-      sanitizeImageUrlField(m)
+      sanitizeUserMediaFields(sanitizeImageUrlField(m))
     );
     if (format === "csv") {
       const esc = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;

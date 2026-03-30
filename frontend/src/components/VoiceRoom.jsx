@@ -22,7 +22,7 @@ function getRtcConfig() {
 
 const rtcConfig = getRtcConfig()
 
-function RemoteParticipantVideo({ stream, volume, onMediaRef }) {
+function RemoteParticipantVideo({ stream, volume, mutedByDeafen, onMediaRef }) {
   const videoRef = useRef(null)
   const [hasVideo, setHasVideo] = useState(false)
 
@@ -45,7 +45,8 @@ function RemoteParticipantVideo({ stream, volume, onMediaRef }) {
     if (!el || !stream) return
     el.srcObject = stream
     el.volume = volume / 100
-  }, [stream, volume])
+    el.muted = Boolean(mutedByDeafen)
+  }, [stream, volume, mutedByDeafen])
 
   if (!stream) return null
 
@@ -113,6 +114,7 @@ export default function VoiceRoom({
   const [participants, setParticipants] = useState([])
   const [error, setError] = useState('')
   const [muted, setMuted] = useState(false)
+  const [deafened, setDeafened] = useState(false)
   const [micLevel, setMicLevel] = useState(0)
   const [speakingMap, setSpeakingMap] = useState({})
   const [remoteVolumes, setRemoteVolumes] = useState({})
@@ -376,7 +378,9 @@ export default function VoiceRoom({
     try {
       const settings = getSavedVoiceSettings(user?.id)
       micGainRef.current = settings.micGain
-      const wantVideo = discordStyle || settings.cameraEnabled
+      const wantVideo = Boolean(settings.startWithCamera)
+      const startDeafened = Boolean(settings.startDeafened)
+      const startMuted = startDeafened || Boolean(settings.startMuted)
       let stream
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -401,9 +405,10 @@ export default function VoiceRoom({
       const hasVideo = stream.getVideoTracks().length > 0
       setCameraOn(hasVideo)
       stream.getAudioTracks().forEach((t) => {
-        t.enabled = true
+        t.enabled = !startMuted
       })
-      setMuted(false)
+      setMuted(startMuted)
+      setDeafened(startDeafened)
       localStreamRef.current = stream
       setupLocalAnalyser(stream)
       socket.emit('voice:join', { channelId, username: user?.username }, (ack) => {
@@ -474,6 +479,7 @@ export default function VoiceRoom({
     setParticipants([])
     setJoined(false)
     setMuted(false)
+    setDeafened(false)
     stopMicTest()
     if (hadServerSession) {
       onVoiceSessionChange?.({ joined: false, channelId })
@@ -487,6 +493,27 @@ export default function VoiceRoom({
       track.enabled = !next
     })
     setMuted(next)
+    if (!next && deafened) {
+      setDeafened(false)
+    }
+  }
+
+  function toggleDeafened() {
+    if (!joined) return
+    const next = !deafened
+    setDeafened(next)
+    if (next) {
+      if (!muted) {
+        localStreamRef.current?.getAudioTracks().forEach((track) => {
+          track.enabled = false
+        })
+        setMuted(true)
+      }
+      return
+    }
+    localStreamRef.current?.getAudioTracks().forEach((track) => {
+      track.enabled = !muted
+    })
   }
 
   async function startMicTest() {
@@ -713,7 +740,8 @@ export default function VoiceRoom({
             <article key={p.socketId} className={`voice-stage-tile ${speakingMap[p.socketId] ? 'speaking' : ''}`}>
               <RemoteParticipantVideo
                 stream={remoteStreams[p.socketId]}
-                volume={remoteVolumes[p.socketId] ?? 100}
+                volume={deafened ? 0 : remoteVolumes[p.socketId] ?? 100}
+                mutedByDeafen={deafened}
                 onMediaRef={(el) => {
                   if (el) remoteMediaRef.current.set(p.socketId, el)
                   else remoteMediaRef.current.delete(p.socketId)
@@ -788,6 +816,9 @@ export default function VoiceRoom({
           <>
             <button type="button" className="btn secondary" onClick={toggleMute}>
               {muted ? 'Unmute microphone' : 'Mute microphone'}
+            </button>
+            <button type="button" className="btn secondary" onClick={toggleDeafened}>
+              {deafened ? 'Undeafen (hear users)' : 'Deafen (hear nobody)'}
             </button>
             <button type="button" className="btn secondary" onClick={toggleCamera}>
               {cameraOn ? 'Stop camera' : 'Start camera'}

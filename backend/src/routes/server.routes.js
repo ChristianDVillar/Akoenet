@@ -433,7 +433,7 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
     return res.status(403).json({ error: "Not a member" });
   }
   const result = await pool.query(
-    `SELECT u.id, u.username, u.avatar_url,
+    `SELECT u.id, u.username, u.avatar_url, u.presence_status,
             ARRAY_REMOVE(ARRAY_AGG(r.name), NULL) AS roles
      FROM server_members m
      JOIN users u ON u.id = m.user_id

@@ -7,11 +7,9 @@ import ServerSidebar from '../components/ServerSidebar'
 import ChannelList from '../components/ChannelList'
 import Chat from '../components/Chat'
 import MembersPanel from '../components/MembersPanel'
-import ChannelPermissionsPanel from '../components/ChannelPermissionsPanel'
-import VoiceSettingsModal from '../components/VoiceSettingsModal'
 import UserSettingsModal from '../components/UserSettingsModal'
-import ServerEmojiManager from '../components/ServerEmojiManager'
 import ServerSettingsModal from '../components/ServerSettingsModal'
+import ChannelSettingsModal from '../components/ChannelSettingsModal'
 
 function normalizeVoicePresencePayload(presence) {
   if (!presence || typeof presence !== 'object') return {}
@@ -35,7 +33,7 @@ export default function ServerView() {
   const { serverId } = useParams()
   const id = parseInt(serverId, 10)
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout, updateCurrentUser } = useAuth()
   const [servers, setServers] = useState([])
   const [channels, setChannels] = useState([])
   const [categories, setCategories] = useState([])
@@ -47,11 +45,13 @@ export default function ServerView() {
   const [userPermissions, setUserPermissions] = useState([])
   const [selectedMemberId, setSelectedMemberId] = useState('')
   const [collapsedCategories, setCollapsedCategories] = useState([])
-  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
   const [userSettingsOpen, setUserSettingsOpen] = useState(false)
+  const [userSettingsSection, setUserSettingsSection] = useState('profile')
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false)
+  const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
   const [emojis, setEmojis] = useState([])
   const [voicePresence, setVoicePresence] = useState({})
+  const [connectedUserIds, setConnectedUserIds] = useState([])
   /** Voice channel id kept while user reads text channels (stay connected). Cleared on leave / server change. */
   const [voicePersistChannelId, setVoicePersistChannelId] = useState(null)
   /** Stops HTTP voice-presence polling after 404 (old API / wrong base URL) to avoid console spam */
@@ -126,24 +126,23 @@ export default function ServerView() {
     })()
   }, [id, navigate])
 
-  async function loadEmojis() {
-    if (!id) return
-    try {
-      const { data } = await api.get(`/servers/${id}/emojis`)
-      setEmojis(data)
-    } catch {
-      setEmojis([])
-    }
-  }
-
   useLayoutEffect(() => {
     const s = getSocket()
     if (!s || Number.isNaN(id)) return undefined
     setVoicePresence({})
+    setConnectedUserIds([])
 
     const onSnap = ({ serverId, presence }) => {
       if (serverId !== id) return
       setVoicePresence(normalizeVoicePresencePayload(presence))
+    }
+    const onServerPresenceSnapshot = ({ serverId, connectedUserIds: ids }) => {
+      if (serverId !== id) return
+      setConnectedUserIds(Array.isArray(ids) ? ids : [])
+    }
+    const onServerPresenceUpdate = ({ serverId, connectedUserIds: ids }) => {
+      if (serverId !== id) return
+      setConnectedUserIds(Array.isArray(ids) ? ids : [])
     }
     const onPresence = ({ channelId, participants }) => {
       if (channelId == null) return
@@ -156,12 +155,16 @@ export default function ServerView() {
     }
 
     s.on('voice:presence_snapshot', onSnap)
+    s.on('server:presence_snapshot', onServerPresenceSnapshot)
+    s.on('server:presence_update', onServerPresenceUpdate)
     s.on('voice:presence', onPresence)
     s.on('connect', joinSrv)
     if (s.connected) joinSrv()
 
     return () => {
       s.off('voice:presence_snapshot', onSnap)
+      s.off('server:presence_snapshot', onServerPresenceSnapshot)
+      s.off('server:presence_update', onServerPresenceUpdate)
       s.off('voice:presence', onPresence)
       s.off('connect', joinSrv)
       s.emit('leave_server', id)
@@ -357,6 +360,38 @@ export default function ServerView() {
     })
   }
 
+  async function setAppearOnline(nextOnline) {
+    const previousPresence =
+      String(user?.presence_status || '').toLowerCase() === 'invisible' ? 'invisible' : 'online'
+    try {
+      const nextPresence = nextOnline ? 'online' : 'invisible'
+      updateCurrentUser?.({ presence_status: nextPresence })
+      await api.patch('/auth/me', {
+        presence_status: nextPresence,
+      })
+      setMembers((prev) =>
+        prev.map((m) =>
+          Number(m.id) === Number(user?.id)
+            ? { ...m, presence_status: nextPresence }
+            : m
+        )
+      )
+      try {
+        const { data: membersData } = await api.get(`/servers/${id}/members`)
+        setMembers(membersData)
+      } catch {
+        /* keep local optimistic value if fetch fails */
+      }
+    } catch {
+      updateCurrentUser?.({ presence_status: previousPresence })
+      setToast({
+        username: 'System',
+        snippet: 'Could not update your online status',
+        at: Date.now(),
+      })
+    }
+  }
+
   useEffect(() => {
     if (!id) return
     const key = collapsedCategoryStorageKey(id)
@@ -413,10 +448,13 @@ export default function ServerView() {
         onToggleCategory={toggleCategoryCollapse}
         user={user}
         onLogout={logout}
-        onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
-        onOpenUserSettings={() => setUserSettingsOpen(true)}
+        onOpenUserSettings={() => {
+          setUserSettingsSection('profile')
+          setUserSettingsOpen(true)
+        }}
         onOpenServerSettings={() => setServerSettingsOpen(true)}
         onOpenAdminDashboard={() => navigate('/admin')}
+        onSetAppearOnline={setAppearOnline}
         schedulerStreamerUsername={import.meta.env.VITE_SCHEDULER_STREAMER_USERNAME}
         voicePresence={voicePresence}
       />
@@ -425,30 +463,17 @@ export default function ServerView() {
         channelName={activeChannel?.name}
         channelType={activeChannel?.type}
         user={user}
+        members={members}
         emojis={emojis}
         voiceUserLimit={rtcVoiceChannelMeta?.voice_user_limit}
         voiceConnectedCount={rtcVoiceConnectedCount}
         onVoiceSessionChange={handleVoiceSessionChange}
         rtcVoiceChannelId={rtcVoiceChannelId}
         rtcVoiceChannelName={rtcVoiceChannelMeta?.name}
+        onOpenChannelSettings={() => setChannelSettingsOpen(true)}
       />
       <div className="right-column">
-        <MembersPanel members={members} />
-        <ChannelPermissionsPanel
-          channelName={activeChannel?.name}
-          channelType={activeChannel?.type}
-          permissions={channelPermissions}
-          onTogglePermission={togglePermission}
-          members={members}
-          userPermissions={userPermissions}
-          selectedMemberId={selectedMemberId}
-          setSelectedMemberId={setSelectedMemberId}
-          onToggleUserPermission={toggleUserPermission}
-          categories={categories}
-          activeChannel={activeChannel}
-          onUpdateChannel={updateChannel}
-        />
-        <ServerEmojiManager serverId={id} emojis={emojis} onReload={loadEmojis} />
+        <MembersPanel members={members} connectedUserIds={connectedUserIds} currentUser={user} />
       </div>
 
       {toast && (
@@ -459,13 +484,30 @@ export default function ServerView() {
           </span>
         </div>
       )}
-      <VoiceSettingsModal open={voiceSettingsOpen} onClose={() => setVoiceSettingsOpen(false)} user={user} />
-      <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />
+      <UserSettingsModal
+        open={userSettingsOpen}
+        onClose={() => setUserSettingsOpen(false)}
+        initialSection={userSettingsSection}
+      />
       <ServerSettingsModal
         open={serverSettingsOpen}
         onClose={() => setServerSettingsOpen(false)}
         serverId={id}
         serverName={serverName}
+      />
+      <ChannelSettingsModal
+        open={channelSettingsOpen}
+        onClose={() => setChannelSettingsOpen(false)}
+        activeChannel={activeChannel}
+        permissions={channelPermissions}
+        onTogglePermission={togglePermission}
+        members={members}
+        userPermissions={userPermissions}
+        selectedMemberId={selectedMemberId}
+        setSelectedMemberId={setSelectedMemberId}
+        onToggleUserPermission={toggleUserPermission}
+        categories={categories}
+        onUpdateChannel={updateChannel}
       />
     </div>
   )

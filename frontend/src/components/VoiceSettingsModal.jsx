@@ -15,7 +15,13 @@ function getLegacyStorageKeys(userId) {
 }
 
 function readSettings(userId) {
-  const fallback = { micGain: 100, monitorMic: true, cameraEnabled: false }
+  const fallback = {
+    micGain: 100,
+    monitorMic: true,
+    startWithCamera: false,
+    startMuted: false,
+    startDeafened: false,
+  }
   try {
     let raw = localStorage.getItem(getStorageKey(userId))
     if (!raw) {
@@ -32,7 +38,14 @@ function readSettings(userId) {
     return {
       micGain: Math.max(0, Math.min(200, Math.round(gain))),
       monitorMic: typeof parsed?.monitorMic === 'boolean' ? parsed.monitorMic : true,
-      cameraEnabled: typeof parsed?.cameraEnabled === 'boolean' ? parsed.cameraEnabled : false,
+      startWithCamera:
+        typeof parsed?.startWithCamera === 'boolean'
+          ? parsed.startWithCamera
+          : typeof parsed?.cameraEnabled === 'boolean'
+            ? parsed.cameraEnabled
+            : false,
+      startMuted: typeof parsed?.startMuted === 'boolean' ? parsed.startMuted : false,
+      startDeafened: typeof parsed?.startDeafened === 'boolean' ? parsed.startDeafened : false,
     }
   } catch {
     return fallback
@@ -58,19 +71,33 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
   const storageKey = useMemo(() => getStorageKey(user?.id), [user?.id])
 
   const [monitorMic, setMonitorMic] = useState(true)
-  const [cameraEnabled, setCameraEnabled] = useState(false)
+  const [startWithCamera, setStartWithCamera] = useState(false)
+  const [startMuted, setStartMuted] = useState(false)
+  const [startDeafened, setStartDeafened] = useState(false)
 
   useEffect(() => {
     if (!open) return
     const saved = readSettings(user?.id)
     setMicGain(saved.micGain)
     setMonitorMic(saved.monitorMic)
-    setCameraEnabled(saved.cameraEnabled)
+    setStartWithCamera(saved.startWithCamera)
+    setStartMuted(saved.startMuted)
+    setStartDeafened(saved.startDeafened)
   }, [open, user?.id])
 
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ micGain, monitorMic, cameraEnabled }))
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          micGain,
+          monitorMic,
+          startWithCamera,
+          cameraEnabled: startWithCamera,
+          startMuted,
+          startDeafened,
+        }),
+      )
     } catch {
       /* ignore storage errors */
     }
@@ -80,7 +107,7 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
     if (monitorGainRef.current) {
       monitorGainRef.current.gain.value = monitorMic ? 1 : 0
     }
-  })
+  }, [storageKey, micGain, monitorMic, startWithCamera, startMuted, startDeafened])
 
   useEffect(() => {
     if (!open) {
@@ -202,26 +229,78 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
             onChange={(e) => setMicGain(Number(e.target.value))}
           />
         </div>
-        <label className="invite-toggle" style={{ marginTop: '0.5rem' }}>
-          <input
+        <div className="voice-setting-toggle-row" style={{ marginTop: '0.5rem' }}>
+          <span className="voice-setting-toggle-label">Mic monitor while testing</span>
+          <button
             id="voice-settings-monitor-mic"
             name="monitor_mic"
-            type="checkbox"
-            checked={monitorMic}
-            onChange={(e) => setMonitorMic(e.target.checked)}
-          />
-          <span>Hear microphone (monitor) while testing</span>
-        </label>
-        <label className="invite-toggle">
-          <input
+            type="button"
+            className={`voice-setting-toggle-btn ${monitorMic ? 'is-active' : ''}`}
+            onClick={() => setMonitorMic((prev) => !prev)}
+          >
+            <span className="voice-setting-toggle-icon" aria-hidden>
+              {monitorMic ? '🎧' : '📊'}
+            </span>
+            <span>{monitorMic ? 'On - hear mic' : 'Off - meter only'}</span>
+          </button>
+        </div>
+        <div className="voice-setting-toggle-row">
+          <span className="voice-setting-toggle-label">Start with camera</span>
+          <button
             id="voice-settings-camera-enabled"
             name="camera_enabled"
-            type="checkbox"
-            checked={cameraEnabled}
-            onChange={(e) => setCameraEnabled(e.target.checked)}
-          />
-          <span>Enable camera in voice channels (optional video)</span>
-        </label>
+            type="button"
+            className={`voice-setting-toggle-btn ${startWithCamera ? 'is-active' : ''}`}
+            onClick={() => setStartWithCamera((prev) => !prev)}
+          >
+            <span className="voice-setting-toggle-icon" aria-hidden>
+              {startWithCamera ? '📷' : '🚫'}
+            </span>
+            <span>{startWithCamera ? 'Camera on' : 'Camera off'}</span>
+          </button>
+        </div>
+        <div className="voice-setting-toggle-row">
+          <span className="voice-setting-toggle-label">Start muted</span>
+          <button
+            id="voice-settings-start-muted"
+            name="start_muted"
+            type="button"
+            className={`voice-setting-toggle-btn ${startMuted ? 'is-active' : ''}`}
+            onClick={() =>
+              setStartMuted((prev) => {
+                const next = !prev
+                if (!next) setStartDeafened(false)
+                return next
+              })
+            }
+          >
+            <span className="voice-setting-toggle-icon" aria-hidden>
+              {startMuted ? '🔇' : '🎙️'}
+            </span>
+            <span>{startMuted ? 'Muted' : 'Unmuted'}</span>
+          </button>
+        </div>
+        <div className="voice-setting-toggle-row">
+          <span className="voice-setting-toggle-label">Start deafened</span>
+          <button
+            id="voice-settings-start-deafened"
+            name="start_deafened"
+            type="button"
+            className={`voice-setting-toggle-btn ${startDeafened ? 'is-active' : ''}`}
+            onClick={() =>
+              setStartDeafened((prev) => {
+                const next = !prev
+                if (next) setStartMuted(true)
+                return next
+              })
+            }
+          >
+            <span className="voice-setting-toggle-icon" aria-hidden>
+              {startDeafened ? '🙉' : '👂'}
+            </span>
+            <span>{startDeafened ? 'Deafened' : 'Listening'}</span>
+          </button>
+        </div>
         <div className="mic-status">
           <span className="muted small">
             {testing

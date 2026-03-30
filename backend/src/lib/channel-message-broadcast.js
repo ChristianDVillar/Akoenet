@@ -1,4 +1,5 @@
 const { getChannelServerId } = require("./membership");
+const { sanitizeMediaUrl } = require("./sanitize-media-url");
 
 /**
  * Inserta un mensaje de canal y lo emite por Socket.IO (receive_message + echonet_notification).
@@ -12,10 +13,11 @@ async function broadcastChannelMessage(io, pool, { channelId, userId, content })
      RETURNING *`,
     [channelId, userId, content]
   );
-  const u = await pool.query("SELECT username FROM users WHERE id = $1", [userId]);
+  const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [userId]);
   const message = {
     ...insertResult.rows[0],
     username: u.rows[0]?.username,
+    avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
     reactions: [],
   };
   const serverId = await getChannelServerId(channelId);
