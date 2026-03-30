@@ -4,6 +4,7 @@ import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
+import { inviteLandingPath } from '../lib/invites'
 import ServerSidebar from '../components/ServerSidebar'
 import DirectMessagesPanel from '../components/DirectMessagesPanel'
 import VoiceSettingsModal from '../components/VoiceSettingsModal'
@@ -68,7 +69,7 @@ export default function Dashboard() {
           navigate(`/server/${data.server_id}`, { replace: true })
         }
       } catch {
-        if (!cancelled) navigate(`/invite/${encodeURIComponent(t)}`, { replace: true })
+        if (!cancelled) navigate(inviteLandingPath(t), { replace: true })
       }
     })()
     return () => {
@@ -127,9 +128,19 @@ export default function Dashboard() {
   function extractInviteToken(raw) {
     const value = raw.trim()
     if (!value) return ''
+    try {
+      const u = value.startsWith('http')
+        ? new URL(value)
+        : new URL(value, 'https://invite.local')
+      const fromQuery = u.searchParams.get('invite')
+      if (fromQuery) return fromQuery.trim()
+    } catch {
+      /* fall through */
+    }
     if (value.includes('/')) {
       const chunks = value.split('/').filter(Boolean)
-      return chunks[chunks.length - 1] || ''
+      const last = chunks[chunks.length - 1] || ''
+      return last.split('?')[0] || ''
     }
     return value
   }

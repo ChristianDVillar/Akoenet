@@ -1,13 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import { INVITE_QUERY_PARAM, inviteLandingPath } from '../lib/invites'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
 export default function InvitePage() {
-  const { token } = useParams()
+  const { token: pathToken } = useParams()
+  const [searchParams] = useSearchParams()
+  const token = String(pathToken || searchParams.get(INVITE_QUERY_PARAM) || '').trim()
   const navigate = useNavigate()
+
+  /** If user opened /invite/:token (e.g. old link) and SPA loaded, normalize to /?invite= for a share-safe URL. */
+  useEffect(() => {
+    const q = searchParams.get(INVITE_QUERY_PARAM)
+    if (pathToken && !q) {
+      navigate(inviteLandingPath(pathToken), { replace: true })
+    }
+  }, [pathToken, searchParams, navigate])
   const { user, loading } = useAuth()
   const [preview, setPreview] = useState(null)
   const [fetchError, setFetchError] = useState(null)
@@ -155,13 +166,13 @@ export default function InvitePage() {
             </p>
             <div className="invite-landing-actions">
               <Link
-                to={`/login?invite=${encodeURIComponent(String(token || ''))}`}
+                to={`/login?${INVITE_QUERY_PARAM}=${encodeURIComponent(String(token || ''))}`}
                 className="btn primary"
               >
                 Sign in
               </Link>
               <Link
-                to={`/register?invite=${encodeURIComponent(String(token || ''))}`}
+                to={`/register?${INVITE_QUERY_PARAM}=${encodeURIComponent(String(token || ''))}`}
                 className="btn ghost"
               >
                 Create account
