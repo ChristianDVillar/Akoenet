@@ -72,6 +72,11 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
       const params = { mode: 'all' }
       if (override) params.username = override
       const { data } = await api.get('/integrations/scheduler/upcoming', { params })
+      if (data?.scheduler_configured === false) {
+        setFormatted('')
+        setError('scheduler_api_not_configured')
+        return
+      }
       setFormatted(data?.formatted || '')
     } catch (e) {
       const status = e.response?.status
