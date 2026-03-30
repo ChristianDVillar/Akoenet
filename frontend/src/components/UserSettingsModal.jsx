@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import { resolveImageUrl } from '../lib/resolveImageUrl'
 import ServerEmojiManager from './ServerEmojiManager'
 
 function toNullable(value) {
@@ -145,14 +146,16 @@ export default function UserSettingsModal({ open, onClose }) {
           <div
             style={{
               height: 86,
-              backgroundImage: bannerUrl ? `url(${bannerUrl})` : 'linear-gradient(120deg, #1f2937, #0f172a)',
+              backgroundImage: bannerUrl
+                ? `url("${resolveImageUrl(bannerUrl).replace(/"/g, '\\"')}")`
+                : 'linear-gradient(120deg, #1f2937, #0f172a)',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.65rem 0.75rem' }}>
             <img
-              src={avatarUrl || '/vite.svg'}
+              src={avatarUrl ? resolveImageUrl(avatarUrl) : '/vite.svg'}
               alt="avatar preview"
               style={{ width: 42, height: 42, borderRadius: '999px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)' }}
               onError={(e) => {

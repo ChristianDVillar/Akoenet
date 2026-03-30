@@ -8,6 +8,7 @@ const auth = require("../middleware/auth");
 const validate = require("../middleware/validate");
 const { authRateLimiter } = require("../middleware/rate-limit");
 const logger = require("../lib/logger");
+const { sanitizeUserMediaFields } = require("../lib/sanitize-media-url");
 
 const router = express.Router();
 const secret = process.env.JWT_SECRET || "dev-secret-change-me";
@@ -198,7 +199,7 @@ router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (r
     const token = signAppToken(user);
     res.json({
       token,
-      user: {
+      user: sanitizeUserMediaFields({
         id: user.id,
         username: user.username,
         email: user.email,
@@ -210,7 +211,7 @@ router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (r
         custom_status: user.custom_status,
         is_admin: Boolean(user.is_admin),
         twitch_username: user.twitch_username ?? null,
-      },
+      }),
     });
   } catch (e) {
     logger.error({ err: e }, "Login failed");
@@ -364,7 +365,7 @@ router.get("/me", auth, async (req, res) => {
   if (result.rows.length === 0) {
     return res.status(404).json({ error: "User not found" });
   }
-  res.json(result.rows[0]);
+  res.json(sanitizeUserMediaFields(result.rows[0]));
 });
 
 router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, res) => {
@@ -440,7 +441,7 @@ router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, 
       ]
     );
     await client.query("COMMIT");
-    return res.json(updated.rows[0]);
+    return res.json(sanitizeUserMediaFields(updated.rows[0]));
   } catch (e) {
     await client.query("ROLLBACK");
     if (e.code === "23505") {
