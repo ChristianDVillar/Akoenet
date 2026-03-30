@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const pinoHttp = require("pino-http");
 const swaggerUi = require("swagger-ui-express");
+const helmet = require("helmet");
 
 const authRoutes = require("./routes/auth.routes");
 const serverRoutes = require("./routes/server.routes");
@@ -13,6 +14,7 @@ const dmRoutes = require("./routes/dm.routes");
 const adminRoutes = require("./routes/admin.routes");
 const integrationRoutes = require("./routes/integration.routes");
 const logger = require("./lib/logger");
+const { globalIpRateLimiter } = require("./middleware/rate-limit");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 const pool = require("./config/db");
 const { getStorageStatus, resolveDownloadUrl } = require("./services/storage");
@@ -115,9 +117,29 @@ function createApp() {
   const app = express();
   const uploadDir = path.join(__dirname, "..", "uploads");
   const twitchClientId = process.env.TWITCH_CLIENT_ID || "";
-
-  app.use(cors({ origin: true, credentials: true }));
+  app.disable("x-powered-by");
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+    })
+  );
+  const corsOrigins = String(process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allowAllOrigins = corsOrigins.length === 0;
+  app.use(
+    cors({
+      origin(origin, cb) {
+        if (allowAllOrigins || !origin) return cb(null, true);
+        if (corsOrigins.includes(origin)) return cb(null, true);
+        return cb(null, false);
+      },
+      credentials: true,
+    })
+  );
   app.use(pinoHttp({ logger }));
+  app.use(globalIpRateLimiter);
   app.use(express.json());
   app.get("/uploads/:key", async (req, res, next) => {
     if ((process.env.STORAGE_DRIVER || "local").toLowerCase() !== "s3") {

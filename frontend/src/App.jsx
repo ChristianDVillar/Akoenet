@@ -3,11 +3,13 @@ import { useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Home from './pages/Home'
+import Messages from './pages/Messages'
 import ServerView from './pages/ServerView'
 import TwitchCallback from './pages/TwitchCallback'
 import DashboardAdmin from './pages/DashboardAdmin'
 import LegalDocPage from './pages/LegalDocPage'
 import InvitePage from './pages/InvitePage'
+import CookieConsentBanner from './components/CookieConsentBanner'
 
 function PrivateRoute({ children }) {
   const { user, loading, serverUnreachable, refreshUser } = useAuth()
@@ -72,30 +74,41 @@ function AdminRoute({ children }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
-      <Route path="/legal/:slug" element={<LegalDocPage />} />
-      <Route path="/invite/:token" element={<InvitePage />} />
-      <Route path="/" element={<Home />} />
-      <Route
-        path="/server/:serverId"
-        element={
-          <PrivateRoute>
-            <ServerView />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <AdminRoute>
-            <DashboardAdmin />
-          </AdminRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
+        <Route path="/legal/:slug" element={<LegalDocPage />} />
+        <Route path="/invite/:token" element={<InvitePage />} />
+        <Route path="/" element={<Home />} />
+        <Route
+          path="/messages"
+          element={
+            <PrivateRoute>
+              <Messages />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/server/:serverId"
+          element={
+            <PrivateRoute>
+              <ServerView />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <DashboardAdmin />
+            </AdminRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <CookieConsentBanner />
+    </>
   )
 }

@@ -10,18 +10,22 @@ export const landingContent = {
       langLabel: 'Language',
     },
     hero: {
-      eyebrow: 'Real-time community',
-      title: 'Your space to talk, write, and connect',
+      eyebrow: 'Communities + streaming',
+      title: 'Organize your community and your streaming schedule',
       lead:
-        'Servers, text and voice channels, DMs, reactions, and fine-grained permissions — all with the same look and feel as the rest of the app.',
+        'Built-in Streamer Scheduler commands (`!schedule`, `!next`), servers with text and voice, DMs, mentions, and roles — not just another chat clone.',
       ctaPrimary: 'Get started',
       ctaSecondary: 'I already have an account',
     },
     featuresTitle: 'What you get',
     featureCards: [
       {
+        title: 'Streamer Scheduler',
+        body: 'Show upcoming streams from the public Scheduler API with simple chat commands; set your slug in user settings.',
+      },
+      {
         title: 'Live chat',
-        body: 'Instant channel messages, reactions, pins, and history export.',
+        body: 'Instant channel messages, reactions, pins, mentions, search, and history export.',
       },
       {
         title: 'Voice & camera',
@@ -75,18 +79,22 @@ export const landingContent = {
       langLabel: 'Idioma',
     },
     hero: {
-      eyebrow: 'Comunidad en tiempo real',
-      title: 'Tu espacio para hablar, escribir y conectar',
+      eyebrow: 'Comunidades + streaming',
+      title: 'Organiza tu comunidad y tu calendario de streams',
       lead:
-        'Servidores, canales de texto y voz, DM, reacciones y permisos granulares. Una experiencia cohesionada con la misma identidad visual que el resto de la app.',
+        'Integración con Streamer Scheduler (`!schedule`, `!next`), servidores con texto y voz, DM, menciones y roles — más que un clon de chat genérico.',
       ctaPrimary: 'Empezar gratis',
       ctaSecondary: 'Ya tengo cuenta',
     },
     featuresTitle: 'Funciones principales',
     featureCards: [
       {
+        title: 'Streamer Scheduler',
+        body: 'Muestra próximos streams desde la API pública del Scheduler con comandos en el chat; configura tu slug en ajustes de usuario.',
+      },
+      {
         title: 'Chat en vivo',
-        body: 'Mensajes instantáneos por canal, reacciones, pins y exportación de historial.',
+        body: 'Mensajes por canal, reacciones, pins, menciones, búsqueda y exportación de historial.',
       },
       {
         title: 'Voz y cámara',
@@ -140,6 +148,7 @@ export const footerContent = {
     privacy: 'Privacy',
     legal: 'Legal notice',
     credit: 'Project and development by',
+    independentNotice: 'AkoeNet is independent software and is not affiliated with Discord Inc.',
   },
   es: {
     versionTitle: 'Versión del cliente web',
@@ -148,5 +157,6 @@ export const footerContent = {
     privacy: 'Privacidad',
     legal: 'Protección legal',
     credit: 'Proyecto y desarrollo por',
+    independentNotice: 'AkoeNet es software independiente y no está afiliado a Discord Inc.',
   },
 }

@@ -3,7 +3,7 @@ function buildOpenApiSpec() {
     openapi: "3.0.3",
     info: {
       title: "AkoeNet API",
-      version: process.env.APP_VERSION || process.env.npm_package_version || "1.0.0",
+      version: process.env.APP_VERSION || process.env.npm_package_version || "1.1.0",
       description: "Basic OpenAPI spec for key AkoeNet endpoints.",
     },
     servers: [
@@ -96,6 +96,38 @@ function buildOpenApiSpec() {
             200: { description: "Export exitoso" },
             403: { description: "No access" },
             413: { description: "Export demasiado grande" },
+          },
+        },
+      },
+      "/messages/{messageId}/context": {
+        get: {
+          summary: "Message with neighbor rows in the same channel",
+          description: "Returns the anchor message plus up to `before` older and `after` newer messages (for jump-to-context UIs).",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "messageId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 },
+            },
+            {
+              name: "before",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 0, maximum: 50, default: 10 },
+            },
+            {
+              name: "after",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 0, maximum: 50, default: 10 },
+            },
+          ],
+          responses: {
+            200: { description: "Ordered messages including anchor" },
+            403: { description: "No access to channel" },
+            404: { description: "Message not found" },
           },
         },
       },

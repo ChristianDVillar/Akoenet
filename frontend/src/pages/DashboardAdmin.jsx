@@ -25,6 +25,13 @@ export default function DashboardAdmin() {
   const [auditServerId, setAuditServerId] = useState('')
   const [auditFrom, setAuditFrom] = useState('')
   const [auditTo, setAuditTo] = useState('')
+  const [reportItems, setReportItems] = useState([])
+  const [reportTotal, setReportTotal] = useState(0)
+  const [reportLimit, setReportLimit] = useState(20)
+  const [reportOffset, setReportOffset] = useState(0)
+  const [reportStatus, setReportStatus] = useState('open')
+  const [reportServerId, setReportServerId] = useState('')
+  const [metrics, setMetrics] = useState(null)
   const docsUrl = `${String(api.defaults.baseURL || '').replace(/\/$/, '')}/docs`
 
   function pushHistory(payload) {
@@ -49,18 +56,28 @@ export default function DashboardAdmin() {
       if (auditServerId.trim()) auditParams.set('server_id', auditServerId.trim())
       if (auditFrom) auditParams.set('from', new Date(auditFrom).toISOString())
       if (auditTo) auditParams.set('to', new Date(auditTo).toISOString())
+      const reportParams = new URLSearchParams()
+      reportParams.set('limit', String(reportLimit))
+      reportParams.set('offset', String(reportOffset))
+      reportParams.set('status', reportStatus)
+      if (reportServerId.trim()) reportParams.set('server_id', reportServerId.trim())
 
-      const [healthRes, depsRes, auditRes] = await Promise.all([
+      const [healthRes, depsRes, auditRes, reportRes, metricsRes] = await Promise.all([
         api.get('/health'),
         api.get('/admin/health/deps', {
           validateStatus: () => true,
         }),
         api.get(`/admin/audit-logs?${auditParams.toString()}`),
+        api.get(`/admin/reports/messages?${reportParams.toString()}`),
+        api.get('/admin/metrics', { validateStatus: () => true }),
       ])
       setHealth(healthRes.data)
       setDeps(depsRes.data)
+      setMetrics(metricsRes.status === 200 ? metricsRes.data : null)
       setAuditLogs(Array.isArray(auditRes?.data?.items) ? auditRes.data.items : [])
       setAuditTotal(Number(auditRes?.data?.total || 0))
+      setReportItems(Array.isArray(reportRes?.data?.items) ? reportRes.data.items : [])
+      setReportTotal(Number(reportRes?.data?.total || 0))
       pushHistory(depsRes.data)
     } catch {
       setError('Could not load system diagnostics')
@@ -72,7 +89,18 @@ export default function DashboardAdmin() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditLimit, auditOffset, auditAction, auditServerId, auditFrom, auditTo])
+  }, [
+    auditLimit,
+    auditOffset,
+    auditAction,
+    auditServerId,
+    auditFrom,
+    auditTo,
+    reportLimit,
+    reportOffset,
+    reportStatus,
+    reportServerId,
+  ])
 
   function applyAuditFilters(e) {
     e.preventDefault()
@@ -88,8 +116,27 @@ export default function DashboardAdmin() {
     setAuditOffset(0)
   }
 
+  function reportStatusLabel(metadata) {
+    const status = String(metadata?.status || 'open').toLowerCase()
+    if (status === 'resolved') return 'resolved'
+    if (status === 'rejected') return 'rejected'
+    return 'open'
+  }
+
+  async function updateReportStatus(auditId, status) {
+    const note = window.prompt('Optional moderator note')
+    try {
+      await api.patch(`/admin/reports/messages/${auditId}`, { status, note: note || undefined })
+      await load()
+    } catch {
+      setError('Could not update report status')
+    }
+  }
+
   const canPrev = auditOffset > 0
   const canNext = auditOffset + auditLimit < auditTotal
+  const canPrevReports = reportOffset > 0
+  const canNextReports = reportOffset + reportLimit < reportTotal
 
   return (
     <div className="auth-page">
@@ -119,6 +166,21 @@ export default function DashboardAdmin() {
                 <strong>Total check:</strong> {deps?.total_latency_ms ?? 0} ms
               </span>
             </div>
+            {metrics && (
+              <div className="status-meta" style={{ marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                <span>
+                  <strong>Msgs (total):</strong> ch {metrics.messages_total?.channel ?? 0} · dm{' '}
+                  {metrics.messages_total?.dm ?? 0}
+                </span>
+                <span>
+                  <strong>Msgs (last ~60s):</strong> ch {metrics.messages_last_60s?.channel ?? 0} · dm{' '}
+                  {metrics.messages_last_60s?.dm ?? 0}
+                </span>
+                <span className="muted small">
+                  Process uptime: {Math.round((metrics.uptime_ms || 0) / 1000)}s (resets on deploy)
+                </span>
+              </div>
+            )}
             <div className="status-grid">
               <div className="status-item">
                 <strong>API</strong>
@@ -280,6 +342,66 @@ export default function DashboardAdmin() {
                 </button>
                 <span className="muted small" style={{ margin: 0 }}>
                   Showing {auditTotal === 0 ? 0 : auditOffset + 1}-{Math.min(auditOffset + auditLimit, auditTotal)} of {auditTotal}
+                </span>
+              </div>
+            </div>
+            <div className="status-history">
+              <h3>Message reports moderation</h3>
+              <form onSubmit={(e) => e.preventDefault()} className="form-inline" style={{ marginBottom: '0.6rem', gap: '0.4rem', flexWrap: 'wrap' }}>
+                <select value={reportStatus} onChange={(e) => { setReportStatus(e.target.value); setReportOffset(0) }}>
+                  <option value="open">Open</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="all">All</option>
+                </select>
+                <input
+                  placeholder="Server ID"
+                  value={reportServerId}
+                  onChange={(e) => { setReportServerId(e.target.value); setReportOffset(0) }}
+                  style={{ width: '120px' }}
+                />
+                <button type="button" className="btn ghost" onClick={load}>Refresh</button>
+              </form>
+              {reportItems.length === 0 ? (
+                <p className="muted small">No reports found.</p>
+              ) : (
+                <ul>
+                  {reportItems.map((r) => (
+                    <li key={`report-${r.id}`}>
+                      <span>{new Date(r.created_at).toLocaleTimeString()}</span>
+                      <span>
+                        {r.report_action === 'dm_message_report_user' ? 'DM' : 'Channel'} · #{r.id} · msg:
+                        {r.target_message_id ?? 'n/a'} · by {r.reporter_username || `user:${r.reporter_user_id}`}
+                      </span>
+                      <span>{reportStatusLabel(r.metadata)}</span>
+                      <span style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'resolved')}>Resolve</button>
+                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'rejected')}>Reject</button>
+                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'open')}>Reopen</button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="status-actions" style={{ marginTop: '0.55rem', display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={!canPrevReports}
+                  onClick={() => setReportOffset((v) => Math.max(0, v - reportLimit))}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={!canNextReports}
+                  onClick={() => setReportOffset((v) => v + reportLimit)}
+                >
+                  Next
+                </button>
+                <span className="muted small" style={{ margin: 0 }}>
+                  Showing {reportTotal === 0 ? 0 : reportOffset + 1}-{Math.min(reportOffset + reportLimit, reportTotal)} of {reportTotal}
                 </span>
               </div>
             </div>

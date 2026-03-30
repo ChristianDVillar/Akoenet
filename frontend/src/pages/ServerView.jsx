@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../context/AuthContext'
@@ -10,6 +10,7 @@ import MembersPanel from '../components/MembersPanel'
 import UserSettingsModal from '../components/UserSettingsModal'
 import ServerSettingsModal from '../components/ServerSettingsModal'
 import ChannelSettingsModal from '../components/ChannelSettingsModal'
+import AppChrome from '../components/AppChrome'
 
 function normalizeVoicePresencePayload(presence) {
   if (!presence || typeof presence !== 'object') return {}
@@ -33,6 +34,7 @@ export default function ServerView() {
   const { serverId } = useParams()
   const id = parseInt(serverId, 10)
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user, logout, updateCurrentUser } = useAuth()
   const [servers, setServers] = useState([])
   const [channels, setChannels] = useState([])
@@ -56,6 +58,8 @@ export default function ServerView() {
   const [voicePersistChannelId, setVoicePersistChannelId] = useState(null)
   /** Stops HTTP voice-presence polling after 404 (old API / wrong base URL) to avoid console spam */
   const voicePresencePollStopped404 = useRef(false)
+  /** Avoid re-applying `?channel=` from the URL on every searchParams change after first apply. */
+  const appliedChannelFromQuery = useRef(false)
 
   const rtcVoiceChannelId = useMemo(() => {
     const active = channels.find((c) => c.id === activeChannelId)
@@ -81,6 +85,29 @@ export default function ServerView() {
   useEffect(() => {
     setVoicePersistChannelId(null)
   }, [id])
+
+  useEffect(() => {
+    appliedChannelFromQuery.current = false
+  }, [id])
+
+  useEffect(() => {
+    if (appliedChannelFromQuery.current || !channels.length) return
+    const raw = searchParams.get('channel')
+    if (!raw) return
+    const cid = parseInt(raw, 10)
+    if (Number.isNaN(cid)) return
+    if (!channels.some((c) => c.id === cid)) return
+    setActiveChannelId(cid)
+    appliedChannelFromQuery.current = true
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('channel')
+        return next
+      },
+      { replace: true }
+    )
+  }, [channels, searchParams, setSearchParams])
 
   useEffect(() => {
     if (Number.isNaN(id)) {
@@ -425,12 +452,14 @@ export default function ServerView() {
   const activeChannel = channels.find((c) => c.id === activeChannelId)
 
   return (
+    <AppChrome>
     <div className="app-shell">
       <ServerSidebar
         servers={servers}
         activeServerId={id}
         onSelectServer={(sid) => navigate(`/server/${sid}`)}
         homeAction={() => navigate('/')}
+        messagesAction={() => navigate('/messages')}
       />
       <ChannelList
         serverName={serverName}
@@ -510,5 +539,6 @@ export default function ServerView() {
         onUpdateChannel={updateChannel}
       />
     </div>
+    </AppChrome>
   )
 }

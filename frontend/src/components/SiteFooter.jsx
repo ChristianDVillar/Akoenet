@@ -33,6 +33,7 @@ export default function SiteFooter({ className = '' }) {
         <p className="site-footer-credit">
           {f.credit} <strong>{author}</strong>
         </p>
+        <p className="site-footer-disclaimer">{f.independentNotice}</p>
       </div>
     </footer>
   )

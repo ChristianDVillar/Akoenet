@@ -15,7 +15,7 @@ function getVoiceStorageKey(userId) {
 }
 
 export default function UserSettingsModal({ open, onClose, initialSection = 'profile' }) {
-  const { user, refreshUser } = useAuth()
+  const { user, refreshUser, logout } = useAuth()
   const [activeSection, setActiveSection] = useState('profile')
   const [username, setUsername] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
@@ -31,6 +31,9 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [testing, setTesting] = useState(false)
+  const [eraseConfirm, setEraseConfirm] = useState('')
+  const [exportBusy, setExportBusy] = useState(false)
+  const [eraseBusy, setEraseBusy] = useState(false)
   const [micLevel, setMicLevel] = useState(0)
   const [micGain, setMicGain] = useState(100)
   const [monitorMic, setMonitorMic] = useState(true)
@@ -58,6 +61,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     setSchedulerStreamerUsername(user?.scheduler_streamer_username || '')
     setCurrentPassword('')
     setNewPassword('')
+    setEraseConfirm('')
     setError('')
     setInfo('')
     const voice = getSavedVoiceSettings(user?.id)
@@ -105,6 +109,46 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     [accentColor],
   )
 
+  async function downloadMyData() {
+    setExportBusy(true)
+    setError('')
+    setInfo('')
+    try {
+      const { data } = await api.get('/auth/me/export', { responseType: 'blob' })
+      const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `akoenet-user-${user?.id}-export.json`
+      a.click()
+      window.URL.revokeObjectURL(url)
+      setInfo('Data export downloaded.')
+    } catch {
+      setError('Could not download your data export.')
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
+  async function eraseMyAccount() {
+    if (eraseConfirm.trim().toUpperCase() !== 'DELETE') {
+      setError('Type DELETE in the box to confirm account erasure.')
+      return
+    }
+    setEraseBusy(true)
+    setError('')
+    setInfo('')
+    try {
+      await api.delete('/auth/me', { data: { reason: 'User requested self-service account erasure (Settings).' } })
+      onClose()
+      logout()
+    } catch {
+      setError('Could not erase account. Try again or contact support.')
+    } finally {
+      setEraseBusy(false)
+    }
+  }
+
   async function saveUserSettings() {
     if (!username.trim()) {
       setError('Username is required')
@@ -135,7 +179,12 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       setNewPassword('')
       setInfo('Settings saved')
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not save settings')
+      const code = err.response?.data?.error
+      setError(
+        code === 'blocked_content'
+          ? err.response?.data?.message || 'That text is not allowed.'
+          : err.response?.data?.error || 'Could not save settings'
+      )
     } finally {
       setSaving(false)
     }
@@ -275,11 +324,43 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
             )}
 
             {activeSection === 'account' && (
-              <form onSubmit={(e) => { e.preventDefault(); saveUserSettings() }} className="form-stack">
-                <label>Current password (required only to change password)<input id="settings-current-password" name="current_password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
-                <label>New password<input id="settings-new-password" name="new_password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
-                <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save account settings'}</button>
-              </form>
+              <div className="form-stack">
+                <form onSubmit={(e) => { e.preventDefault(); saveUserSettings() }} className="form-stack">
+                  <label>Current password (required only to change password)<input id="settings-current-password" name="current_password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
+                  <label>New password<input id="settings-new-password" name="new_password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
+                  <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save account settings'}</button>
+                </form>
+                <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>Data & privacy</h4>
+                  <p className="muted small" style={{ margin: '0 0 0.75rem' }}>
+                    Download a JSON copy of your profile, memberships, and messages you sent (portability). Account deletion anonymizes your account per our retention policy.
+                  </p>
+                  <button type="button" className="btn secondary" disabled={exportBusy} onClick={downloadMyData}>
+                    {exportBusy ? 'Preparing…' : 'Download my data'}
+                  </button>
+                </div>
+                <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(239,68,68,0.25)' }}>
+                  <h4 className="muted small" style={{ margin: '0 0 0.5rem', color: '#fca5a5' }}>Delete account</h4>
+                  <p className="muted small" style={{ margin: '0 0 0.75rem' }}>
+                    This cannot be undone. Type <strong>DELETE</strong> to confirm, then erase your account.
+                  </p>
+                  <label>
+                    Confirmation
+                    <input
+                      id="settings-erase-confirm"
+                      name="erase_confirm"
+                      type="text"
+                      value={eraseConfirm}
+                      onChange={(e) => setEraseConfirm(e.target.value)}
+                      placeholder="DELETE"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <button type="button" className="btn danger" disabled={eraseBusy} onClick={eraseMyAccount}>
+                    {eraseBusy ? 'Erasing…' : 'Erase my account'}
+                  </button>
+                </div>
+              </div>
             )}
 
             {activeSection === 'voice' && (

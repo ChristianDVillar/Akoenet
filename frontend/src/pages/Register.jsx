@@ -13,6 +13,8 @@ export default function Register() {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [birthDate, setBirthDate] = useState('')
+  const [acceptLegal, setAcceptLegal] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -24,10 +26,18 @@ export default function Register() {
 
   async function onSubmit(e) {
     e.preventDefault()
+    if (!acceptLegal) {
+      setError('Debes aceptar términos y privacidad para registrarte')
+      return
+    }
+    if (!birthDate) {
+      setError('Date of birth is required')
+      return
+    }
     setError('')
     setBusy(true)
     try {
-      await register(username, email, password)
+      await register(username, email, password, birthDate)
       const inv =
         searchParams.get(INVITE_QUERY_PARAM) ||
         (() => {
@@ -56,10 +66,18 @@ export default function Register() {
       }
       navigate('/')
     } catch (err) {
+      const code = err.response?.data?.error
+      const details = err.response?.data?.details
+      if (Array.isArray(details) && details.length) {
+        setError(details.map((d) => d.message).join(' '))
+        return
+      }
       const msg =
-        err.response?.data?.error === 'Email already registered'
+        code === 'Email already registered'
           ? 'That email is already registered'
-          : 'Could not register'
+          : code === 'blocked_content'
+            ? err.response?.data?.message || 'That username is not allowed.'
+            : 'Could not register'
       setError(msg)
     } finally {
       setBusy(false)
@@ -128,6 +146,45 @@ export default function Register() {
               minLength={6}
               autoComplete="new-password"
             />
+          </label>
+          <label>
+            Date of birth
+            <input
+              id="register-birth-date"
+              name="birth_date"
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              required
+              max={(() => {
+                const t = new Date()
+                t.setFullYear(t.getFullYear() - 13)
+                return t.toISOString().slice(0, 10)
+              })()}
+              min={(() => {
+                const t = new Date()
+                t.setFullYear(t.getFullYear() - 120)
+                return t.toISOString().slice(0, 10)
+              })()}
+              autoComplete="bday"
+            />
+            <span className="muted small" style={{ display: 'block', marginTop: 4 }}>
+              You must be at least 13 years old. We use this only for age verification.
+            </span>
+          </label>
+          <label className="invite-toggle">
+            <input
+              id="register-accept-legal"
+              name="accept_legal"
+              type="checkbox"
+              checked={acceptLegal}
+              onChange={(e) => setAcceptLegal(e.target.checked)}
+              required
+            />
+            <span>
+              Acepto los <Link to="/legal/terminos">términos</Link> y la{' '}
+              <Link to="/legal/privacidad">política de privacidad</Link>.
+            </span>
           </label>
           <button type="submit" className="btn primary" disabled={busy}>
             {busy ? 'Creating…' : 'Sign up'}

@@ -30,6 +30,13 @@ export default function Chat({
   const [sendError, setSendError] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [reactionPickerId, setReactionPickerId] = useState(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchBusy, setSearchBusy] = useState(false)
+  const [replyTo, setReplyTo] = useState(null)
+  const [editingMessageId, setEditingMessageId] = useState(null)
+  const [editingDraft, setEditingDraft] = useState('')
   const bottomRef = useRef(null)
   const messageNodeRef = useRef(new Map())
   const emojiPickerWrapRef = useRef(null)
@@ -38,6 +45,8 @@ export default function Chat({
   const lastTypingEmitRef = useRef(0)
   const currentUserIdRef = useRef(null)
   const [typingPeers, setTypingPeers] = useState({})
+  /** Index into history prefix matches (↑/↓); reset when composer text changes in handleComposerChange */
+  const [composerHistoryIndex, setComposerHistoryIndex] = useState(0)
 
   useEffect(() => {
     currentUserIdRef.current = user?.id != null ? Number(user.id) : null
@@ -53,6 +62,36 @@ export default function Chat({
     }
     return map
   }, [members])
+
+  /** Messages whose text starts with the current composer prefix (oldest first). */
+  const composerHistoryMatches = useMemo(() => {
+    if (channelType === 'voice' || !channelId) return []
+    const prefix = text.trim()
+    if (prefix.length < 1) return []
+    const pl = prefix.toLowerCase()
+    const out = []
+    for (const m of messages) {
+      if (m._optimistic) continue
+      const c = m.content
+      if (c == null || c === '' || c === '(imagen)') continue
+      if (String(c).toLowerCase().startsWith(pl)) out.push(m)
+    }
+    out.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    return out.slice(0, 40)
+  }, [messages, text, channelType, channelId])
+
+  const composerHistorySafeIndex = Math.min(
+    composerHistoryIndex,
+    Math.max(0, composerHistoryMatches.length - 1)
+  )
+  const composerHighlightId =
+    composerHistoryMatches.length > 0 ? composerHistoryMatches[composerHistorySafeIndex]?.id : null
+
+  useEffect(() => {
+    if (composerHighlightId == null) return
+    const node = messageNodeRef.current.get(composerHighlightId)
+    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [composerHighlightId, composerHistorySafeIndex])
 
   useEffect(() => {
     if (!channelId) {
@@ -82,8 +121,13 @@ export default function Chat({
     const onMsg = (msg) => {
       if (String(msg.channel_id) !== String(channelId)) return
       setMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev
-        return [...prev, msg]
+        const cleaned = prev.filter((m) => {
+          if (!m._optimistic) return true
+          if (Number(m.user_id) !== Number(msg.user_id)) return true
+          return String(m.content).trim() !== String(msg.content).trim()
+        })
+        if (cleaned.some((m) => m.id === msg.id)) return cleaned
+        return [...cleaned, msg]
       })
     }
     const onDeleted = ({ id, channel_id: chId }) => {
@@ -92,7 +136,17 @@ export default function Chat({
     }
     const onUpdated = (msg) => {
       if (String(msg.channel_id) !== String(channelId)) return
-      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)))
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id
+            ? {
+                ...m,
+                ...msg,
+                reactions: Array.isArray(msg.reactions) ? msg.reactions : m.reactions,
+              }
+            : m
+        )
+      )
     }
     const onReactionsUpdated = ({ message_id: messageId, channel_id: chId, reactions }) => {
       if (String(chId) !== String(channelId)) return
@@ -118,7 +172,15 @@ export default function Chat({
       })
     }
     s.on('channel_typing', onTyping)
+    const onReconnect = () => {
+      api
+        .get(`/messages/channel/${channelId}`)
+        .then(({ data }) => setMessages(data))
+        .catch(() => {})
+    }
+    s.on('reconnect', onReconnect)
     return () => {
+      s.off('reconnect', onReconnect)
       s.off('receive_message', onMsg)
       s.off('message_deleted', onDeleted)
       s.off('message_updated', onUpdated)
@@ -126,6 +188,16 @@ export default function Chat({
       s.off('channel_typing', onTyping)
       s.emit('leave_channel', channelId)
     }
+  }, [channelId])
+
+  useEffect(() => {
+    setSearchOpen(false)
+    setSearchQuery('')
+    setSearchResults([])
+    setReplyTo(null)
+    setEditingMessageId(null)
+    setEditingDraft('')
+    setComposerHistoryIndex(0)
   }, [channelId])
 
   useEffect(() => {
@@ -168,6 +240,7 @@ export default function Chat({
   function handleComposerChange(e) {
     const v = e.target.value
     setText(v)
+    setComposerHistoryIndex(0)
     if (channelType === 'voice' || !channelId) return
     const s = getSocket()
     if (!s) return
@@ -188,17 +261,75 @@ export default function Chat({
     clearTimeout(typingStopTimerRef.current)
     emitTyping(false)
     setSendError('')
+    const toSend = text.trim()
+    const clientId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    const rawReplyId = replyTo?.id
+    const replyId =
+      rawReplyId != null &&
+      (typeof rawReplyId === 'number' || (typeof rawReplyId === 'string' && /^\d+$/.test(rawReplyId)))
+        ? Number(rawReplyId)
+        : null
+    const optimistic = {
+      id: `pending-${clientId}`,
+      _optimistic: true,
+      _clientId: clientId,
+      channel_id: channelId,
+      user_id: user?.id,
+      username: user?.username || 'You',
+      content: toSend,
+      created_at: new Date().toISOString(),
+      reactions: [],
+      avatar_url: user?.avatar_url || null,
+      reply_to_id: replyId,
+      reply_preview_username: replyTo?.username || null,
+      reply_preview_content: replyTo?.snippet || null,
+    }
+    const savedReply = replyTo
+    setMessages((prev) => [...prev, optimistic])
+    setText('')
+    setPickerOpen(false)
+    setReplyTo(null)
     s.emit(
       'send_message',
-      { channel_id: channelId, content: text.trim() },
+      {
+        channel_id: channelId,
+        content: toSend,
+        ...(replyId ? { reply_to_message_id: replyId } : {}),
+      },
       (ack) => {
+        setMessages((prev) => prev.filter((m) => m._clientId !== clientId))
         if (ack?.error === 'rate_limited') {
           setSendError('Slow down a little — you are sending a bit too fast.')
+          setText(toSend)
+          setReplyTo(savedReply)
+          return
+        }
+        if (ack?.error === 'blocked_content') {
+          setSendError('That message contains prohibited language.')
+          setText(toSend)
+          setReplyTo(savedReply)
+          return
+        }
+        if (ack?.error === 'save_failed') {
+          setSendError('Message could not be saved. Try again.')
+          setText(toSend)
+          setReplyTo(savedReply)
+          return
+        }
+        if (ack?.ok && ack.message) {
+          setMessages((prev) => {
+            let next = prev
+            if (!next.some((m) => m.id === ack.message.id)) {
+              next = [...next, { ...ack.message, reactions: ack.message.reactions || [] }]
+            }
+            if (ack.scheduler_reply && !next.some((m) => m.id === ack.scheduler_reply.id)) {
+              next = [...next, { ...ack.scheduler_reply, reactions: ack.scheduler_reply.reactions || [] }]
+            }
+            return next
+          })
         }
       }
     )
-    setText('')
-    setPickerOpen(false)
   }
 
   function insertEmojiShortcode(name) {
@@ -210,6 +341,10 @@ export default function Chat({
   }
 
   function deleteMessage(messageId) {
+    if (typeof messageId === 'string' && messageId.startsWith('pending-')) {
+      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+      return
+    }
     const s = getSocket()
     if (!s) return
     s.emit('delete_message', { message_id: messageId }, (ack) => {
@@ -233,6 +368,73 @@ export default function Chat({
     const s = getSocket()
     if (!s) return
     s.emit('react_message', { message_id: messageId, reaction_key: reactionKey, active })
+  }
+
+  async function runSearch(e) {
+    e?.preventDefault?.()
+    const q = searchQuery.trim()
+    if (q.length < 2 || !channelId) return
+    setSearchBusy(true)
+    try {
+      const { data } = await api.get(`/messages/channel/${channelId}/search`, { params: { q } })
+      setSearchResults(Array.isArray(data) ? data : [])
+    } catch {
+      setSearchResults([])
+    } finally {
+      setSearchBusy(false)
+    }
+  }
+
+  function startReply(m) {
+    const snippet =
+      m.content && m.content !== '(imagen)'
+        ? m.content.slice(0, 120)
+        : m.image_url
+          ? 'Image'
+          : ''
+    setReplyTo({ id: m.id, username: m.username, snippet })
+  }
+
+  function cancelEdit() {
+    setEditingMessageId(null)
+    setEditingDraft('')
+  }
+
+  function saveEdit() {
+    if (!editingMessageId || !editingDraft.trim()) return
+    const s = getSocket()
+    if (!s) return
+    setSendError('')
+    const id = editingMessageId
+    const content = editingDraft.trim()
+    s.emit('edit_message', { message_id: id, content }, (ack) => {
+      if (ack?.error === 'blocked_content') {
+        setSendError('That message contains prohibited language.')
+        return
+      }
+      if (ack?.error === 'forbidden' || ack?.error === 'not_found') {
+        setSendError("You can't edit that message.")
+        return
+      }
+      if (ack?.ok) {
+        cancelEdit()
+      }
+    })
+  }
+
+  async function reportMessage(messageId) {
+    const reason = window.prompt('Why are you reporting this message? (required)')
+    if (!reason || !reason.trim()) return
+    try {
+      await api.post(`/messages/${messageId}/report`, { reason: reason.trim() })
+      setSendError('Report sent. Moderators will review it.')
+    } catch (err) {
+      const msg =
+        err?.response?.status === 429
+          ? 'You are reporting too fast. Try again later.'
+          : err?.response?.data?.error || 'Could not send report'
+      setSendError(msg)
+    }
   }
 
   async function exportHistory(format) {
@@ -284,6 +486,9 @@ export default function Chat({
         (ack) => {
           if (ack?.error === 'rate_limited') {
             setSendError('Slow down a little — you are sending a bit too fast.')
+          }
+          if (ack?.error === 'blocked_content') {
+            setSendError('That message contains prohibited language.')
           }
         }
       )
@@ -352,6 +557,17 @@ export default function Chat({
             </button>
           )}
           {!isVoice && (
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() => setSearchOpen((o) => !o)}
+              title="Search messages"
+              aria-expanded={searchOpen}
+            >
+              🔎
+            </button>
+          )}
+          {!isVoice && (
             <div className="chat-save-row" role="group" aria-label="Download chat history">
               <button type="button" className="btn link chat-save-link" onClick={() => exportHistory('csv')}>
                 Spreadsheet
@@ -373,6 +589,57 @@ export default function Chat({
 
       {!isVoice && (
       <>
+      {searchOpen && (
+        <section className="chat-search-panel" aria-label="Search in channel">
+          <form className="chat-search-form" onSubmit={runSearch}>
+            <input
+              className="composer-input chat-search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search in this channel (2+ characters)"
+              aria-label="Search query"
+            />
+            <button type="submit" className="btn secondary small" disabled={searchBusy || searchQuery.trim().length < 2}>
+              {searchBusy ? '…' : 'Search'}
+            </button>
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() => {
+                setSearchOpen(false)
+                setSearchResults([])
+              }}
+            >
+              Close
+            </button>
+          </form>
+          {searchResults.length > 0 && (
+            <ul className="chat-search-results">
+              {searchResults.map((sm) => (
+                <li key={sm.id}>
+                  <button
+                    type="button"
+                    className="chat-search-hit"
+                    onClick={() => {
+                      jumpToMessage(sm.id)
+                      setSearchOpen(false)
+                    }}
+                  >
+                    <span className="chat-search-hit-user">{sm.username}</span>
+                    <span className="chat-search-hit-text">
+                      {sm.content && sm.content !== '(imagen)'
+                        ? sm.content.slice(0, 120)
+                        : sm.image_url
+                          ? 'Image'
+                          : ''}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
       {pinnedMessages.length > 0 && (
         <section className="pinned-strip">
           <div className="pinned-strip-head">
@@ -433,7 +700,16 @@ export default function Chat({
         {messages.map((m) => (
           <article
             key={m.id}
-            className="message-row"
+            className={`message-row${m._optimistic ? ' message-row--optimistic' : ''}${
+              composerHighlightId != null && String(m.id) === String(composerHighlightId)
+                ? ' message-row--composer-history-match'
+                : ''
+            }`}
+            id={
+              composerHighlightId != null && String(m.id) === String(composerHighlightId)
+                ? `hist-msg-${m.id}`
+                : undefined
+            }
             ref={(el) => {
               if (el) messageNodeRef.current.set(m.id, el)
               else messageNodeRef.current.delete(m.id)
@@ -461,7 +737,46 @@ export default function Chat({
                     minute: '2-digit',
                   })}
                 </time>
+                {m.edited_at && <span className="edited-badge">(edited)</span>}
               </div>
+              {(m.reply_preview_username || m.reply_preview_content) && (
+                <div className="message-reply-preview">
+                  <span className="message-reply-preview-label">
+                    Replying to {m.reply_preview_username || 'message'}
+                  </span>
+                  {m.reply_preview_content && m.reply_preview_content !== '(imagen)' && (
+                    <span className="message-reply-preview-snippet">
+                      {String(m.reply_preview_content).slice(0, 100)}
+                    </span>
+                  )}
+                </div>
+              )}
+              {editingMessageId === m.id ? (
+                <div className="message-edit-block">
+                  <textarea
+                    className="composer-input message-edit-textarea"
+                    value={editingDraft}
+                    onChange={(e) => setEditingDraft(e.target.value)}
+                    rows={3}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        saveEdit()
+                      }
+                      if (e.key === 'Escape') cancelEdit()
+                    }}
+                  />
+                  <div className="message-edit-actions">
+                    <button type="button" className="btn primary small" onClick={saveEdit}>
+                      Save
+                    </button>
+                    <button type="button" className="btn ghost small" onClick={cancelEdit}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
               {m.content && m.content !== '(imagen)' && (
                 <p className="message-body">
                   <RichMessageText text={m.content} emojis={emojiMap} />
@@ -476,8 +791,14 @@ export default function Chat({
                   />
                 </a>
               )}
-              <div className="reaction-row" ref={reactionPickerId === m.id ? reactionPickerWrapRef : undefined}>
-                {(m.reactions || []).map((r) => (
+                </>
+              )}
+              <div
+                className="reaction-row"
+                ref={reactionPickerId === m.id ? reactionPickerWrapRef : undefined}
+              >
+                {!m._optimistic && editingMessageId !== m.id &&
+                (m.reactions || []).map((r) => (
                   <button
                     key={`${m.id}-${r.key}`}
                     type="button"
@@ -487,7 +808,7 @@ export default function Chat({
                     <EmojiText text={r.key} emojis={emojiMap} /> <span>{r.count}</span>
                   </button>
                 ))}
-                {reactionPickerId === m.id && (
+                {!m._optimistic && editingMessageId !== m.id && reactionPickerId === m.id && (
                   <div className="reaction-picker-inline">
                     {['👍', '❤️', '🔥', '😂'].map((k) => (
                       <button key={k} type="button" className="reaction-chip" onClick={() => toggleReaction(m.id, k, true)}>
@@ -520,24 +841,62 @@ export default function Chat({
                 >
                   🗑️
                 </button>
-                <button
-                  type="button"
-                  className={`message-action-icon${m.is_pinned ? ' message-action-icon--on' : ''}`}
-                  title={m.is_pinned ? 'Unpin' : 'Pin'}
-                  aria-label={m.is_pinned ? 'Unpin message' : 'Pin message'}
-                  onClick={() => pinMessage(m.id, !m.is_pinned)}
-                >
-                  📌
-                </button>
-                <button
-                  type="button"
-                  className="message-action-icon"
-                  title="React"
-                  aria-label="Add reaction"
-                  onClick={() => setReactionPickerId((prev) => (prev === m.id ? null : m.id))}
-                >
-                  ➕
-                </button>
+                {!m._optimistic && editingMessageId !== m.id && (
+                  <button
+                    type="button"
+                    className="message-action-icon"
+                    title="Reply"
+                    aria-label="Reply to message"
+                    onClick={() => startReply(m)}
+                  >
+                    ↩
+                  </button>
+                )}
+                {!m._optimistic && (
+                  <>
+                    <button
+                      type="button"
+                      className={`message-action-icon${m.is_pinned ? ' message-action-icon--on' : ''}`}
+                      title={m.is_pinned ? 'Unpin' : 'Pin'}
+                      aria-label={m.is_pinned ? 'Unpin message' : 'Pin message'}
+                      onClick={() => pinMessage(m.id, !m.is_pinned)}
+                    >
+                      📌
+                    </button>
+                    <button
+                      type="button"
+                      className="message-action-icon"
+                      title="React"
+                      aria-label="Add reaction"
+                      onClick={() => setReactionPickerId((prev) => (prev === m.id ? null : m.id))}
+                    >
+                      ➕
+                    </button>
+                    <button
+                      type="button"
+                      className="message-action-icon"
+                      title="Report"
+                      aria-label="Report message"
+                      onClick={() => reportMessage(m.id)}
+                    >
+                      🚩
+                    </button>
+                    {user?.id != null && Number(m.user_id) === Number(user.id) && m.content && m.content !== '(imagen)' && (
+                      <button
+                        type="button"
+                        className="message-action-icon"
+                        title="Edit"
+                        aria-label="Edit message"
+                        onClick={() => {
+                          setEditingMessageId(m.id)
+                          setEditingDraft(m.content || '')
+                        }}
+                      >
+                        ✎
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </article>
@@ -561,6 +920,19 @@ export default function Chat({
       )}
 
       <footer className="composer">
+        {replyTo && (
+          <div className="reply-context-bar">
+            <div className="reply-context-text">
+              <span className="reply-context-label">Replying to {replyTo.username}</span>
+              {replyTo.snippet ? (
+                <p className="reply-context-snippet">{replyTo.snippet}</p>
+              ) : null}
+            </div>
+            <button type="button" className="btn ghost small" onClick={() => setReplyTo(null)} aria-label="Cancel reply">
+              ✕
+            </button>
+          </div>
+        )}
         <label className="file-btn">
           <input
             id="chat-composer-attachment"
@@ -619,11 +991,26 @@ export default function Chat({
           value={text}
           onChange={handleComposerChange}
           onKeyDown={(e) => {
+            if (composerHistoryMatches.length > 1 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+              e.preventDefault()
+              const len = composerHistoryMatches.length
+              if (e.key === 'ArrowDown') {
+                setComposerHistoryIndex((i) => (i + 1) % len)
+              } else {
+                setComposerHistoryIndex((i) => (i - 1 + len) % len)
+              }
+              return
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               send()
             }
           }}
+          aria-autocomplete="list"
+          aria-controls="chat-composer-history-hint"
+          aria-activedescendant={
+            composerHighlightId != null ? `hist-msg-${composerHighlightId}` : undefined
+          }
         />
         <button
           type="button"
@@ -633,6 +1020,27 @@ export default function Chat({
         >
           {isForum ? 'Post' : 'Send'}
         </button>
+        {!isVoice && text.trim().length > 0 && composerHistoryMatches.length > 0 && (
+          <div
+            id="chat-composer-history-hint"
+            className="composer-history-hint"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="composer-history-hint-label">History match</span>
+            <span className="composer-history-hint-meta">
+              {composerHistorySafeIndex + 1} / {composerHistoryMatches.length}
+            </span>
+            <span className="composer-history-hint-snippet">
+              {composerHistoryMatches[composerHistorySafeIndex]?.username}:{' '}
+              {String(composerHistoryMatches[composerHistorySafeIndex]?.content || '').slice(0, 120)}
+              {String(composerHistoryMatches[composerHistorySafeIndex]?.content || '').length > 120 ? '…' : ''}
+            </span>
+            {composerHistoryMatches.length > 1 ? (
+              <span className="composer-history-hint-keys muted small">↑ ↓</span>
+            ) : null}
+          </div>
+        )}
       </footer>
     </main>
   )

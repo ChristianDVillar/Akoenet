@@ -32,6 +32,10 @@ function poolOptions() {
         : { rejectUnauthorized: true };
   }
 
+  const max = Number(process.env.DATABASE_POOL_MAX || 20);
+  if (Number.isFinite(max) && max > 0) {
+    opts.max = max;
+  }
   return opts;
 }
 

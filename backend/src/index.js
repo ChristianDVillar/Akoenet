@@ -6,6 +6,12 @@ const { createAdapter } = require("@socket.io/redis-adapter");
 const { createApp } = require("./app");
 const initSocket = require("./sockets/chat.socket");
 const logger = require("./lib/logger");
+const { appEvents } = require("./lib/app-events");
+const { recordChannelMessage } = require("./lib/runtime-metrics");
+
+appEvents.on("message.created", () => {
+  recordChannelMessage();
+});
 
 const app = createApp();
 const server = http.createServer(app);

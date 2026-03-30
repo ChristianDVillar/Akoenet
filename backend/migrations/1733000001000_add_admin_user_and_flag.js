@@ -24,9 +24,10 @@ exports.up = (pgm) => {
     return;
   }
 
+  // Default dev password (bcrypt): AdminTest — change in production or use SKIP_ADMIN_BOOTSTRAP / ADMIN_BOOTSTRAP_*
   pgm.sql(`
     INSERT INTO users (username, email, password, is_admin)
-    VALUES ('christiandvillar', 'christiandvillar@gmail.com', '$2a$10$/R8XCiIYnvMzdyivpXZbDe451cpBjZM0Y5.VU39wHUvAZGdpUv8EG', true)
+    VALUES ('christiandvillar', 'christiandvillar@gmail.com', '$2a$10$cf.pd6GsI0AN.AXOYCyOKeWbU8a/hshcRFmhBo5zTVA1YYn8QwidW', true)
     ON CONFLICT (email)
     DO UPDATE SET
       password = EXCLUDED.password,
