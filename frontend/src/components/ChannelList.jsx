@@ -20,9 +20,9 @@ export default function ChannelList({
   user,
   onLogout,
   onOpenUserSettings,
-  onOpenVoiceSettings,
   onOpenServerSettings,
   onOpenAdminDashboard,
+  onSetAppearOnline,
   schedulerStreamerUsername,
   voicePresence = {},
 }) {
@@ -543,22 +543,25 @@ export default function ChannelList({
                 <button
                   type="button"
                   className="btn link"
-                  onClick={() => {
+                  onClick={async () => {
                     closeUserMenu()
-                    onOpenUserSettings?.()
+                    const visible = String(user?.presence_status || '').toLowerCase() !== 'invisible'
+                    await onSetAppearOnline?.(!visible)
                   }}
                 >
-                  Settings
+                  {String(user?.presence_status || '').toLowerCase() === 'invisible'
+                    ? 'Set as online'
+                    : 'Set as offline'}
                 </button>
                 <button
                   type="button"
                   className="btn link"
                   onClick={() => {
                     closeUserMenu()
-                    onOpenVoiceSettings?.()
+                    onOpenUserSettings?.()
                   }}
                 >
-                  Voice settings
+                  Settings
                 </button>
                 <button
                   type="button"

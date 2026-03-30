@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
 import VoiceRoom from './VoiceRoom'
@@ -15,12 +15,14 @@ export default function Chat({
   channelName,
   channelType = 'text',
   user,
+  members = [],
   emojis = [],
   voiceUserLimit,
   voiceConnectedCount,
   rtcVoiceChannelId,
   rtcVoiceChannelName,
   onVoiceSessionChange,
+  onOpenChannelSettings,
 }) {
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
@@ -42,6 +44,15 @@ export default function Chat({
   }, [user?.id])
 
   const emojiMap = Object.fromEntries(emojis.map((e) => [e.name, resolveImageUrl(e.image_url)]))
+  const memberAvatarByUserId = useMemo(() => {
+    const map = new Map()
+    for (const m of members || []) {
+      if (m?.id != null && m?.avatar_url) {
+        map.set(Number(m.id), m.avatar_url)
+      }
+    }
+    return map
+  }, [members])
 
   useEffect(() => {
     if (!channelId) {
@@ -330,6 +341,16 @@ export default function Chat({
           </div>
         </div>
         <div className="chat-header-actions">
+          {channelId && (
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={onOpenChannelSettings}
+              title="Channel settings"
+            >
+              ⚙
+            </button>
+          )}
           {!isVoice && (
             <div className="chat-save-row" role="group" aria-label="Download chat history">
               <button type="button" className="btn link chat-save-link" onClick={() => exportHistory('csv')}>
@@ -418,7 +439,18 @@ export default function Chat({
               else messageNodeRef.current.delete(m.id)
             }}
           >
-            <div className="avatar">{m.username?.slice(0, 1).toUpperCase()}</div>
+            {(m.avatar_url || memberAvatarByUserId.get(Number(m.user_id))) ? (
+              <img
+                className="avatar avatar-img"
+                src={resolveImageUrl(m.avatar_url || memberAvatarByUserId.get(Number(m.user_id)))}
+                alt={`${m.username || 'User'} avatar`}
+                onError={(e) => {
+                  e.currentTarget.src = '/vite.svg'
+                }}
+              />
+            ) : (
+              <div className="avatar">{m.username?.slice(0, 1).toUpperCase()}</div>
+            )}
             <div>
               <div className="message-meta">
                 <strong>{m.username}</strong>
