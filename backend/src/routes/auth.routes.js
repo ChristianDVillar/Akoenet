@@ -70,14 +70,25 @@ const twitchRedirectUri = (() => {
   return `${publicApiBase}/auth/twitch/callback`;
 })();
 
-/** Where Twitch callback sends the user after issuing the app JWT (SPA /auth/twitch/callback). */
-const frontendOAuthRedirect = (() => {
-  const override = stripTrailingSlash(process.env.FRONTEND_OAUTH_REDIRECT || "");
-  if (override && !(onHostedRender && isLocalhostUrl(override))) {
-    return override;
-  }
-  return `${frontendBase}/auth/twitch/callback`;
-})();
+/**
+ * After Twitch, redirect to SPA root with query params. Deep links like /auth/twitch/callback
+ * return 404 on many static hosts (including Render) unless a /* → /index.html rewrite is set.
+ * / always serves index.html, so this works without dashboard rules.
+ */
+function twitchOAuthSuccessUrl(appToken) {
+  const u = new URL("/", frontendBase);
+  u.searchParams.set("twitch_token", appToken);
+  return u.toString();
+}
+
+function twitchOAuthErrorUrl(code) {
+  const u = new URL("/", frontendBase);
+  u.searchParams.set("twitch_error", code);
+  return u.toString();
+}
+
+/** Base URL shown in /auth/twitch/status (OAuth returns ?twitch_token= or ?twitch_error= on /). */
+const frontendOAuthRedirect = new URL("/", frontendBase).href;
 
 function signAppToken(user) {
   return jwt.sign(
@@ -212,7 +223,7 @@ router.get("/twitch/start", authRateLimiter, (req, res) => {
     return res.status(503).json({
       error: "Twitch OAuth not configured on server",
       code: "TWITCH_OAUTH_NOT_CONFIGURED",
-      hint: "Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in the backend environment. On Render, set FRONTEND_URL to your SPA URL (or FRONTEND_OAUTH_REDIRECT). Register the backend callback URL in the Twitch Developer Console (same as TWITCH_REDIRECT_URI or {PUBLIC_API_URL|RENDER_EXTERNAL_URL}/auth/twitch/callback).",
+      hint: "Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in the backend environment. Set FRONTEND_URL to your SPA origin. Register the backend callback in Twitch (same as TWITCH_REDIRECT_URI or {PUBLIC_API_URL|RENDER_EXTERNAL_URL}/auth/twitch/callback). The app returns to /?twitch_token= on the SPA.",
       checks: {
         clientId: Boolean(twitchClientId),
         clientSecret: Boolean(twitchClientSecret),
@@ -256,12 +267,12 @@ router.get("/twitch/status", (_req, res) => {
 router.get("/twitch/callback", authRateLimiter, async (req, res) => {
   const { code, state } = req.query;
   if (!code || !state) {
-    return res.redirect(`${frontendOAuthRedirect}?error=missing_code_or_state`);
+    return res.redirect(twitchOAuthErrorUrl("missing_code_or_state"));
   }
   try {
     jwt.verify(String(state), secret);
   } catch {
-    return res.redirect(`${frontendOAuthRedirect}?error=invalid_state`);
+    return res.redirect(twitchOAuthErrorUrl("invalid_state"));
   }
 
   try {
@@ -278,12 +289,12 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
     });
 
     if (!tokenRes.ok) {
-      return res.redirect(`${frontendOAuthRedirect}?error=twitch_token_failed`);
+      return res.redirect(twitchOAuthErrorUrl("twitch_token_failed"));
     }
     const tokenData = await tokenRes.json();
     const accessToken = tokenData.access_token;
     if (!accessToken) {
-      return res.redirect(`${frontendOAuthRedirect}?error=twitch_no_access_token`);
+      return res.redirect(twitchOAuthErrorUrl("twitch_no_access_token"));
     }
 
     const meRes = await fetch("https://api.twitch.tv/helix/users", {
@@ -293,12 +304,12 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
       },
     });
     if (!meRes.ok) {
-      return res.redirect(`${frontendOAuthRedirect}?error=twitch_user_failed`);
+      return res.redirect(twitchOAuthErrorUrl("twitch_user_failed"));
     }
     const meData = await meRes.json();
     const twitchUser = meData?.data?.[0];
     if (!twitchUser?.id || !twitchUser?.login) {
-      return res.redirect(`${frontendOAuthRedirect}?error=twitch_invalid_user`);
+      return res.redirect(twitchOAuthErrorUrl("twitch_invalid_user"));
     }
 
     const email = getTwitchEmail(twitchUser.id);
@@ -337,10 +348,10 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
 
     const user = userRes.rows[0];
     const appToken = signAppToken(user);
-    return res.redirect(`${frontendOAuthRedirect}?token=${encodeURIComponent(appToken)}`);
+    return res.redirect(twitchOAuthSuccessUrl(appToken));
   } catch (e) {
     logger.error({ err: e }, "Twitch callback failed");
-    return res.redirect(`${frontendOAuthRedirect}?error=twitch_auth_failed`);
+    return res.redirect(twitchOAuthErrorUrl("twitch_auth_failed"));
   }
 });
 
