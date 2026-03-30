@@ -6,9 +6,9 @@ import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import { inviteLandingPath } from '../lib/invites'
 import ServerSidebar from '../components/ServerSidebar'
-import DirectMessagesPanel from '../components/DirectMessagesPanel'
-import VoiceSettingsModal from '../components/VoiceSettingsModal'
 import UserSettingsModal from '../components/UserSettingsModal'
+import AppChrome from '../components/AppChrome'
+import WelcomeOnboardingModal, { hasSeenOnboarding } from '../components/WelcomeOnboardingModal'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
@@ -22,12 +22,12 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [loading, setLoading] = useState(true)
-  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
   const [userSettingsOpen, setUserSettingsOpen] = useState(false)
   const [creatingServer, setCreatingServer] = useState(false)
   const [joiningById, setJoiningById] = useState(false)
   const [joiningByLinkState, setJoiningByLinkState] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [welcomeOpen, setWelcomeOpen] = useState(() => !hasSeenOnboarding())
   const closeUserMenu = useCallback(() => setUserMenuOpen(false), [])
   const userMenuRef = useDismissiblePopover(userMenuOpen, closeUserMenu)
 
@@ -176,11 +176,14 @@ export default function Dashboard() {
   }
 
   return (
+    <AppChrome>
     <div className="app-shell dashboard-shell">
       <ServerSidebar
         servers={servers}
         activeServerId={null}
         onSelectServer={(id) => navigate(`/server/${id}`)}
+        homeAction={() => navigate('/')}
+        messagesAction={() => navigate('/messages')}
       />
       <div className="main-panel home-panel">
         <header className="home-header">
@@ -218,16 +221,6 @@ export default function Dashboard() {
                 >
                   Settings
                 </button>
-                <button
-                  type="button"
-                  className="btn link"
-                  onClick={() => {
-                    closeUserMenu()
-                    setVoiceSettingsOpen(true)
-                  }}
-                >
-                  Voice settings
-                </button>
                 {user?.is_admin && (
                   <button
                     type="button"
@@ -257,6 +250,16 @@ export default function Dashboard() {
 
         {error && <div className="error-banner inline">{error}</div>}
         {actionMessage && <div className="info-banner" style={{ marginBottom: '0.85rem' }}>{actionMessage}</div>}
+
+        <section className="card scheduler-spotlight" aria-labelledby="scheduler-spotlight-title">
+          <h2 id="scheduler-spotlight-title">Organize and automate your streaming</h2>
+          <p className="muted small">
+            AkoeNet includes a <strong>Streamer Scheduler</strong> integration: in any server text channel, run{' '}
+            <code className="inline-code">!schedule</code> or <code className="inline-code">!next</code>. Set your public
+            Scheduler slug in <strong>User Settings</strong> (Streamer Scheduler username). New servers get a{' '}
+            <strong>📅 upcoming streams</strong> channel plus a welcome message with examples.
+          </p>
+        </section>
 
         <section className="home-grid">
           <div className="card">
@@ -334,10 +337,10 @@ export default function Dashboard() {
           )}
         </section>
 
-        <DirectMessagesPanel user={user} />
       </div>
-      <VoiceSettingsModal open={voiceSettingsOpen} onClose={() => setVoiceSettingsOpen(false)} user={user} />
       <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />
+      <WelcomeOnboardingModal open={welcomeOpen} onClose={() => setWelcomeOpen(false)} />
     </div>
+    </AppChrome>
   )
 }

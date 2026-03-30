@@ -7,6 +7,11 @@ import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 const baseURL = getApiBaseUrl()
 
+function isPresenceOnline(status) {
+  const s = String(status || '').toLowerCase()
+  return s === 'online' || s === 'idle' || s === 'dnd'
+}
+
 export default function DirectMessagesPanel({ user }) {
   const [conversations, setConversations] = useState([])
   const [selectedConversationId, setSelectedConversationId] = useState(null)
@@ -15,8 +20,22 @@ export default function DirectMessagesPanel({ user }) {
   const [userQuery, setUserQuery] = useState('')
   const [results, setResults] = useState([])
   const [error, setError] = useState('')
+  const [reportFeedback, setReportFeedback] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [peerTypingName, setPeerTypingName] = useState('')
+  const [replyTo, setReplyTo] = useState(null)
+  const [editingMessageId, setEditingMessageId] = useState(null)
+  const [editingDraft, setEditingDraft] = useState('')
+  const [dmSearchOpen, setDmSearchOpen] = useState(false)
+  const [dmSearchQuery, setDmSearchQuery] = useState('')
+  const [dmSearchResults, setDmSearchResults] = useState([])
+  const [dmSearchBusy, setDmSearchBusy] = useState(false)
+  const messageNodeRef = useRef(new Map())
   const bottomRef = useRef(null)
+  const [composerHistoryIndex, setComposerHistoryIndex] = useState(0)
+  const dmTypingStopTimerRef = useRef(null)
+  const lastDmTypingEmitRef = useRef(0)
+  const currentUserIdRef = useRef(null)
 
   async function loadConversations() {
     const { data } = await api.get('/dm/conversations')
@@ -27,10 +46,55 @@ export default function DirectMessagesPanel({ user }) {
   }
 
   useEffect(() => {
+    currentUserIdRef.current = user?.id != null ? Number(user.id) : null
+  }, [user?.id])
+
+  const composerHistoryMatches = useMemo(() => {
+    if (!selectedConversationId) return []
+    const prefix = text.trim()
+    if (prefix.length < 1) return []
+    const pl = prefix.toLowerCase()
+    const out = []
+    for (const m of messages) {
+      if (m._optimistic) continue
+      const c = m.content
+      if (c == null || c === '' || c === '(imagen)') continue
+      if (String(c).toLowerCase().startsWith(pl)) out.push(m)
+    }
+    out.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    return out.slice(0, 40)
+  }, [messages, text, selectedConversationId])
+
+  const composerHistorySafeIndex = Math.min(
+    composerHistoryIndex,
+    Math.max(0, composerHistoryMatches.length - 1)
+  )
+  const composerHighlightId =
+    composerHistoryMatches.length > 0 ? composerHistoryMatches[composerHistorySafeIndex]?.id : null
+
+  useEffect(() => {
+    if (composerHighlightId == null) return
+    const node = messageNodeRef.current.get(composerHighlightId)
+    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [composerHighlightId, composerHistorySafeIndex])
+
+  useEffect(() => {
     loadConversations().catch(() => setError('Could not load your direct messages'))
   }, [])
 
   useEffect(() => {
+    setPeerTypingName('')
+    setReplyTo(null)
+    setEditingMessageId(null)
+    setEditingDraft('')
+    setDmSearchOpen(false)
+    setDmSearchQuery('')
+    setDmSearchResults([])
+    setComposerHistoryIndex(0)
+  }, [selectedConversationId])
+
+  useEffect(() => {
+    setReportFeedback('')
     if (!selectedConversationId) {
       setMessages([])
       return
@@ -55,10 +119,44 @@ export default function DirectMessagesPanel({ user }) {
     socket.emit('join_direct_conversation', selectedConversationId)
     const onMessage = (msg) => {
       if (String(msg.conversation_id) !== String(selectedConversationId)) return
-      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
+      setMessages((prev) => {
+        const cleaned = prev.filter((m) => {
+          if (!m._optimistic) return true
+          if (Number(m.sender_id) !== Number(msg.sender_id)) return true
+          return String(m.content || '').trim() !== String(msg.content || '').trim()
+        })
+        if (cleaned.some((m) => m.id === msg.id)) return cleaned
+        return [...cleaned, msg]
+      })
+    }
+    const onTyping = (payload) => {
+      if (String(payload?.conversation_id) !== String(selectedConversationId)) return
+      const myId = currentUserIdRef.current
+      if (myId != null && Number(payload.user_id) === myId) return
+      if (payload.typing) {
+        setPeerTypingName(payload.username || `user_${payload.user_id}`)
+      } else {
+        setPeerTypingName('')
+      }
+    }
+    const onUpdated = (msg) => {
+      if (String(msg.conversation_id) !== String(selectedConversationId)) return
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)))
+    }
+    const onReconnect = () => {
+      api
+        .get(`/dm/conversations/${selectedConversationId}/messages`)
+        .then(({ data }) => setMessages(data))
+        .catch(() => {})
     }
     socket.on('receive_direct_message', onMessage)
+    socket.on('direct_typing', onTyping)
+    socket.on('direct_message_updated', onUpdated)
+    socket.on('reconnect', onReconnect)
     return () => {
+      socket.off('reconnect', onReconnect)
+      socket.off('direct_typing', onTyping)
+      socket.off('direct_message_updated', onUpdated)
       socket.off('receive_direct_message', onMessage)
       socket.emit('leave_direct_conversation', selectedConversationId)
     }
@@ -81,7 +179,15 @@ export default function DirectMessagesPanel({ user }) {
         return [updated, ...copy]
       })
       if (String(conversationId) === String(selectedConversationId)) {
-        setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]))
+        setMessages((prev) => {
+          const cleaned = prev.filter((m) => {
+            if (!m._optimistic) return true
+            if (Number(m.sender_id) !== Number(message.sender_id)) return true
+            return String(m.content || '').trim() !== String(message.content || '').trim()
+          })
+          if (cleaned.some((m) => m.id === message.id)) return cleaned
+          return [...cleaned, message]
+        })
       }
     }
     socket.on('direct_message_notification', onNotify)
@@ -124,10 +230,132 @@ export default function DirectMessagesPanel({ user }) {
     }
   }
 
+  function emitDmTyping(typing) {
+    const s = getSocket()
+    if (!s || !selectedConversationId) return
+    s.emit('direct_typing', { conversation_id: selectedConversationId, typing })
+  }
+
+  function onComposerChange(e) {
+    const v = e.target.value
+    setText(v)
+    setComposerHistoryIndex(0)
+    const s = getSocket()
+    if (!s || !selectedConversationId) return
+    const now = Date.now()
+    if (v.trim() && now - lastDmTypingEmitRef.current > 2000) {
+      emitDmTyping(true)
+      lastDmTypingEmitRef.current = now
+    }
+    clearTimeout(dmTypingStopTimerRef.current)
+    dmTypingStopTimerRef.current = setTimeout(() => emitDmTyping(false), 3000)
+  }
+
+  function jumpToDmMessage(messageId) {
+    const node = messageNodeRef.current.get(messageId)
+    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  async function runDmSearch(e) {
+    e?.preventDefault?.()
+    const q = dmSearchQuery.trim()
+    if (q.length < 2 || !selectedConversationId) return
+    setDmSearchBusy(true)
+    try {
+      const { data } = await api.get(`/dm/conversations/${selectedConversationId}/messages/search`, {
+        params: { q },
+      })
+      setDmSearchResults(Array.isArray(data) ? data : [])
+    } catch {
+      setDmSearchResults([])
+    } finally {
+      setDmSearchBusy(false)
+    }
+  }
+
+  function startDmReply(m) {
+    const snippet =
+      m.content && m.content !== '(imagen)'
+        ? m.content.slice(0, 120)
+        : m.image_url
+          ? 'Image'
+          : ''
+    setReplyTo({ id: m.id, username: m.username, snippet })
+  }
+
+  function cancelDmEdit() {
+    setEditingMessageId(null)
+    setEditingDraft('')
+  }
+
+  function saveDmEdit() {
+    if (!editingMessageId || !editingDraft.trim()) return
+    const s = getSocket()
+    const id = editingMessageId
+    const content = editingDraft.trim()
+    setError('')
+    if (s) {
+      s.emit('edit_direct_message', { dm_message_id: id, content }, (ack) => {
+        if (ack?.error === 'blocked_content') {
+          setError('That message contains prohibited language.')
+          return
+        }
+        if (ack?.error === 'forbidden' || ack?.error === 'not_found') {
+          setError("You can't edit that message.")
+          return
+        }
+        if (ack?.ok) cancelDmEdit()
+      })
+      return
+    }
+    api
+      .patch(`/dm/messages/${id}`, { content })
+      .then(({ data }) => {
+        setMessages((prev) => prev.map((m) => (m.id === data.id ? { ...m, ...data } : m)))
+        cancelDmEdit()
+      })
+      .catch((err) => {
+        const code = err?.response?.data?.error
+        setError(
+          code === 'blocked_content'
+            ? err?.response?.data?.message || 'That message contains prohibited language.'
+            : err?.response?.data?.error || 'Could not save edit'
+        )
+      })
+  }
+
   async function sendMessage() {
     if (!selectedConversationId || !text.trim()) return
     const content = text.trim()
+    setError('')
+    clearTimeout(dmTypingStopTimerRef.current)
+    emitDmTyping(false)
+    const rawReplyId = replyTo?.id
+    const replyToId =
+      rawReplyId != null &&
+      (typeof rawReplyId === 'number' || (typeof rawReplyId === 'string' && /^\d+$/.test(rawReplyId)))
+        ? Number(rawReplyId)
+        : null
+    const clientId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    const optimistic = {
+      id: `pending-${clientId}`,
+      _optimistic: true,
+      _clientId: clientId,
+      conversation_id: selectedConversationId,
+      sender_id: user?.id,
+      username: user?.username || 'You',
+      content,
+      created_at: new Date().toISOString(),
+      image_url: null,
+      avatar_url: user?.avatar_url || null,
+      reply_to_id: replyToId,
+      reply_preview_username: replyTo?.username || null,
+      reply_preview_content: replyTo?.snippet || null,
+    }
+    const savedDmReply = replyTo
+    setMessages((prev) => [...prev, optimistic])
     setText('')
+    setReplyTo(null)
     const socket = getSocket()
     if (socket) {
       socket.emit(
@@ -135,10 +363,32 @@ export default function DirectMessagesPanel({ user }) {
         {
           conversation_id: selectedConversationId,
           content,
+          ...(replyToId ? { reply_to_message_id: replyToId } : {}),
         },
         (ack) => {
+          setMessages((prev) => prev.filter((m) => m._clientId !== clientId))
           if (ack?.error === 'rate_limited') {
             setError('You are sending direct messages too fast')
+            setText(content)
+            setReplyTo(savedDmReply)
+            return
+          }
+          if (ack?.error === 'blocked_content') {
+            setError('That message contains prohibited language.')
+            setText(content)
+            setReplyTo(savedDmReply)
+            return
+          }
+          if (ack?.error === 'save_failed') {
+            setError('Message could not be saved. Try again.')
+            setText(content)
+            setReplyTo(savedDmReply)
+            return
+          }
+          if (ack?.ok && ack.message) {
+            setMessages((prev) =>
+              prev.some((m) => m.id === ack.message.id) ? prev : [...prev, ack.message]
+            )
           }
         }
       )
@@ -147,10 +397,23 @@ export default function DirectMessagesPanel({ user }) {
     try {
       const { data } = await api.post(`/dm/conversations/${selectedConversationId}/messages`, {
         content,
+        ...(replyToId ? { reply_to_message_id: replyToId } : {}),
       })
-      setMessages((prev) => [...prev, data])
-    } catch {
-      setError('Could not send message')
+      setMessages((prev) => {
+        const without = prev.filter((m) => m._clientId !== clientId)
+        if (without.some((m) => m.id === data.id)) return without
+        return [...without, data]
+      })
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m._clientId !== clientId))
+      setText(content)
+      setReplyTo(savedDmReply)
+      const code = err?.response?.data?.error
+      setError(
+        code === 'blocked_content'
+          ? err?.response?.data?.message || 'That message contains prohibited language.'
+          : err?.response?.data?.error || 'Could not send message'
+      )
     }
   }
 
@@ -184,6 +447,9 @@ export default function DirectMessagesPanel({ user }) {
             if (ack?.error === 'rate_limited') {
               setError('You are sending direct messages too fast')
             }
+            if (ack?.error === 'blocked_content') {
+              setError('That message contains prohibited language.')
+            }
           }
         )
       } else {
@@ -203,11 +469,29 @@ export default function DirectMessagesPanel({ user }) {
     }
   }
 
+  async function reportDmMessage(dmMessageId) {
+    if (typeof dmMessageId === 'string' && dmMessageId.startsWith('pending-')) return
+    const reason = window.prompt('Why are you reporting this message? (required)')
+    if (!reason || !reason.trim()) return
+    setReportFeedback('')
+    try {
+      await api.post(`/dm/messages/${dmMessageId}/report`, { reason: reason.trim() })
+      setReportFeedback('Report sent. Moderators will review it.')
+    } catch (err) {
+      const msg =
+        err?.response?.status === 429
+          ? 'You are reporting too fast. Try again later.'
+          : err?.response?.data?.error || 'Could not send report'
+      setReportFeedback(msg)
+    }
+  }
+
   return (
     <section className="card dm-panel">
       <h2>Direct messages</h2>
       <p className="muted small">Search users, open a conversation, and chat in real time.</p>
       {error && <div className="error-banner inline">{error}</div>}
+      {reportFeedback && <div className="error-banner inline">{reportFeedback}</div>}
       <form onSubmit={searchUsers} className="form-inline">
         <input
           id="dm-search-user"
@@ -232,6 +516,7 @@ export default function DirectMessagesPanel({ user }) {
             >
               <span className="server-initial">{u.username.slice(0, 2).toUpperCase()}</span>
               <span className="server-name">{u.username}</span>
+              <span className={`dm-presence-dot ${isPresenceOnline(u?.presence_status) ? 'online' : 'offline'}`} />
             </button>
           ))}
         </div>
@@ -254,6 +539,12 @@ export default function DirectMessagesPanel({ user }) {
               >
                 <span className="server-initial">{c.peer_username.slice(0, 2).toUpperCase()}</span>
                 <span className="server-name">{c.peer_username}</span>
+                <span
+                  className={`dm-presence-dot ${
+                    isPresenceOnline(c?.peer_presence_status) ? 'online' : 'offline'
+                  }`}
+                  title={isPresenceOnline(c?.peer_presence_status) ? 'Online' : 'Offline'}
+                />
               </button>
             ))
           )}
@@ -261,22 +552,216 @@ export default function DirectMessagesPanel({ user }) {
 
         <div className="dm-chat">
           <div className="dm-chat-header">
-            {selectedConversation ? `Chat with ${selectedConversation.peer_username}` : 'Select a chat'}
+            {selectedConversation ? (
+              <>
+                <div className="dm-chat-header-row">
+                  <span>{`Chat with ${selectedConversation.peer_username}`}</span>
+                  <div className="dm-chat-header-actions">
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      title="Search in this chat"
+                      onClick={() => setDmSearchOpen((o) => !o)}
+                      aria-expanded={dmSearchOpen}
+                    >
+                      🔎
+                    </button>
+                    <span
+                      className={`dm-chat-header-status ${
+                        isPresenceOnline(selectedConversation?.peer_presence_status) ? 'online' : 'offline'
+                      }`}
+                    >
+                      {isPresenceOnline(selectedConversation?.peer_presence_status) ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                </div>
+                {peerTypingName ? (
+                  <p className="dm-typing-hint muted small" role="status">
+                    {peerTypingName} is writing…
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              'Select a chat'
+            )}
           </div>
+          {dmSearchOpen && selectedConversationId && (
+            <section className="chat-search-panel dm-inline-search" aria-label="Search in conversation">
+              <form className="chat-search-form" onSubmit={runDmSearch}>
+                <input
+                  className="composer-input chat-search-input"
+                  value={dmSearchQuery}
+                  onChange={(e) => setDmSearchQuery(e.target.value)}
+                  placeholder="Search in this chat (2+ characters)"
+                  aria-label="Search direct messages"
+                />
+                <button
+                  type="submit"
+                  className="btn secondary small"
+                  disabled={dmSearchBusy || dmSearchQuery.trim().length < 2}
+                >
+                  {dmSearchBusy ? '…' : 'Search'}
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost small"
+                  onClick={() => {
+                    setDmSearchOpen(false)
+                    setDmSearchResults([])
+                  }}
+                >
+                  Close
+                </button>
+              </form>
+              {dmSearchResults.length > 0 && (
+                <ul className="chat-search-results">
+                  {dmSearchResults.map((sm) => (
+                    <li key={sm.id}>
+                      <button
+                        type="button"
+                        className="chat-search-hit"
+                        onClick={() => {
+                          jumpToDmMessage(sm.id)
+                          setDmSearchOpen(false)
+                        }}
+                      >
+                        <span className="chat-search-hit-user">{sm.username}</span>
+                        <span className="chat-search-hit-text">
+                          {sm.content && sm.content !== '(imagen)'
+                            ? sm.content.slice(0, 120)
+                            : sm.image_url
+                              ? 'Image'
+                              : ''}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
           <div className="message-list">
             {messages.map((m) => (
-              <article key={m.id} className="message-row">
-                <div className="avatar">{m.username?.slice(0, 1).toUpperCase()}</div>
+              <article
+                key={m.id}
+                className={`message-row${m._optimistic ? ' message-row--optimistic' : ''}${
+                  composerHighlightId != null && String(m.id) === String(composerHighlightId)
+                    ? ' message-row--composer-history-match'
+                    : ''
+                }`}
+                id={
+                  composerHighlightId != null && String(m.id) === String(composerHighlightId)
+                    ? `dm-hist-msg-${m.id}`
+                    : undefined
+                }
+                ref={(el) => {
+                  if (el) messageNodeRef.current.set(m.id, el)
+                  else messageNodeRef.current.delete(m.id)
+                }}
+              >
+                {m.avatar_url || (m._optimistic && user?.avatar_url) ? (
+                  <img
+                    className="avatar avatar-img"
+                    src={resolveImageUrl(m.avatar_url || user?.avatar_url)}
+                    alt=""
+                  />
+                ) : (
+                  <div className="avatar">{m.username?.slice(0, 1).toUpperCase()}</div>
+                )}
                 <div>
-                  <div className="message-meta">
-                    <strong>{m.username}</strong>
-                    <time>
-                      {new Date(m.created_at).toLocaleString(undefined, {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </time>
+                  <div className="dm-message-meta-row">
+                    <div className="message-meta">
+                      <strong>{m.username}</strong>
+                      <time>
+                        {new Date(m.created_at).toLocaleString(undefined, {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </time>
+                      {m.edited_at && <span className="edited-badge">(edited)</span>}
+                    </div>
+                    <div className="message-actions dm-message-actions" aria-label="Message actions">
+                      {!m._optimistic && editingMessageId !== m.id && (
+                        <button
+                          type="button"
+                          className="message-action-icon"
+                          title="Reply"
+                          aria-label="Reply to message"
+                          onClick={() => startDmReply(m)}
+                        >
+                          ↩
+                        </button>
+                      )}
+                      {user?.id != null && Number(m.sender_id) !== Number(user.id) && !m._optimistic && (
+                        <button
+                          type="button"
+                          className="message-action-icon"
+                          title="Report"
+                          aria-label="Report message"
+                          onClick={() => reportDmMessage(m.id)}
+                        >
+                          🚩
+                        </button>
+                      )}
+                      {user?.id != null &&
+                        Number(m.sender_id) === Number(user.id) &&
+                        !m._optimistic &&
+                        m.content &&
+                        m.content !== '(imagen)' &&
+                        editingMessageId !== m.id && (
+                          <button
+                            type="button"
+                            className="message-action-icon"
+                            title="Edit"
+                            aria-label="Edit message"
+                            onClick={() => {
+                              setEditingMessageId(m.id)
+                              setEditingDraft(m.content || '')
+                            }}
+                          >
+                            ✎
+                          </button>
+                        )}
+                    </div>
                   </div>
+                  {(m.reply_preview_username || m.reply_preview_content) && (
+                    <div className="message-reply-preview">
+                      <span className="message-reply-preview-label">
+                        Replying to {m.reply_preview_username || 'message'}
+                      </span>
+                      {m.reply_preview_content && m.reply_preview_content !== '(imagen)' && (
+                        <span className="message-reply-preview-snippet">
+                          {String(m.reply_preview_content).slice(0, 100)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {editingMessageId === m.id ? (
+                    <div className="message-edit-block">
+                      <textarea
+                        className="composer-input message-edit-textarea"
+                        value={editingDraft}
+                        onChange={(e) => setEditingDraft(e.target.value)}
+                        rows={3}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            saveDmEdit()
+                          }
+                          if (e.key === 'Escape') cancelDmEdit()
+                        }}
+                      />
+                      <div className="message-edit-actions">
+                        <button type="button" className="btn primary small" onClick={saveDmEdit}>
+                          Save
+                        </button>
+                        <button type="button" className="btn ghost small" onClick={cancelDmEdit}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {m.content && m.content !== '(imagen)' && (
                     <p className="message-body">{m.content}</p>
                   )}
@@ -289,12 +774,30 @@ export default function DirectMessagesPanel({ user }) {
                       />
                     </a>
                   )}
+                    </>
+                  )}
                 </div>
               </article>
             ))}
             <div ref={bottomRef} />
           </div>
           <footer className="composer">
+            {replyTo && (
+              <div className="reply-context-bar">
+                <div className="reply-context-text">
+                  <span className="reply-context-label">Replying to {replyTo.username}</span>
+                  {replyTo.snippet ? <p className="reply-context-snippet">{replyTo.snippet}</p> : null}
+                </div>
+                <button
+                  type="button"
+                  className="btn ghost small"
+                  onClick={() => setReplyTo(null)}
+                  aria-label="Cancel reply"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <label className="file-btn">
               <input
                 id="dm-composer-attachment"
@@ -315,14 +818,28 @@ export default function DirectMessagesPanel({ user }) {
                 selectedConversation ? `Direct message to ${selectedConversation.peer_username}` : 'Select a chat'
               }
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={onComposerChange}
               onKeyDown={(e) => {
+                if (composerHistoryMatches.length > 1 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                  e.preventDefault()
+                  const len = composerHistoryMatches.length
+                  if (e.key === 'ArrowDown') {
+                    setComposerHistoryIndex((i) => (i + 1) % len)
+                  } else {
+                    setComposerHistoryIndex((i) => (i - 1 + len) % len)
+                  }
+                  return
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   sendMessage()
                 }
               }}
               disabled={!selectedConversationId}
+              aria-controls="dm-composer-history-hint"
+              aria-activedescendant={
+                composerHighlightId != null ? `dm-hist-msg-${composerHighlightId}` : undefined
+              }
             />
             <button
               type="button"
@@ -332,6 +849,29 @@ export default function DirectMessagesPanel({ user }) {
             >
               Send
             </button>
+            {selectedConversationId && text.trim().length > 0 && composerHistoryMatches.length > 0 && (
+              <div
+                id="dm-composer-history-hint"
+                className="composer-history-hint"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="composer-history-hint-label">History match</span>
+                <span className="composer-history-hint-meta">
+                  {composerHistorySafeIndex + 1} / {composerHistoryMatches.length}
+                </span>
+                <span className="composer-history-hint-snippet">
+                  {composerHistoryMatches[composerHistorySafeIndex]?.username}:{' '}
+                  {String(composerHistoryMatches[composerHistorySafeIndex]?.content || '').slice(0, 120)}
+                  {String(composerHistoryMatches[composerHistorySafeIndex]?.content || '').length > 120
+                    ? '…'
+                    : ''}
+                </span>
+                {composerHistoryMatches.length > 1 ? (
+                  <span className="composer-history-hint-keys muted small">↑ ↓</span>
+                ) : null}
+              </div>
+            )}
           </footer>
         </div>
       </div>

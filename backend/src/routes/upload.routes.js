@@ -6,6 +6,7 @@ const auth = require("../middleware/auth");
 const validate = require("../middleware/validate");
 const { uploadRateLimiter } = require("../middleware/rate-limit");
 const { canSendToChannel, canManageChannels } = require("../lib/membership");
+const FileType = require("file-type");
 const { saveFile } = require("../services/storage");
 const logger = require("../lib/logger");
 
@@ -31,12 +32,40 @@ const allowedMimeTypes = new Set([
   "image/gif",
 ]);
 
-function validateImageFile(file) {
+function validateImageMime(file) {
   if (!file) {
     return "file required";
   }
   if (!allowedMimeTypes.has(String(file.mimetype || "").toLowerCase())) {
     return "Unsupported file type. Allowed: jpeg, png, webp, gif";
+  }
+  return null;
+}
+
+/** Confirms declared MIME matches magic bytes (mitigates renamed executables). */
+async function validateImageFile(file) {
+  const mimeErr = validateImageMime(file);
+  if (mimeErr) {
+    return mimeErr;
+  }
+  if (!file.buffer || !file.buffer.length) {
+    return "file required";
+  }
+  try {
+    const head = file.buffer.subarray(0, Math.min(file.buffer.length, 4100));
+    const ft = await FileType.fromBuffer(head);
+    if (!ft) {
+      return "Could not verify file type";
+    }
+    if (!allowedMimeTypes.has(ft.mime)) {
+      return "File content does not match an allowed image type";
+    }
+    if (String(file.mimetype || "").toLowerCase() !== ft.mime) {
+      return "File content does not match declared type";
+    }
+  } catch (e) {
+    logger.warn({ err: e }, "file-type check failed");
+    return "Could not verify file type";
   }
   return null;
 }
@@ -47,7 +76,7 @@ router.post("/channel/:channelId", auth, uploadRateLimiter, validate({ params: c
     if (!(await canSendToChannel(req.user.id, channelId))) {
       return res.status(403).json({ error: "No access" });
     }
-    const fileError = validateImageFile(req.file);
+    const fileError = await validateImageFile(req.file);
     if (fileError) {
       return res.status(400).json({ error: fileError });
     }
@@ -78,7 +107,7 @@ router.post(
     if (!allowed.rows.length) {
       return res.status(403).json({ error: "No access" });
     }
-    const fileError = validateImageFile(req.file);
+    const fileError = await validateImageFile(req.file);
     if (fileError) {
       return res.status(400).json({ error: fileError });
     }
@@ -103,7 +132,7 @@ router.post(
       if (!(await canManageChannels(req.user.id, serverId))) {
         return res.status(403).json({ error: "No access" });
       }
-      const fileError = validateImageFile(req.file);
+      const fileError = await validateImageFile(req.file);
       if (fileError) {
         return res.status(400).json({ error: fileError });
       }

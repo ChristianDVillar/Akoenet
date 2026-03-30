@@ -18,13 +18,22 @@ const {
 const { resolveSchedulerStreamerSlug } = require("../lib/scheduler-resolve");
 const { appEvents } = require("../lib/app-events");
 const { sanitizeMediaUrl, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
+const { getJwtSecret } = require("../lib/jwt-secret");
+const { textContainsBlockedLanguage } = require("../lib/blocked-content");
+const { notifyChannelMentions } = require("../lib/mentions");
+const { recordDmMessage } = require("../lib/runtime-metrics");
 
 /** Set on first initSocket(io) — used by GET /servers/:id/voice-presence */
 let getVoicePresenceSnapshotForServerImpl = null;
+/** Set on first initSocket(io) — used by routes to compute effective online status */
+let getConnectedUserIdsForServerImpl = null;
+/** Set on first initSocket(io) — used by routes to compute effective online status globally */
+let getConnectedUserIdsGlobalImpl = null;
 
 function initSocket(io) {
-  const secret = process.env.JWT_SECRET || "dev-secret-change-me";
+  const secret = getJwtSecret();
   const voiceRooms = new Map();
+  const directTypingLastEmit = new Map();
   const messageWindowMs = 60 * 1000;
   const messageLimitPerWindow = Number(process.env.SOCKET_MESSAGE_RATE_LIMIT_MAX || 40);
   const directMessageLimitPerWindow = Number(process.env.SOCKET_DM_RATE_LIMIT_MAX || 30);
@@ -33,6 +42,8 @@ function initSocket(io) {
   const typingLastEmit = new Map();
   /** serverId -> Map<userId, socketCount> */
   const serverPresence = new Map();
+  /** userId -> socketCount (all app sessions, any screen) */
+  const globalPresence = new Map();
 
   function getServerPresenceMap(serverId) {
     if (!serverPresence.has(serverId)) {
@@ -54,6 +65,22 @@ function initSocket(io) {
       serverId,
       connectedUserIds: buildConnectedUserIds(serverId),
     });
+  }
+
+  function buildConnectedUserIdsGlobal() {
+    return [...globalPresence.entries()]
+      .filter(([, count]) => Number(count) > 0)
+      .map(([uid]) => Number(uid));
+  }
+
+  function addUserToGlobalPresence(userId) {
+    globalPresence.set(userId, (globalPresence.get(userId) || 0) + 1);
+  }
+
+  function removeUserFromGlobalPresence(userId) {
+    const next = (globalPresence.get(userId) || 0) - 1;
+    if (next <= 0) globalPresence.delete(userId);
+    else globalPresence.set(userId, next);
   }
 
   function addUserToServerPresence(serverId, userId) {
@@ -153,6 +180,8 @@ function initSocket(io) {
   }
 
   getVoicePresenceSnapshotForServerImpl = buildVoiceSnapshotForServer;
+  getConnectedUserIdsForServerImpl = (serverId) => buildConnectedUserIds(serverId);
+  getConnectedUserIdsGlobalImpl = () => buildConnectedUserIdsGlobal();
 
   function removeFromVoiceRooms(socketId) {
     const affected = [];
@@ -180,8 +209,14 @@ function initSocket(io) {
       if (!Number.isInteger(userId) || userId <= 0) {
         return next(new Error("unauthorized"));
       }
-      socket.userId = userId;
-      next();
+      pool
+        .query("SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL", [userId])
+        .then((r) => {
+          if (!r.rows.length) return next(new Error("unauthorized"));
+          socket.userId = userId;
+          next();
+        })
+        .catch(() => next(new Error("unauthorized")));
     } catch {
       next(new Error("unauthorized"));
     }
@@ -190,6 +225,7 @@ function initSocket(io) {
   io.on("connection", (socket) => {
     socket.data.joinedServers = new Set();
     socket.join(`user:${socket.userId}`);
+    addUserToGlobalPresence(socket.userId);
 
     socket.on("join_server", async (serverId) => {
       const id = parseInt(serverId, 10);
@@ -298,6 +334,11 @@ function initSocket(io) {
         if (typeof ack === "function") ack({ error: "empty" });
         return;
       }
+      const userText = content.trim();
+      if (userText && textContainsBlockedLanguage(userText, { source: "socket_channel_message", userId: socket.userId })) {
+        if (typeof ack === "function") ack({ error: "blocked_content" });
+        return;
+      }
       const perms = await getChannelPermissionsForUser(socket.userId, channelId);
       if (!perms.allowed) {
         if (typeof ack === "function") ack({ error: "forbidden" });
@@ -330,6 +371,15 @@ function initSocket(io) {
             reactions: [],
           };
           io.to(`channel:${channelId}`).emit("receive_message", userMessage);
+          if (content.trim()) {
+            notifyChannelMentions(io, pool, {
+              serverId,
+              channelId,
+              messageId: userMessage.id,
+              senderId: socket.userId,
+              content: content.trim(),
+            }).catch(() => {});
+          }
           const snippet = content.trim().slice(0, 80);
           io.to(`server:${serverId}`).emit("echonet_notification", {
             serverId,
@@ -391,16 +441,46 @@ function initSocket(io) {
           return;
         }
 
+        const replyToRaw = parseInt(payload?.reply_to_message_id, 10);
+        let replyToId = null;
+        if (!Number.isNaN(replyToRaw) && replyToRaw > 0) {
+          const replyCheck = await pool.query(
+            `SELECT id, channel_id FROM messages WHERE id = $1`,
+            [replyToRaw]
+          );
+          if (
+            replyCheck.rows.length &&
+            Number(replyCheck.rows[0].channel_id) === channelId
+          ) {
+            replyToId = replyToRaw;
+          }
+        }
+
         const result = await pool.query(
-          `INSERT INTO messages (channel_id, user_id, content, image_url)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO messages (channel_id, user_id, content, image_url, reply_to_id)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING *`,
-          [channelId, socket.userId, content.trim() || "(imagen)", imageUrl]
+          [channelId, socket.userId, content.trim() || "(imagen)", imageUrl, replyToId]
         );
         const row = result.rows[0];
         const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [
           socket.userId,
         ]);
+        let replyPreviewContent = null;
+        let replyPreviewUsername = null;
+        if (row.reply_to_id) {
+          const rp = await pool.query(
+            `SELECT m.content, u.username
+             FROM messages m
+             JOIN users u ON u.id = m.user_id
+             WHERE m.id = $1`,
+            [row.reply_to_id]
+          );
+          if (rp.rows.length) {
+            replyPreviewContent = rp.rows[0].content;
+            replyPreviewUsername = rp.rows[0].username;
+          }
+        }
         const message = {
           ...sanitizeImageUrlField({
             ...row,
@@ -408,9 +488,21 @@ function initSocket(io) {
             avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
           }),
           reactions: [],
+          reply_preview_content: replyPreviewContent,
+          reply_preview_username: replyPreviewUsername,
         };
 
         io.to(`channel:${channelId}`).emit("receive_message", message);
+
+        if (content.trim()) {
+          notifyChannelMentions(io, pool, {
+            serverId,
+            channelId,
+            messageId: message.id,
+            senderId: socket.userId,
+            content: content.trim(),
+          }).catch(() => {});
+        }
 
         const snippet =
           content.trim().slice(0, 80) || (imageUrl ? "Imagen" : "");
@@ -434,6 +526,84 @@ function initSocket(io) {
         console.error(e);
         if (typeof ack === "function") ack({ error: "save_failed" });
       }
+    });
+
+    socket.on("edit_message", async (payload, ack) => {
+      const messageId = parseInt(payload?.message_id, 10);
+      const content = typeof payload?.content === "string" ? payload.content.trim() : "";
+      if (Number.isNaN(messageId) || !content) {
+        if (typeof ack === "function") ack({ error: "invalid" });
+        return;
+      }
+      if (textContainsBlockedLanguage(content, { source: "socket_edit_message", userId: socket.userId })) {
+        if (typeof ack === "function") ack({ error: "blocked_content" });
+        return;
+      }
+      try {
+        const row = await pool.query(
+          `SELECT id, user_id, channel_id
+           FROM messages
+           WHERE id = $1`,
+          [messageId]
+        );
+        if (!row.rows.length) {
+          if (typeof ack === "function") ack({ error: "not_found" });
+          return;
+        }
+        const msg = row.rows[0];
+        if (Number(msg.user_id) !== Number(socket.userId)) {
+          if (typeof ack === "function") ack({ error: "forbidden" });
+          return;
+        }
+        if (!(await canReadChannel(socket.userId, msg.channel_id))) {
+          if (typeof ack === "function") ack({ error: "forbidden" });
+          return;
+        }
+        const updated = await pool.query(
+          `UPDATE messages
+           SET content = $2, edited_at = NOW()
+           WHERE id = $1
+           RETURNING *`,
+          [messageId, content]
+        );
+        const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
+        const out = sanitizeImageUrlField({
+          ...updated.rows[0],
+          username: u.rows[0]?.username,
+          avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+        });
+        io.to(`channel:${msg.channel_id}`).emit("message_updated", out);
+        if (typeof ack === "function") ack({ ok: true, message: out });
+      } catch (e) {
+        console.error(e);
+        if (typeof ack === "function") ack({ error: "save_failed" });
+      }
+    });
+
+    socket.on("direct_typing", async (payload) => {
+      const conversationId = parseInt(payload?.conversation_id, 10);
+      if (Number.isNaN(conversationId)) return;
+      const allowed = await pool.query(
+        `SELECT 1 FROM direct_conversations
+         WHERE id = $1 AND (user_low_id = $2 OR user_high_id = $2)`,
+        [conversationId, socket.userId]
+      );
+      if (!allowed.rows.length) return;
+      const typing = payload?.typing !== false;
+      if (typing) {
+        const key = `${socket.userId}:${conversationId}`;
+        const now = Date.now();
+        const last = directTypingLastEmit.get(key) || 0;
+        if (now - last < 2000) return;
+        directTypingLastEmit.set(key, now);
+      }
+      const u = await pool.query("SELECT username FROM users WHERE id = $1", [socket.userId]);
+      socket.to(`dm:${conversationId}`).emit("direct_typing", {
+        conversation_id: conversationId,
+        user_id: socket.userId,
+        username: u.rows[0]?.username || `user_${socket.userId}`,
+        typing,
+      });
     });
 
     socket.on("delete_message", async (payload, ack) => {
@@ -623,19 +793,56 @@ function initSocket(io) {
         if (typeof ack === "function") ack({ error: "forbidden" });
         return;
       }
+      if (content && textContainsBlockedLanguage(content, { source: "socket_dm_message", userId: socket.userId })) {
+        if (typeof ack === "function") ack({ error: "blocked_content" });
+        return;
+      }
       try {
+        const replyToRaw = parseInt(payload?.reply_to_message_id, 10);
+        let replyToId = null;
+        if (!Number.isNaN(replyToRaw) && replyToRaw > 0) {
+          const replyCheck = await pool.query(
+            `SELECT id, conversation_id FROM direct_messages WHERE id = $1`,
+            [replyToRaw]
+          );
+          if (
+            replyCheck.rows.length &&
+            Number(replyCheck.rows[0].conversation_id) === conversationId
+          ) {
+            replyToId = replyToRaw;
+          }
+        }
+
         const result = await pool.query(
-          `INSERT INTO direct_messages (conversation_id, sender_id, content, image_url)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO direct_messages (conversation_id, sender_id, content, image_url, reply_to_id)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING *`,
-          [conversationId, socket.userId, content || "(imagen)", imageUrl]
+          [conversationId, socket.userId, content || "(imagen)", imageUrl, replyToId]
         );
         const row = result.rows[0];
-        const u = await pool.query("SELECT username FROM users WHERE id = $1", [socket.userId]);
-        const message = {
+        const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
+        let replyPreviewContent = null;
+        let replyPreviewUsername = null;
+        if (row.reply_to_id) {
+          const rp = await pool.query(
+            `SELECT dm.content, usr.username
+             FROM direct_messages dm
+             JOIN users usr ON usr.id = dm.sender_id
+             WHERE dm.id = $1`,
+            [row.reply_to_id]
+          );
+          if (rp.rows.length) {
+            replyPreviewContent = rp.rows[0].content;
+            replyPreviewUsername = rp.rows[0].username;
+          }
+        }
+        const message = sanitizeImageUrlField({
           ...row,
           username: u.rows[0]?.username || `user_${socket.userId}`,
-        };
+          avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+          reply_preview_content: replyPreviewContent,
+          reply_preview_username: replyPreviewUsername,
+        });
         io.to(`dm:${conversationId}`).emit("receive_direct_message", message);
         io.to(`user:${conv.rows[0].user_low_id}`).emit("direct_message_notification", {
           conversationId,
@@ -646,6 +853,63 @@ function initSocket(io) {
           message,
         });
         if (typeof ack === "function") ack({ ok: true, message });
+      } catch (e) {
+        console.error(e);
+        if (typeof ack === "function") ack({ error: "save_failed" });
+      }
+    });
+
+    socket.on("edit_direct_message", async (payload, ack) => {
+      const dmMessageId = parseInt(payload?.dm_message_id, 10);
+      const content = typeof payload?.content === "string" ? payload.content.trim() : "";
+      if (Number.isNaN(dmMessageId) || !content) {
+        if (typeof ack === "function") ack({ error: "invalid" });
+        return;
+      }
+      if (textContainsBlockedLanguage(content, { source: "socket_edit_dm", userId: socket.userId })) {
+        if (typeof ack === "function") ack({ error: "blocked_content" });
+        return;
+      }
+      try {
+        const row = await pool.query(
+          `SELECT id, sender_id, conversation_id
+           FROM direct_messages
+           WHERE id = $1`,
+          [dmMessageId]
+        );
+        if (!row.rows.length) {
+          if (typeof ack === "function") ack({ error: "not_found" });
+          return;
+        }
+        const msg = row.rows[0];
+        if (Number(msg.sender_id) !== Number(socket.userId)) {
+          if (typeof ack === "function") ack({ error: "forbidden" });
+          return;
+        }
+        const allowed = await pool.query(
+          `SELECT 1 FROM direct_conversations
+           WHERE id = $1 AND (user_low_id = $2 OR user_high_id = $2)`,
+          [msg.conversation_id, socket.userId]
+        );
+        if (!allowed.rows.length) {
+          if (typeof ack === "function") ack({ error: "forbidden" });
+          return;
+        }
+        const updated = await pool.query(
+          `UPDATE direct_messages
+           SET content = $2, edited_at = NOW()
+           WHERE id = $1
+           RETURNING *`,
+          [dmMessageId, content]
+        );
+        const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
+        const out = sanitizeImageUrlField({
+          ...updated.rows[0],
+          username: u.rows[0]?.username,
+          avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+        });
+        io.to(`dm:${msg.conversation_id}`).emit("direct_message_updated", out);
+        if (typeof ack === "function") ack({ ok: true, message: out });
       } catch (e) {
         console.error(e);
         if (typeof ack === "function") ack({ error: "save_failed" });
@@ -717,6 +981,7 @@ function initSocket(io) {
 
     socket.on("disconnect", () => {
       removeFromVoiceRooms(socket.id);
+      removeUserFromGlobalPresence(socket.userId);
       if (socket.data.joinedServers && socket.data.joinedServers.size > 0) {
         for (const sid of socket.data.joinedServers) {
           removeUserFromServerPresence(sid, socket.userId);
@@ -733,4 +998,16 @@ module.exports.getVoicePresenceSnapshotForServer = async function getVoicePresen
   const sid = parseInt(serverId, 10);
   if (Number.isNaN(sid)) return {};
   return getVoicePresenceSnapshotForServerImpl(sid);
+};
+
+module.exports.getConnectedUserIdsForServer = function getConnectedUserIdsForServer(serverId) {
+  if (!getConnectedUserIdsForServerImpl) return [];
+  const sid = parseInt(serverId, 10);
+  if (Number.isNaN(sid)) return [];
+  return getConnectedUserIdsForServerImpl(sid);
+};
+
+module.exports.getConnectedUserIdsGlobal = function getConnectedUserIdsGlobal() {
+  if (!getConnectedUserIdsGlobalImpl) return [];
+  return getConnectedUserIdsGlobalImpl();
 };

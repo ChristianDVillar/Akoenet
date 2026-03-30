@@ -6,7 +6,10 @@ const auth = require("../middleware/auth");
 const validate = require("../middleware/validate");
 const logger = require("../lib/logger");
 const { canManageChannels, isServerMember } = require("../lib/membership");
-const { getVoicePresenceSnapshotForServer } = require("../sockets/chat.socket");
+const {
+  getVoicePresenceSnapshotForServer,
+  getConnectedUserIdsGlobal,
+} = require("../sockets/chat.socket");
 
 const { sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 
@@ -124,15 +127,32 @@ router.post("/", validate({ body: createServerSchema }), async (req, res) => {
       `INSERT INTO channel_categories (server_id, name, position) VALUES ($1, 'General', 0) RETURNING id`,
       [server.id]
     );
+    const categoryId = defaultCategory.rows[0].id;
 
-    await client.query(
-      `INSERT INTO channels (name, server_id, type, category_id, position) VALUES ('general', $1, 'text', $2, 0)`,
-      [server.id, defaultCategory.rows[0].id]
+    const generalCh = await client.query(
+      `INSERT INTO channels (name, server_id, type, category_id, position) VALUES ('general', $1, 'text', $2, 0) RETURNING id`,
+      [server.id, categoryId]
     );
 
     await client.query(
       `INSERT INTO channels (name, server_id, type, category_id, position) VALUES ('Voice Chat', $1, 'voice', $2, 1)`,
-      [server.id, defaultCategory.rows[0].id]
+      [server.id, categoryId]
+    );
+
+    await client.query(
+      `INSERT INTO channels (name, server_id, type, category_id, position) VALUES ('📅 upcoming streams', $1, 'text', $2, 2)`,
+      [server.id, categoryId]
+    );
+
+    const welcomeContent = [
+      `Welcome to **${name.trim()}** — your space for voice and text.`,
+      ``,
+      `**Streamer Scheduler:** in any text channel, type \`!schedule\` or \`!next\` to see upcoming streams (set your slug in **User Settings** → Streamer Scheduler username).`,
+      `Use **📅 upcoming streams** for schedule-related notes.`,
+    ].join("\n");
+    await client.query(
+      `INSERT INTO messages (channel_id, user_id, content, image_url) VALUES ($1, $2, $3, NULL)`,
+      [generalCh.rows[0].id, req.user.id, welcomeContent]
     );
 
     await client.query("COMMIT");
@@ -444,7 +464,17 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
      ORDER BY u.username ASC`,
     [serverId]
   );
-  res.json(result.rows.map((row) => sanitizeUserMediaFields(row)));
+  const connectedSet = new Set(getConnectedUserIdsGlobal().map((id) => Number(id)));
+  const withEffectivePresence = result.rows.map((row) => {
+    const normalized = String(row?.presence_status || "").toLowerCase();
+    const isConnected = connectedSet.has(Number(row?.id));
+    return {
+      ...row,
+      // If the user has no active app/web session, expose offline to clients.
+      presence_status: isConnected ? (normalized || "online") : "offline",
+    };
+  });
+  res.json(withEffectivePresence.map((row) => sanitizeUserMediaFields(row)));
 });
 
 module.exports = router;

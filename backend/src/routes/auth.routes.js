@@ -6,12 +6,14 @@ const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
 const validate = require("../middleware/validate");
-const { authRateLimiter } = require("../middleware/rate-limit");
+const { authRateLimiter, userDataRateLimiter } = require("../middleware/rate-limit");
 const logger = require("../lib/logger");
 const { sanitizeUserMediaFields } = require("../lib/sanitize-media-url");
+const { getJwtSecret } = require("../lib/jwt-secret");
+const { assertContentAllowed, BLOCKED_MESSAGE } = require("../lib/blocked-content");
 
 const router = express.Router();
-const secret = process.env.JWT_SECRET || "dev-secret-change-me";
+const secret = getJwtSecret();
 const tokenVersion = parseInt(process.env.TOKEN_VERSION || "2", 10);
 const twitchClientId = process.env.TWITCH_CLIENT_ID || "";
 const twitchClientSecret = process.env.TWITCH_CLIENT_SECRET || "";
@@ -110,11 +112,38 @@ function getTwitchEmail(twitchId) {
   return `twitch_${twitchId}@twitch.local`;
 }
 
-const registerSchema = z.object({
-  username: z.string().trim().min(2).max(40),
-  email: z.string().trim().email().max(120),
-  password: z.string().min(6).max(200),
-});
+function computeAgeFromBirthDateUtc(birthDateStr) {
+  const d = new Date(`${birthDateStr}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - d.getUTCFullYear();
+  const m = now.getUTCMonth() - d.getUTCMonth();
+  if (m < 0 || (m === 0 && now.getUTCDate() < d.getUTCDate())) age -= 1;
+  return age;
+}
+
+const registerSchema = z
+  .object({
+    username: z.string().trim().min(2).max(40),
+    email: z.string().trim().email().max(120),
+    password: z.string().min(6).max(200),
+    birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "birth_date must be YYYY-MM-DD"),
+  })
+  .refine(
+    (data) => {
+      const age = computeAgeFromBirthDateUtc(data.birth_date);
+      if (age === null) return false;
+      return age >= 0 && age <= 120;
+    },
+    { message: "Invalid birth date", path: ["birth_date"] }
+  )
+  .refine(
+    (data) => {
+      const age = computeAgeFromBirthDateUtc(data.birth_date);
+      return age != null && age >= 13;
+    },
+    { message: "You must be at least 13 years old to register.", path: ["birth_date"] }
+  );
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(120),
@@ -164,15 +193,22 @@ const updateSettingsSchema = z
     { message: "current_password is required to set new_password", path: ["current_password"] }
   );
 
+const eraseAccountSchema = z.object({
+  reason: z.string().trim().max(240).optional(),
+});
+
 router.post("/register", authRateLimiter, validate({ body: registerSchema }), async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, birth_date: birthDate } = req.body;
+    if (!assertContentAllowed(username, { source: "register_username" }).ok) {
+      return res.status(400).json({ error: "blocked_content", message: BLOCKED_MESSAGE });
+    }
     const hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      `INSERT INTO users (username, email, password)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (username, email, password, birth_date)
+       VALUES ($1, $2, $3, $4::date)
        RETURNING id, username, email, created_at`,
-      [username, email, hash]
+      [username, email, hash, birthDate]
     );
     res.status(201).json(result.rows[0]);
   } catch (e) {
@@ -187,11 +223,20 @@ router.post("/register", authRateLimiter, validate({ body: registerSchema }), as
 router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (req, res) => {
   try {
     const { email, password } = req.body;
-    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    const emailNorm = String(email).trim().toLowerCase();
+    const result = await pool.query(
+      `SELECT * FROM users
+       WHERE LOWER(TRIM(email)) = $1
+         AND deleted_at IS NULL`,
+      [emailNorm]
+    );
     if (result.rows.length === 0) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
     const user = result.rows[0];
+    if (!user.password) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -368,7 +413,54 @@ router.get("/me", auth, async (req, res) => {
   res.json(sanitizeUserMediaFields(result.rows[0]));
 });
 
-router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, res) => {
+router.get("/me/export", auth, async (req, res) => {
+  const userId = req.user.id;
+  const [profileRes, serverRes, channelMessageRes, dmMessageRes] = await Promise.all([
+    pool.query(
+      `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status,
+              twitch_username, scheduler_streamer_username, birth_date, created_at
+       FROM users
+       WHERE id = $1`,
+      [userId]
+    ),
+    pool.query(
+      `SELECT s.id, s.name, m.joined_at
+       FROM server_members m
+       JOIN servers s ON s.id = m.server_id
+       WHERE m.user_id = $1
+       ORDER BY m.joined_at ASC`,
+      [userId]
+    ),
+    pool.query(
+      `SELECT m.id, m.channel_id, m.content, m.image_url, m.created_at
+       FROM messages m
+       WHERE m.user_id = $1
+       ORDER BY m.created_at ASC`,
+      [userId]
+    ),
+    pool.query(
+      `SELECT dm.id, dm.conversation_id, dm.content, dm.image_url, dm.created_at
+       FROM direct_messages dm
+       WHERE dm.sender_id = $1
+       ORDER BY dm.created_at ASC`,
+      [userId]
+    ),
+  ]);
+  if (!profileRes.rows.length) {
+    return res.status(404).json({ error: "User not found" });
+  }
+  const payload = {
+    exported_at: new Date().toISOString(),
+    user: sanitizeUserMediaFields(profileRes.rows[0]),
+    memberships: serverRes.rows,
+    channel_messages: channelMessageRes.rows,
+    direct_messages: dmMessageRes.rows,
+  };
+  res.setHeader("Content-Disposition", `attachment; filename="akoenet-user-${userId}-export.json"`);
+  return res.json(payload);
+});
+
+router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSchema }), async (req, res) => {
   const {
     username,
     avatar_url,
@@ -414,6 +506,16 @@ router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, 
       schedulerStreamerUsername !== undefined ? schedulerStreamerUsername : user.scheduler_streamer_username;
     const nextPasswordHash = newPassword ? await bcrypt.hash(newPassword, 10) : user.password;
 
+    const profileStrings = [nextUsername, nextBio, nextCustomStatus, nextSchedulerSlug].filter(
+      (v) => v != null && String(v).trim() !== ""
+    );
+    for (const segment of profileStrings) {
+      if (!assertContentAllowed(String(segment), { source: "patch_profile", userId: req.user.id }).ok) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "blocked_content", message: BLOCKED_MESSAGE });
+      }
+    }
+
     const updated = await client.query(
       `UPDATE users
        SET username = $2,
@@ -453,5 +555,59 @@ router.patch("/me", auth, validate({ body: updateSettingsSchema }), async (req, 
     client.release();
   }
 });
+
+router.delete(
+  "/me",
+  auth,
+  userDataRateLimiter,
+  validate({ body: eraseAccountSchema }),
+  async (req, res) => {
+    const userId = req.user.id;
+    const reason = req.body.reason || null;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const exists = await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [userId]);
+      if (!exists.rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "User not found" });
+      }
+      const anonymizedUsername = `deleted_user_${userId}`;
+      const anonymizedEmail = `deleted_user_${userId}@deleted.akoenet.local`;
+      const randomPasswordHash = await bcrypt.hash(crypto.randomBytes(24).toString("hex"), 10);
+      await client.query(
+        `UPDATE users
+         SET username = $2,
+             email = $3,
+             password = $4,
+             avatar_url = NULL,
+             banner_url = NULL,
+             accent_color = NULL,
+             bio = NULL,
+             custom_status = NULL,
+             presence_status = 'invisible',
+             twitch_username = NULL,
+             scheduler_streamer_username = NULL,
+             deleted_at = NOW(),
+             erased_at = NOW(),
+             deletion_reason = $5
+         WHERE id = $1`,
+        [userId, anonymizedUsername, anonymizedEmail, randomPasswordHash, reason]
+      );
+      await client.query("COMMIT");
+      return res.json({
+        erased: true,
+        retention_policy:
+          "Account personal data anonymized; operational content may be retained for security/legal moderation needs.",
+      });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      logger.error({ err: e, userId }, "Account erasure failed");
+      return res.status(500).json({ error: "Could not erase account" });
+    } finally {
+      client.release();
+    }
+  }
+);
 
 module.exports = router;

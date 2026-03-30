@@ -99,6 +99,38 @@ function buildOpenApiSpec() {
           },
         },
       },
+      "/messages/{messageId}/context": {
+        get: {
+          summary: "Message with neighbor rows in the same channel",
+          description: "Returns the anchor message plus up to `before` older and `after` newer messages (for jump-to-context UIs).",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "messageId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 },
+            },
+            {
+              name: "before",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 0, maximum: 50, default: 10 },
+            },
+            {
+              name: "after",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 0, maximum: 50, default: 10 },
+            },
+          ],
+          responses: {
+            200: { description: "Ordered messages including anchor" },
+            403: { description: "No access to channel" },
+            404: { description: "Message not found" },
+          },
+        },
+      },
       "/messages/{messageId}/reactions": {
         get: {
           summary: "List aggregated reactions for a message",

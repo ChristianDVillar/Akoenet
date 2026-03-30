@@ -1,6 +1,6 @@
 import EmojiText from './EmojiText'
 
-const MENTION_RE = /@(here|everyone|[a-zA-Z0-9_]{2,32})/g
+const MENTION_RE = /@(here|everyone|[a-zA-Z0-9_.]{2,32})/g
 
 /**
  * Message text with server :emoji: shortcodes and @mention highlighting.

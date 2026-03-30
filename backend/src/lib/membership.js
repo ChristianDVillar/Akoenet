@@ -135,6 +135,22 @@ async function canReadChannel(userId, channelId) {
   return p.allowed && p.can_view;
 }
 
+/** All channel IDs the user can read (for global search). May call `canReadChannel` per channel. */
+async function listReadableChannelIds(userId) {
+  const r = await pool.query(
+    `SELECT c.id
+     FROM channels c
+     INNER JOIN server_members sm ON sm.server_id = c.server_id AND sm.user_id = $1`,
+    [userId]
+  );
+  const out = [];
+  for (const row of r.rows) {
+    const cid = Number(row.id);
+    if (await canReadChannel(userId, cid)) out.push(cid);
+  }
+  return out;
+}
+
 async function canSendToChannel(userId, channelId) {
   const p = await getChannelPermissionsForUser(userId, channelId);
   return p.allowed && p.can_view && p.can_send;
@@ -152,6 +168,7 @@ module.exports = {
   getUserServerRoles,
   canManageChannels,
   canReadChannel,
+  listReadableChannelIds,
   canSendToChannel,
   canConnectToChannel,
   getChannelPermissionsForUser,
