@@ -1,8 +1,9 @@
 # Static SPA (AkoeNet frontend). REQUIRED for deep links (/invite/..., /server/...) to load index.html.
 # Si el servicio se creó a mano en Render: Dashboard → Static Site → Redirects/Rewrites →
 #   Source: /*   Destination: /index.html   Action: Rewrite (200).
-# Los enlaces de invitación compartibles usan /?invite=TOKEN (siempre sirve /); sin esta regla,
-# rutas como /invite/abc pueden devolver 404 del CDN.
+# Los enlaces de invitación compartibles usan /?invite=TOKEN (siempre sirve /).
+# El frontend en Render usa HashRouter por defecto (#/rutas) para evitar 404 en /server/1, etc.
+# Opcional: rewrite /* → /index.html + VITE_USE_HASH_ROUTER=false en build para URLs sin #.
 # Blueprint opcional: si ya existe el servicio, sincroniza estas reglas con el panel.
 services:
   - type: web
