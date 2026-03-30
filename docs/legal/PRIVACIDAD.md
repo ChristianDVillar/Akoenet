@@ -51,7 +51,7 @@ No vendemos datos personales.
 
 Si hay transferencias internacionales, aplicaremos salvaguardas adecuadas segun normativa aplicable.
 
-## 8. Derechos del usuario
+## 8. Derechos del usuario (RGPD)
 
 Puedes ejercer, segun corresponda:
 
@@ -64,24 +64,53 @@ Puedes ejercer, segun corresponda:
 
 Para ejercer derechos: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akoenet.local)
 
+Procedimiento operativo actual:
+
+- Solicitud por email con asunto `RGPD - Derecho` indicando la acción (`acceso`, `supresion`, `portabilidad`, etc.).
+- Verificacion de identidad antes de ejecutar cambios en datos.
+- Respuesta en plazo legal aplicable (habitualmente hasta 30 dias, salvo ampliacion legalmente permitida).
+- Registro interno de la solicitud y su resolucion para trazabilidad.
+
+## 8.1 Supresion (derecho al olvido)
+
+Cuando el titular solicite supresion:
+
+- se bloqueara/eliminara la cuenta segun base legal aplicable,
+- se eliminaran o anonimizaran datos vinculados cuando proceda,
+- se conservaran solo datos estrictamente necesarios por obligaciones legales o seguridad.
+
+## 8.2 Portabilidad
+
+Cuando aplique, el titular puede solicitar exportacion de sus datos personales en formato estructurado y de uso comun.
+
 ## 9. Seguridad
 
 Aplicamos medidas tecnicas y organizativas razonables para proteger datos frente a accesos no autorizados, alteracion o perdida.
 
 ## 10. Menores de edad
 
-El servicio no esta dirigido a menores de 14 anos. Si detectamos datos de menores sin base legal, podremos eliminar la cuenta.
+El servicio no esta dirigido a menores de 14 anos.  
+Si detectamos datos de menores sin base legal, podremos restringir o eliminar la cuenta.
 
 ## 11. Cookies y almacenamiento local
 
-La aplicacion puede usar almacenamiento local del navegador para sesion y preferencias.  
-Si se usan cookies adicionales, se informara en una politica especifica.
+La aplicacion usa almacenamiento local/cookies tecnicas para sesion y preferencias (por ejemplo, token de sesion, idioma, ajustes de voz).  
+Cuando sea exigible, se solicita consentimiento para componentes no esenciales y se mostrara banner informativo.
 
-## 12. Cambios a esta politica
+## 12. Actuacion en UE (RGPD / DSA)
+
+Si operamos con usuarios en la UE:
+
+- aplicaremos proceso de gestion de derechos RGPD,
+- habilitaremos mecanismo de reporte de contenido ilegal,
+- publicaremos informacion de moderacion y transparencia segun obligacion aplicable,
+- designaremos representante/DPO cuando legalmente corresponda.
+
+## 13. Cambios a esta politica
 
 Podemos actualizar esta Politica. Publicaremos la version vigente con su fecha de actualizacion.
 
-## 13. Contacto
+## 14. Contacto
 
 Consultas de privacidad: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akoenet.local)
 

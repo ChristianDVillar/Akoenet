@@ -4,6 +4,8 @@ Ultima actualizacion: 2026-03-27
 
 Este documento regula el uso de la plataforma AkoeNet. Al crear una cuenta o usar el servicio, aceptas estos terminos.
 
+AkoeNet es software independiente y no esta afiliado ni respaldado por Discord Inc.
+
 ## 1. Titular del servicio
 
 Titular: Christian  
@@ -34,11 +36,27 @@ Queda prohibido:
 - El usuario conserva la titularidad de su contenido.
 - El usuario concede una licencia no exclusiva para alojar, procesar, mostrar y distribuir su contenido dentro de la operacion normal del servicio.
 - Podemos eliminar contenido que incumpla la ley o estos terminos.
+- Podemos recibir reportes de contenido y aplicar medidas de moderacion (ocultacion, eliminacion, suspension de cuenta) segun gravedad y legalidad.
+
+## 5.1 Reportes de contenido y moderacion
+
+- Cualquier usuario puede reportar contenido potencialmente ilegal o contrario a estos terminos mediante los canales de soporte habilitados.
+- Las decisiones de moderacion se registran para trazabilidad interna.
+- Podremos publicar reportes agregados de moderacion/transparencia cuando la normativa aplicable lo exija.
+
+## 5.2 Copyright / DMCA
+
+- Si consideras que contenido compartido infringe tus derechos, puedes enviar notificacion a [CONTACTO_LEGAL] con evidencia suficiente.
+- Evaluaremos solicitudes de takedown y aplicaremos medidas proporcionadas conforme a ley aplicable.
 
 ## 6. Propiedad intelectual
 
 - El software, codigo, diseno, marca, logos y documentacion de AkoeNet pertenecen a su titular o licenciantes.
 - Queda prohibida la reproduccion, modificacion, ingenieria inversa, distribucion o explotacion comercial sin permiso escrito.
+
+## 6.1 Marca e identidad
+
+La identidad de AkoeNet (nombre, logo, elementos distintivos) se utiliza como marca propia e independiente.
 
 ## 7. Suspensiones y terminacion
 
