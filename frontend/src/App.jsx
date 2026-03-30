@@ -7,6 +7,7 @@ import ServerView from './pages/ServerView'
 import TwitchCallback from './pages/TwitchCallback'
 import DashboardAdmin from './pages/DashboardAdmin'
 import LegalDocPage from './pages/LegalDocPage'
+import InvitePage from './pages/InvitePage'
 
 function PrivateRoute({ children }) {
   const { user, loading, serverUnreachable, refreshUser } = useAuth()
@@ -76,6 +77,7 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
       <Route path="/legal/:slug" element={<LegalDocPage />} />
+      <Route path="/invite/:token" element={<InvitePage />} />
       <Route path="/" element={<Home />} />
       <Route
         path="/server/:serverId"

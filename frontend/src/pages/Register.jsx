@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import api from '../services/api'
+
+const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
 export default function Register() {
   const { register, user, loading } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,6 +27,32 @@ export default function Register() {
     setBusy(true)
     try {
       await register(username, email, password)
+      const inv =
+        searchParams.get('invite') ||
+        (() => {
+          try {
+            return sessionStorage.getItem(PENDING_INVITE_KEY)
+          } catch {
+            return null
+          }
+        })()
+      if (inv) {
+        try {
+          sessionStorage.removeItem(PENDING_INVITE_KEY)
+        } catch {
+          /* ignore */
+        }
+        try {
+          const { data } = await api.post(`/servers/invite/${encodeURIComponent(inv)}/join`)
+          if (data?.server_id != null) {
+            navigate(`/server/${data.server_id}`, { replace: true })
+            return
+          }
+        } catch {
+          navigate(`/invite/${encodeURIComponent(inv)}`, { replace: true })
+          return
+        }
+      }
       navigate('/')
     } catch (err) {
       const msg =
@@ -54,7 +84,11 @@ export default function Register() {
           <Link to="/">← Home</Link>
         </p>
         <h1>Create account</h1>
-        <p className="muted">One step and you are in.</p>
+        <p className="muted">
+          {searchParams.get('invite')
+            ? 'Create your account, then we will add you to the invited server.'
+            : 'One step and you are in.'}
+        </p>
         <form onSubmit={onSubmit} className="form-stack">
           {error && <div className="error-banner">{error}</div>}
           <label>
@@ -104,7 +138,16 @@ export default function Register() {
           <Link to="/legal/privacidad">política de privacidad</Link>.
         </p>
         <p className="muted small">
-          Already have an account? <Link to="/login">Sign in</Link>
+          Already have an account?{' '}
+          <Link
+            to={
+              searchParams.get('invite')
+                ? `/login?invite=${encodeURIComponent(searchParams.get('invite'))}`
+                : '/login'
+            }
+          >
+            Sign in
+          </Link>
         </p>
       </div>
     </div>

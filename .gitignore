@@ -23,3 +23,6 @@ AkoeNet-notes.txt
 /AkoNet
 docs/notes/**
 !docs/notes/README.md
+
+# Documentación local (estructura del proyecto)
+**/ESTRUCTURA_Y_FUNCIONAMIENTO.md

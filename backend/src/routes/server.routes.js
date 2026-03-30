@@ -31,11 +31,41 @@ const emojiIdParamSchema = z.object({
   emojiId: z.coerce.number().int().positive(),
 });
 const inviteTokenParamSchema = z.object({
-  token: z.string().min(12).max(128),
+  token: z.string().min(10).max(128),
 });
 const inviteIdParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
   inviteId: z.coerce.number().int().positive(),
+});
+
+/** Public: invite landing page (no auth). */
+router.get("/invite/:token/preview", async (req, res) => {
+  const token = String(req.params.token || "").trim();
+  if (token.length < 10 || token.length > 128) {
+    return res.status(400).json({ error: "invalid_token" });
+  }
+  try {
+    const result = await pool.query(
+      `SELECT s.id AS server_id, s.name AS server_name, s.is_system
+       FROM server_invites i
+       JOIN servers s ON s.id = i.server_id
+       WHERE i.token = $1
+         AND i.is_active = true
+         AND (i.expires_at IS NULL OR i.expires_at > NOW())
+         AND (i.max_uses IS NULL OR i.used_count < i.max_uses)
+         AND COALESCE(s.is_system, false) = false
+         AND LOWER(TRIM(s.name)) <> $2`,
+      [token, hiddenServerName]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "invite_not_found" });
+    }
+    const row = result.rows[0];
+    res.json({ server_id: row.server_id, server_name: row.server_name });
+  } catch (e) {
+    logger.error({ err: e }, "Invite preview failed");
+    res.status(500).json({ error: "preview_failed" });
+  }
 });
 
 router.use(auth);
@@ -178,7 +208,7 @@ router.post(
     if (!(await canManageChannels(req.user.id, serverId))) {
       return res.status(403).json({ error: "Insufficient role to create invites" });
     }
-    const token = crypto.randomBytes(18).toString("base64url");
+    const token = crypto.randomBytes(12).toString("base64url");
     const maxUses = req.body.max_uses ?? null;
     const expiresInHours = req.body.expires_in_hours ?? null;
     const expiresAt = expiresInHours ? new Date(Date.now() + expiresInHours * 3600 * 1000) : null;

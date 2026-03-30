@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { getApiBaseUrl } from '../lib/apiBase'
+import api from '../services/api'
 
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_notice']
 const TWITCH_OAUTH_ERR_KEY = 'akoenet_twitch_oauth_error'
+const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
 export default function Login() {
   const { login, user, loading } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -78,6 +81,32 @@ export default function Login() {
     setBusy(true)
     try {
       await login(email, password)
+      const inv =
+        searchParams.get('invite') ||
+        (() => {
+          try {
+            return sessionStorage.getItem(PENDING_INVITE_KEY)
+          } catch {
+            return null
+          }
+        })()
+      if (inv) {
+        try {
+          sessionStorage.removeItem(PENDING_INVITE_KEY)
+        } catch {
+          /* ignore */
+        }
+        try {
+          const { data } = await api.post(`/servers/invite/${encodeURIComponent(inv)}/join`)
+          if (data?.server_id != null) {
+            navigate(`/server/${data.server_id}`, { replace: true })
+            return
+          }
+        } catch {
+          navigate(`/invite/${encodeURIComponent(inv)}`, { replace: true })
+          return
+        }
+      }
       navigate('/')
     } catch {
       setError('Invalid credentials')
@@ -105,7 +134,11 @@ export default function Login() {
           <Link to="/">← Home</Link>
         </p>
         <h1>Sign in</h1>
-        <p className="muted">Communities and real-time chat.</p>
+        <p className="muted">
+          {searchParams.get('invite')
+            ? 'After signing in you will join the server from your invite.'
+            : 'Communities and real-time chat.'}
+        </p>
         <form onSubmit={onSubmit} className="form-stack">
           {notice && <div className="info-banner">{notice}</div>}
           {error && <div className="error-banner">{error}</div>}
@@ -146,6 +179,14 @@ export default function Login() {
                 : undefined
             }
             onClick={() => {
+              const inv = searchParams.get('invite')
+              if (inv) {
+                try {
+                  sessionStorage.setItem(PENDING_INVITE_KEY, inv)
+                } catch {
+                  /* ignore */
+                }
+              }
               window.location.href = `${apiBase}/auth/twitch/start`
             }}
           >
@@ -164,7 +205,16 @@ export default function Login() {
           )}
         </form>
         <p className="muted small">
-          Do not have an account? <Link to="/register">Sign up</Link>
+          Do not have an account?{' '}
+          <Link
+            to={
+              searchParams.get('invite')
+                ? `/register?invite=${encodeURIComponent(searchParams.get('invite'))}`
+                : '/register'
+            }
+          >
+            Sign up
+          </Link>
         </p>
       </div>
     </div>
