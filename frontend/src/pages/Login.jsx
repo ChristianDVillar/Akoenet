@@ -5,6 +5,7 @@ import { getApiBaseUrl } from '../lib/apiBase'
 
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_notice']
+const TWITCH_OAUTH_ERR_KEY = 'akoenet_twitch_oauth_error'
 
 export default function Login() {
   const { login, user, loading } = useAuth()
@@ -35,6 +36,13 @@ export default function Login() {
     setNotice(msg)
     localStorage.removeItem(SESSION_NOTICE_KEY)
     LEGACY_SESSION_NOTICE_KEYS.forEach((k) => localStorage.removeItem(k))
+  }, [])
+
+  useEffect(() => {
+    const code = sessionStorage.getItem(TWITCH_OAUTH_ERR_KEY)
+    if (!code) return
+    sessionStorage.removeItem(TWITCH_OAUTH_ERR_KEY)
+    setError(`Twitch sign-in failed (${code}). Try again or use email and password.`)
   }, [])
 
   useEffect(() => {
