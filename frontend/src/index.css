@@ -3534,8 +3534,8 @@ input:focus {
     grid-template-columns: 64px minmax(0, 1fr);
   }
 
-  .members-column,
-  .right-column {
+  /* Solo la columna del layout de escritorio; NO ocultar .members-column dentro del drawer/portal */
+  .app-shell > .right-column {
     display: none;
   }
 }
@@ -3639,90 +3639,114 @@ input:focus {
 
 /* Must come after the (max-width: 980px) block so narrow layouts are not overridden. */
 @media (max-width: 720px) {
-  /* Server view: channels → chat → server rail (thumb-friendly bottom bar). */
+  /* Server view: rail fija a la izquierda; canales y chat a la derecha (sin barra inferior). */
   .app-shell:not(.dashboard-shell) {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, min(40vh, 300px)) minmax(0, 1fr) auto;
+    grid-template-columns: 56px minmax(0, 1fr);
+    grid-template-rows: minmax(0, min(40vh, 300px)) minmax(0, 1fr);
+    grid-template-areas:
+      'rail channels'
+      'rail chat';
     min-height: 100dvh;
     min-height: 100vh;
     width: 100%;
     max-width: 100%;
   }
 
+  .app-shell:not(.dashboard-shell) > .rail {
+    grid-area: rail;
+    min-width: 0;
+  }
+
   .app-shell:not(.dashboard-shell) > .channel-column {
-    order: 1;
+    grid-area: channels;
     min-width: 0;
   }
 
   .app-shell:not(.dashboard-shell) > .chat-panel {
-    order: 2;
+    grid-area: chat;
     min-width: 0;
   }
 
-  .app-shell:not(.dashboard-shell) > .rail {
-    order: 3;
-  }
-
   .dashboard-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-columns: 56px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: 'rail main';
     min-height: 100dvh;
     min-height: 100vh;
     width: 100%;
     max-width: 100%;
   }
 
+  .dashboard-shell > .rail {
+    grid-area: rail;
+    min-width: 0;
+  }
+
   .dashboard-shell > .main-panel.home-panel {
-    order: 1;
+    grid-area: main;
     min-height: 0;
   }
 
-  .dashboard-shell > .rail {
-    order: 2;
-  }
-
+  /* Rail siempre vertical, alineada y con scroll solo si hace falta */
   .rail {
-    flex-direction: row;
+    flex-direction: column;
     flex-wrap: nowrap;
-    justify-content: center;
-    flex-shrink: 0;
+    align-items: center;
+    justify-content: flex-start;
     width: 100%;
-    height: auto;
-    min-height: 3.25rem;
-    overflow-x: auto;
-    overflow-y: hidden;
+    min-height: 0;
+    align-self: stretch;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    border-right: none;
-    border-top: 1px solid var(--nexora-border);
-    border-bottom: none;
-    padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
-    padding-top: 0.45rem;
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35);
+    border-right: 1px solid var(--nexora-border);
+    border-top: none;
+    padding: 0.65rem 0 max(0.5rem, env(safe-area-inset-bottom, 0px));
+    box-shadow: none;
+    gap: 0.5rem;
   }
 
   .rail-list {
-    flex-direction: row;
+    flex-direction: column;
     flex-wrap: nowrap;
-    padding: 0 0.35rem;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+
+  .rail-list > li {
+    display: flex;
+    justify-content: center;
+    width: 100%;
   }
 
   .rail-home-zone,
   .rail-shortcuts-zone {
-    width: auto;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.5rem;
+  }
+
+  .rail-icon {
     flex-shrink: 0;
+    align-self: center;
   }
 
   .rail-sep {
-    width: 2px;
-    height: 28px;
-    margin: 0 0.2rem;
+    width: 36px;
+    height: 2px;
+    margin: 0.15rem 0;
     flex-shrink: 0;
     align-self: center;
   }
 
   .rail-sep-shortcuts {
-    width: 2px;
-    height: 22px;
+    width: 28px;
   }
 
   .channel-column {
