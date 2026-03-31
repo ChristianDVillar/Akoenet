@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { postAuthDestination } from '../lib/postAuthDestination'
 
 export default function TwitchCallback() {
   const [params] = useSearchParams()
@@ -23,8 +24,8 @@ export default function TwitchCallback() {
 
     ;(async () => {
       try {
-        await loginWithToken(token)
-        navigate('/', { replace: true })
+        const me = await loginWithToken(token)
+        navigate(postAuthDestination(me), { replace: true })
       } catch {
         setStatus('Could not complete Twitch login')
       }

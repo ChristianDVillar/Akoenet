@@ -4,6 +4,7 @@ import { getSocket } from '../services/socket'
 
 import { getApiBaseUrl } from '../lib/apiBase'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
+import StandardEmojiPicker from './StandardEmojiPicker'
 
 const baseURL = getApiBaseUrl()
 
@@ -30,8 +31,10 @@ export default function DirectMessagesPanel({ user }) {
   const [dmSearchQuery, setDmSearchQuery] = useState('')
   const [dmSearchResults, setDmSearchResults] = useState([])
   const [dmSearchBusy, setDmSearchBusy] = useState(false)
+  const [failedAvatarKeys, setFailedAvatarKeys] = useState(() => new Set())
   const messageNodeRef = useRef(new Map())
   const bottomRef = useRef(null)
+  const dmComposerInputRef = useRef(null)
   const [composerHistoryIndex, setComposerHistoryIndex] = useState(0)
   const dmTypingStopTimerRef = useRef(null)
   const lastDmTypingEmitRef = useRef(0)
@@ -97,6 +100,7 @@ export default function DirectMessagesPanel({ user }) {
     setReportFeedback('')
     if (!selectedConversationId) {
       setMessages([])
+      setFailedAvatarKeys(new Set())
       return
     }
     let cancelled = false
@@ -659,11 +663,19 @@ export default function DirectMessagesPanel({ user }) {
                   else messageNodeRef.current.delete(m.id)
                 }}
               >
-                {m.avatar_url || (m._optimistic && user?.avatar_url) ? (
+                {(m.avatar_url || (m._optimistic && user?.avatar_url)) &&
+                !failedAvatarKeys.has(`${m.id}:${m.avatar_url || user?.avatar_url || ''}`) ? (
                   <img
                     className="avatar avatar-img"
                     src={resolveImageUrl(m.avatar_url || user?.avatar_url)}
                     alt=""
+                    onError={() =>
+                      setFailedAvatarKeys((prev) => {
+                        const next = new Set(prev)
+                        next.add(`${m.id}:${m.avatar_url || user?.avatar_url || ''}`)
+                        return next
+                      })
+                    }
                   />
                 ) : (
                   <div className="avatar">{m.username?.slice(0, 1).toUpperCase()}</div>
@@ -810,7 +822,14 @@ export default function DirectMessagesPanel({ user }) {
               />
               📎
             </label>
+            <StandardEmojiPicker
+              inputRef={dmComposerInputRef}
+              text={text}
+              setText={setText}
+              disabled={!selectedConversationId}
+            />
             <input
+              ref={dmComposerInputRef}
               id="dm-composer-message"
               name="message"
               className="composer-input"

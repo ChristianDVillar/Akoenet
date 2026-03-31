@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { getApiBaseUrl } from '../lib/apiBase'
 import api from '../services/api'
 import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
+import { postAuthDestination } from '../lib/postAuthDestination'
 
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_notice']
@@ -81,7 +82,7 @@ export default function Login() {
     setError('')
     setBusy(true)
     try {
-      await login(email, password)
+      const { user: loggedInUser } = await login(email, password)
       const inv =
         searchParams.get(INVITE_QUERY_PARAM) ||
         (() => {
@@ -108,7 +109,7 @@ export default function Login() {
           return
         }
       }
-      navigate('/')
+      navigate(postAuthDestination(loggedInUser))
     } catch {
       setError('Invalid credentials')
     } finally {

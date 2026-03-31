@@ -29,6 +29,14 @@ export default function SiteFooter({ className = '' }) {
             ·
           </span>
           <Link to="/legal/proteccion">{f.legal}</Link>
+          <span className="site-footer-dot" aria-hidden>
+            ·
+          </span>
+          <Link to="/legal/dmca">{f.dmca}</Link>
+          <span className="site-footer-dot" aria-hidden>
+            ·
+          </span>
+          <Link to="/legal/dpo">{f.dpo}</Link>
         </nav>
         <p className="site-footer-credit">
           {f.credit} <strong>{author}</strong>

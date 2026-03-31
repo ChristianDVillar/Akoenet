@@ -13,6 +13,9 @@ const uploadRoutes = require("./routes/upload.routes");
 const dmRoutes = require("./routes/dm.routes");
 const adminRoutes = require("./routes/admin.routes");
 const integrationRoutes = require("./routes/integration.routes");
+const dmcaRoutes = require("./routes/dmca.routes");
+const dpoRoutes = require("./routes/dpo.routes");
+const httpsRedirect = require("./middleware/https-redirect");
 const logger = require("./lib/logger");
 const { globalIpRateLimiter } = require("./middleware/rate-limit");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
@@ -89,8 +92,14 @@ async function buildDepsReport(app) {
     service: null,
     version: null,
     error: null,
+    base_url: null,
+    admin_url: null,
   };
   if (report.deps.scheduler.configured) {
+    const schedulerBase = String(process.env.SCHEDULER_API_BASE_URL || "").trim().replace(/\/$/, "");
+    report.deps.scheduler.base_url = schedulerBase;
+    report.deps.scheduler.admin_url =
+      String(process.env.SCHEDULER_ADMIN_URL || "").trim() || `${schedulerBase}/admin`;
     const sch = await fetchSchedulerDiscovery();
     report.deps.scheduler.latency_ms = sch.latency_ms ?? null;
     if (sch.ok && sch.discovery) {
@@ -113,20 +122,39 @@ async function buildDepsReport(app) {
   return report;
 }
 
+function normalizeCorsOrigins(origins) {
+  if (process.env.NODE_ENV !== "production") return origins;
+  return origins.map((o) => {
+    const u = String(o).trim();
+    if (!u) return u;
+    if (/localhost|127\.0\.0\.1|\[::1\]/i.test(u)) return u;
+    if (u.startsWith("http://")) return `https://${u.slice("http://".length)}`;
+    return u;
+  });
+}
+
 function createApp() {
   const app = express();
   const uploadDir = path.join(__dirname, "..", "uploads");
   const twitchClientId = process.env.TWITCH_CLIENT_ID || "";
+
+  if (process.env.TRUST_PROXY === "1" || String(process.env.TRUST_PROXY || "").toLowerCase() === "true") {
+    app.set("trust proxy", 1);
+  }
+
   app.disable("x-powered-by");
+  app.use(httpsRedirect);
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: "cross-origin" },
     })
   );
-  const corsOrigins = String(process.env.CORS_ORIGINS || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const corsOrigins = normalizeCorsOrigins(
+    String(process.env.CORS_ORIGINS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
   const allowAllOrigins = corsOrigins.length === 0;
   app.use(
     cors({
@@ -141,6 +169,8 @@ function createApp() {
   app.use(pinoHttp({ logger }));
   app.use(globalIpRateLimiter);
   app.use(express.json());
+  app.use("/dmca", dmcaRoutes);
+  app.use("/dpo", dpoRoutes);
   app.get("/uploads/:key", async (req, res, next) => {
     if ((process.env.STORAGE_DRIVER || "local").toLowerCase() !== "s3") {
       return next();

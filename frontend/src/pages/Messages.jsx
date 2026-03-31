@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import ServerSidebar from '../components/ServerSidebar'
 import DirectMessagesPanel from '../components/DirectMessagesPanel'
 import AppChrome from '../components/AppChrome'
+import AppChromeToolbar from '../components/AppChromeToolbar'
 
 export default function Messages() {
   const { user } = useAuth()
@@ -42,6 +43,9 @@ export default function Messages() {
           <div>
             <h1>Messages</h1>
             <p className="akoenet-tag">Direct messages</p>
+          </div>
+          <div className="home-header-actions">
+            <AppChromeToolbar />
           </div>
         </header>
         <DirectMessagesPanel user={user} />

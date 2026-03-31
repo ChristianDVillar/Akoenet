@@ -4,6 +4,7 @@ import { getSocket } from '../services/socket'
 import VoiceRoom from './VoiceRoom'
 import EmojiText from './EmojiText'
 import RichMessageText from './RichMessageText'
+import StandardEmojiPicker from './StandardEmojiPicker'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 import { getApiBaseUrl } from '../lib/apiBase'
@@ -39,12 +40,14 @@ export default function Chat({
   const [editingDraft, setEditingDraft] = useState('')
   const bottomRef = useRef(null)
   const messageNodeRef = useRef(new Map())
+  const composerInputRef = useRef(null)
   const emojiPickerWrapRef = useRef(null)
   const reactionPickerWrapRef = useRef(null)
   const typingStopTimerRef = useRef(null)
   const lastTypingEmitRef = useRef(0)
   const currentUserIdRef = useRef(null)
   const [typingPeers, setTypingPeers] = useState({})
+  const [failedAvatarKeys, setFailedAvatarKeys] = useState(() => new Set())
   /** Index into history prefix matches (↑/↓); reset when composer text changes in handleComposerChange */
   const [composerHistoryIndex, setComposerHistoryIndex] = useState(0)
 
@@ -96,6 +99,7 @@ export default function Chat({
   useEffect(() => {
     if (!channelId) {
       setMessages([])
+      setFailedAvatarKeys(new Set())
       return
     }
     let cancelled = false
@@ -715,14 +719,19 @@ export default function Chat({
               else messageNodeRef.current.delete(m.id)
             }}
           >
-            {(m.avatar_url || memberAvatarByUserId.get(Number(m.user_id))) ? (
+            {(m.avatar_url || memberAvatarByUserId.get(Number(m.user_id))) &&
+            !failedAvatarKeys.has(`${m.id}:${m.avatar_url || memberAvatarByUserId.get(Number(m.user_id))}`) ? (
               <img
                 className="avatar avatar-img"
                 src={resolveImageUrl(m.avatar_url || memberAvatarByUserId.get(Number(m.user_id)))}
                 alt={`${m.username || 'User'} avatar`}
-                onError={(e) => {
-                  e.currentTarget.src = '/vite.svg'
-                }}
+                onError={() =>
+                  setFailedAvatarKeys((prev) => {
+                    const next = new Set(prev)
+                    next.add(`${m.id}:${m.avatar_url || memberAvatarByUserId.get(Number(m.user_id))}`)
+                    return next
+                  })
+                }
               />
             ) : (
               <div className="avatar">{m.username?.slice(0, 1).toUpperCase()}</div>
@@ -944,6 +953,12 @@ export default function Chat({
           />
           📎
         </label>
+        <StandardEmojiPicker
+          inputRef={composerInputRef}
+          text={text}
+          setText={setText}
+          disabled={!channelId}
+        />
         {!isVoice && emojis.length > 0 && (
           <div className="emoji-picker-wrap" ref={emojiPickerWrapRef}>
             <button
@@ -976,6 +991,7 @@ export default function Chat({
           </div>
         )}
         <input
+          ref={composerInputRef}
           id="chat-composer-message"
           name="message"
           className="composer-input"

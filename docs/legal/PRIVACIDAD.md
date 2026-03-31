@@ -114,3 +114,12 @@ Podemos actualizar esta Politica. Publicaremos la version vigente con su fecha d
 
 Consultas de privacidad: [CONTACTO_PRIVACIDAD] (placeholder: privacidad@akoenet.local)
 
+## 15. DPO y avisos de copyright (DMCA)
+
+- **Delegado de protección de datos (DPO) / privacidad:** datos de contacto publicados en la aplicación en **/legal/dpo** (y vía API `GET /dpo/contact` cuando el operador configura `DPO_NAME`, `DPO_EMAIL`, etc. en el servidor). Puedes enviar solicitudes relacionadas con RGPD mediante el formulario en esa misma página; se guarda un registro interno con referencia.
+- **Avisos de retirada por copyright (p. ej. DMCA):** formulario público en **/legal/dmca**; envío a `POST /dmca/takedown` (límite de frecuencia por IP). El operador debe revisar cada aviso y, si procede, aplicar la retirada o contranotificación según su política legal.
+
+## 16. Edad mínima en el registro
+
+El registro con email/contraseña exige **fecha de nacimiento** y **al menos 13 años** (validación en backend y en base de datos). Los usuarios que acceden solo por OAuth (p. ej. Twitch) no aportan fecha de nacimiento en el flujo actual; el operador puede ajustar políticas y términos según su jurisdicción.
+
