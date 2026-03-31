@@ -7,6 +7,14 @@ import { postAuthDestination } from '../lib/postAuthDestination'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
+function readPendingInviteFromSession() {
+  try {
+    return sessionStorage.getItem(PENDING_INVITE_KEY)
+  } catch {
+    return null
+  }
+}
+
 export default function Register() {
   const { register, user, loading } = useAuth()
   const navigate = useNavigate()
@@ -105,8 +113,8 @@ export default function Register() {
         </p>
         <h1>Create account</h1>
         <p className="muted">
-          {searchParams.get(INVITE_QUERY_PARAM)
-            ? 'Create your account, then we will add you to the invited server.'
+          {searchParams.get(INVITE_QUERY_PARAM) || readPendingInviteFromSession()
+            ? 'After you create your account, we will add you to the invited server automatically.'
             : 'One step and you are in.'}
         </p>
         <form onSubmit={onSubmit} className="form-stack">

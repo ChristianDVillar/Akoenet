@@ -10,6 +10,7 @@ const {
   getVoicePresenceSnapshotForServer,
   getConnectedUserIdsGlobal,
 } = require("../sockets/chat.socket");
+const { postJoinWelcomeMessage } = require("../lib/join-welcome-message");
 
 const { sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 
@@ -210,6 +211,12 @@ router.post("/:serverId/join", validate({ params: serverIdParamSchema }), async 
        ON CONFLICT (user_id, role_id) DO NOTHING`,
       [req.user.id, memberRole.rows[0].id]
     );
+    await postJoinWelcomeMessage({
+      pool,
+      io: req.app?.locals?.io,
+      serverId,
+      userId: req.user.id,
+    });
     res.status(201).json({ joined: true, server_id: serverId });
   } catch (e) {
     if (e.code === "23505") {
@@ -422,6 +429,12 @@ router.post("/invite/:token/join", validate({ params: inviteTokenParamSchema }),
       [invite.id]
     );
     await client.query("COMMIT");
+    await postJoinWelcomeMessage({
+      pool,
+      io: req.app?.locals?.io,
+      serverId,
+      userId: req.user.id,
+    });
     res.status(201).json({ joined: true, server_id: serverId });
   } catch (e) {
     await client.query("ROLLBACK");
