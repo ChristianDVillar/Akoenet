@@ -2755,11 +2755,11 @@ input:focus {
   padding: 0.25rem 0.45rem;
 }
 
-/* Overlay + slide-in panel when the inline right column is hidden (<1201px). Below .modal-backdrop (80). */
+/* Overlay + slide-in panel when the inline right column is hidden (<1201px). Above app chrome; below cookie/toasts if any. */
 .members-drawer {
   position: fixed;
   inset: 0;
-  z-index: 75;
+  z-index: 200;
 }
 
 .members-drawer-backdrop {
@@ -2818,6 +2818,14 @@ input:focus {
   min-height: 0;
   height: auto;
   max-height: none;
+}
+
+.members-drawer-hint {
+  margin: 0;
+  padding: 0.65rem 0.9rem 0.5rem;
+  border-bottom: 1px solid var(--nexora-border);
+  line-height: 1.35;
+  flex-shrink: 0;
 }
 
 .members-filters {
@@ -3631,36 +3639,90 @@ input:focus {
 
 /* Must come after the (max-width: 980px) block so narrow layouts are not overridden. */
 @media (max-width: 720px) {
-  .app-shell {
+  /* Server view: channels → chat → server rail (thumb-friendly bottom bar). */
+  .app-shell:not(.dashboard-shell) {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, min(38vh, 280px)) minmax(0, 1fr);
+    grid-template-rows: minmax(0, min(40vh, 300px)) minmax(0, 1fr) auto;
     min-height: 100dvh;
     min-height: 100vh;
     width: 100%;
     max-width: 100%;
+  }
+
+  .app-shell:not(.dashboard-shell) > .channel-column {
+    order: 1;
+    min-width: 0;
+  }
+
+  .app-shell:not(.dashboard-shell) > .chat-panel {
+    order: 2;
+    min-width: 0;
+  }
+
+  .app-shell:not(.dashboard-shell) > .rail {
+    order: 3;
   }
 
   .dashboard-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
     min-height: 100dvh;
     min-height: 100vh;
     width: 100%;
     max-width: 100%;
   }
 
+  .dashboard-shell > .main-panel.home-panel {
+    order: 1;
+    min-height: 0;
+  }
+
+  .dashboard-shell > .rail {
+    order: 2;
+  }
+
   .rail {
     flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
     flex-shrink: 0;
     width: 100%;
     height: auto;
+    min-height: 3.25rem;
     overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
     border-right: none;
-    border-bottom: 1px solid var(--nexora-border);
+    border-top: 1px solid var(--nexora-border);
+    border-bottom: none;
+    padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+    padding-top: 0.45rem;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35);
   }
 
   .rail-list {
     flex-direction: row;
+    flex-wrap: nowrap;
+    padding: 0 0.35rem;
+  }
+
+  .rail-home-zone,
+  .rail-shortcuts-zone {
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .rail-sep {
+    width: 2px;
+    height: 28px;
+    margin: 0 0.2rem;
+    flex-shrink: 0;
+    align-self: center;
+  }
+
+  .rail-sep-shortcuts {
+    width: 2px;
+    height: 22px;
   }
 
   .channel-column {
