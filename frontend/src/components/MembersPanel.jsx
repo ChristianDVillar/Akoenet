@@ -33,7 +33,12 @@ function resolveDisplayRole(member) {
   return roles[0] || 'member'
 }
 
-export default function MembersPanel({ members, connectedUserIds = [], currentUser = null }) {
+export default function MembersPanel({
+  members,
+  connectedUserIds = [],
+  currentUser = null,
+  onClose = null,
+}) {
   const [avatarFailed, setAvatarFailed] = useState(() => new Set())
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
@@ -102,7 +107,21 @@ export default function MembersPanel({ members, connectedUserIds = [], currentUs
 
   return (
     <aside className="members-column">
-      <header className="members-header">Members</header>
+      <header className="members-header">
+        <span className="members-header-title" id={onClose ? 'members-drawer-title' : undefined}>
+          Members
+        </span>
+        {onClose && (
+          <button
+            type="button"
+            className="btn ghost small members-header-close"
+            onClick={onClose}
+            aria-label="Close members list"
+          >
+            ✕
+          </button>
+        )}
+      </header>
       <div className="members-filters">
         <input
           id="members-filter-query"

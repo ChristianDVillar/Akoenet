@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
@@ -30,6 +38,22 @@ function collapsedCategoryLegacyKeys(serverId) {
   return [`Akonet_collapsed_${serverId}`, `akonet_collapsed_${serverId}`, `akoe:collapsed:${serverId}`]
 }
 
+const MEMBERS_INLINE_MEDIA = '(min-width: 1201px)'
+
+function subscribeMembersInlineMedia(onChange) {
+  const mq = window.matchMedia(MEMBERS_INLINE_MEDIA)
+  mq.addEventListener('change', onChange)
+  return () => mq.removeEventListener('change', onChange)
+}
+
+function getMembersInlineMediaSnapshot() {
+  return window.matchMedia(MEMBERS_INLINE_MEDIA).matches
+}
+
+function useShowInlineMembersPanel() {
+  return useSyncExternalStore(subscribeMembersInlineMedia, getMembersInlineMediaSnapshot, () => true)
+}
+
 export default function ServerView() {
   const { serverId } = useParams()
   const id = parseInt(serverId, 10)
@@ -51,6 +75,8 @@ export default function ServerView() {
   const [userSettingsSection, setUserSettingsSection] = useState('profile')
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
+  const [membersDrawerOpen, setMembersDrawerOpen] = useState(false)
+  const showInlineMembersPanel = useShowInlineMembersPanel()
   const [emojis, setEmojis] = useState([])
   const [voicePresence, setVoicePresence] = useState({})
   const [connectedUserIds, setConnectedUserIds] = useState([])
@@ -437,6 +463,28 @@ export default function ServerView() {
     }
   }, [id])
 
+  useEffect(() => {
+    if (showInlineMembersPanel) setMembersDrawerOpen(false)
+  }, [showInlineMembersPanel])
+
+  useEffect(() => {
+    if (!membersDrawerOpen) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') setMembersDrawerOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [membersDrawerOpen])
+
+  useEffect(() => {
+    if (!membersDrawerOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [membersDrawerOpen])
+
   function toggleCategoryCollapse(categoryId) {
     setCollapsedCategories((prev) => {
       const next = prev.includes(categoryId)
@@ -453,92 +501,123 @@ export default function ServerView() {
 
   return (
     <AppChrome>
-    <div className="app-shell">
-      <ServerSidebar
-        servers={servers}
-        activeServerId={id}
-        onSelectServer={(sid) => navigate(`/server/${sid}`)}
-        homeAction={() => navigate('/')}
-        messagesAction={() => navigate('/messages')}
-      />
-      <ChannelList
-        serverName={serverName}
-        categories={categories}
-        channels={channels}
-        activeChannelId={activeChannelId}
-        onSelectChannel={setActiveChannelId}
-        onCreateChannel={createChannel}
-        onCreateCategory={createCategory}
-        onDeleteCategory={deleteCategory}
-        onDeleteChannel={deleteChannel}
-        onMoveChannel={moveChannel}
-        onMoveCategory={moveCategory}
-        collapsedCategories={collapsedCategories}
-        onToggleCategory={toggleCategoryCollapse}
-        user={user}
-        onLogout={logout}
-        onOpenUserSettings={() => {
-          setUserSettingsSection('profile')
-          setUserSettingsOpen(true)
-        }}
-        onOpenServerSettings={() => setServerSettingsOpen(true)}
-        onOpenAdminDashboard={() => navigate('/admin')}
-        onSetAppearOnline={setAppearOnline}
-        schedulerStreamerUsername={import.meta.env.VITE_SCHEDULER_STREAMER_USERNAME}
-        voicePresence={voicePresence}
-      />
-      <Chat
-        channelId={activeChannelId}
-        channelName={activeChannel?.name}
-        channelType={activeChannel?.type}
-        user={user}
-        members={members}
-        emojis={emojis}
-        voiceUserLimit={rtcVoiceChannelMeta?.voice_user_limit}
-        voiceConnectedCount={rtcVoiceConnectedCount}
-        onVoiceSessionChange={handleVoiceSessionChange}
-        rtcVoiceChannelId={rtcVoiceChannelId}
-        rtcVoiceChannelName={rtcVoiceChannelMeta?.name}
-        onOpenChannelSettings={() => setChannelSettingsOpen(true)}
-      />
-      <div className="right-column">
-        <MembersPanel members={members} connectedUserIds={connectedUserIds} currentUser={user} />
-      </div>
-
-      {toast && (
-        <div className="toast" role="status">
-          <strong>AkoeNet</strong>
-          <span>
-            {toast.username}: {toast.snippet}
-          </span>
+      <>
+        <div className="app-shell">
+          <ServerSidebar
+            servers={servers}
+            activeServerId={id}
+            onSelectServer={(sid) => navigate(`/server/${sid}`)}
+            homeAction={() => navigate('/')}
+            messagesAction={() => navigate('/messages')}
+          />
+          <ChannelList
+            serverName={serverName}
+            categories={categories}
+            channels={channels}
+            activeChannelId={activeChannelId}
+            onSelectChannel={setActiveChannelId}
+            onCreateChannel={createChannel}
+            onCreateCategory={createCategory}
+            onDeleteCategory={deleteCategory}
+            onDeleteChannel={deleteChannel}
+            onMoveChannel={moveChannel}
+            onMoveCategory={moveCategory}
+            collapsedCategories={collapsedCategories}
+            onToggleCategory={toggleCategoryCollapse}
+            user={user}
+            onLogout={logout}
+            onOpenUserSettings={() => {
+              setUserSettingsSection('profile')
+              setUserSettingsOpen(true)
+            }}
+            onOpenServerSettings={() => setServerSettingsOpen(true)}
+            onOpenAdminDashboard={() => navigate('/admin')}
+            onSetAppearOnline={setAppearOnline}
+            schedulerStreamerUsername={import.meta.env.VITE_SCHEDULER_STREAMER_USERNAME}
+            voicePresence={voicePresence}
+          />
+          <Chat
+            channelId={activeChannelId}
+            channelName={activeChannel?.name}
+            channelType={activeChannel?.type}
+            user={user}
+            members={members}
+            emojis={emojis}
+            voiceUserLimit={rtcVoiceChannelMeta?.voice_user_limit}
+            voiceConnectedCount={rtcVoiceConnectedCount}
+            onVoiceSessionChange={handleVoiceSessionChange}
+            rtcVoiceChannelId={rtcVoiceChannelId}
+            rtcVoiceChannelName={rtcVoiceChannelMeta?.name}
+            onOpenChannelSettings={() => setChannelSettingsOpen(true)}
+            onOpenMembersPanel={
+              showInlineMembersPanel ? undefined : () => setMembersDrawerOpen(true)
+            }
+            membersCount={members.length}
+          />
+          {showInlineMembersPanel && (
+            <div className="right-column">
+              <MembersPanel members={members} connectedUserIds={connectedUserIds} currentUser={user} />
+            </div>
+          )}
         </div>
-      )}
-      <UserSettingsModal
-        open={userSettingsOpen}
-        onClose={() => setUserSettingsOpen(false)}
-        initialSection={userSettingsSection}
-      />
-      <ServerSettingsModal
-        open={serverSettingsOpen}
-        onClose={() => setServerSettingsOpen(false)}
-        serverId={id}
-        serverName={serverName}
-      />
-      <ChannelSettingsModal
-        open={channelSettingsOpen}
-        onClose={() => setChannelSettingsOpen(false)}
-        activeChannel={activeChannel}
-        permissions={channelPermissions}
-        onTogglePermission={togglePermission}
-        members={members}
-        userPermissions={userPermissions}
-        selectedMemberId={selectedMemberId}
-        setSelectedMemberId={setSelectedMemberId}
-        onToggleUserPermission={toggleUserPermission}
-        categories={categories}
-        onUpdateChannel={updateChannel}
-      />
-    </div>
+
+        {!showInlineMembersPanel && membersDrawerOpen && (
+          <div
+            className="members-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="members-drawer-title"
+          >
+            <div
+              className="members-drawer-backdrop"
+              role="presentation"
+              onClick={() => setMembersDrawerOpen(false)}
+            />
+            <div className="members-drawer-panel">
+              <MembersPanel
+                members={members}
+                connectedUserIds={connectedUserIds}
+                currentUser={user}
+                onClose={() => setMembersDrawerOpen(false)}
+              />
+            </div>
+          </div>
+        )}
+
+        {toast && (
+          <div className="toast" role="status">
+            <strong>AkoeNet</strong>
+            <span>
+              {toast.username}: {toast.snippet}
+            </span>
+          </div>
+        )}
+        <UserSettingsModal
+          open={userSettingsOpen}
+          onClose={() => setUserSettingsOpen(false)}
+          initialSection={userSettingsSection}
+        />
+        <ServerSettingsModal
+          open={serverSettingsOpen}
+          onClose={() => setServerSettingsOpen(false)}
+          serverId={id}
+          serverName={serverName}
+        />
+        <ChannelSettingsModal
+          open={channelSettingsOpen}
+          onClose={() => setChannelSettingsOpen(false)}
+          activeChannel={activeChannel}
+          permissions={channelPermissions}
+          onTogglePermission={togglePermission}
+          members={members}
+          userPermissions={userPermissions}
+          selectedMemberId={selectedMemberId}
+          setSelectedMemberId={setSelectedMemberId}
+          onToggleUserPermission={toggleUserPermission}
+          categories={categories}
+          onUpdateChannel={updateChannel}
+        />
+      </>
     </AppChrome>
   )
 }

@@ -24,6 +24,8 @@ export default function Chat({
   rtcVoiceChannelName,
   onVoiceSessionChange,
   onOpenChannelSettings,
+  onOpenMembersPanel,
+  membersCount = 0,
 }) {
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
@@ -558,6 +560,22 @@ export default function Chat({
               title="Channel settings"
             >
               ⚙
+            </button>
+          )}
+          {channelId && typeof onOpenMembersPanel === 'function' && (
+            <button
+              type="button"
+              className="btn ghost small chat-members-trigger"
+              onClick={onOpenMembersPanel}
+              title="Server members"
+              aria-label={`Open server members list (${membersCount} members)`}
+            >
+              <span className="chat-members-trigger-text">Members</span>
+              {membersCount > 0 && (
+                <span className="chat-members-badge" aria-hidden="true">
+                  {membersCount > 99 ? '99+' : membersCount}
+                </span>
+              )}
             </button>
           )}
           {!isVoice && (
