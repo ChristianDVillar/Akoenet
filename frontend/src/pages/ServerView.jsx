@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
@@ -51,7 +52,11 @@ function getMembersInlineMediaSnapshot() {
 }
 
 function useShowInlineMembersPanel() {
-  return useSyncExternalStore(subscribeMembersInlineMedia, getMembersInlineMediaSnapshot, () => true)
+  return useSyncExternalStore(
+    subscribeMembersInlineMedia,
+    getMembersInlineMediaSnapshot,
+    () => true
+  )
 }
 
 export default function ServerView() {
@@ -77,6 +82,28 @@ export default function ServerView() {
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
   const [membersDrawerOpen, setMembersDrawerOpen] = useState(false)
   const showInlineMembersPanel = useShowInlineMembersPanel()
+  const membersAutoCloseTimerRef = useRef(null)
+
+  const clearMembersAutoCloseTimer = useCallback(() => {
+    if (membersAutoCloseTimerRef.current != null) {
+      clearTimeout(membersAutoCloseTimerRef.current)
+      membersAutoCloseTimerRef.current = null
+    }
+  }, [])
+
+  const closeMembersPanel = useCallback(() => {
+    clearMembersAutoCloseTimer()
+    setMembersDrawerOpen(false)
+  }, [clearMembersAutoCloseTimer])
+
+  const openMembersPanel = useCallback(() => {
+    clearMembersAutoCloseTimer()
+    setMembersDrawerOpen(true)
+    membersAutoCloseTimerRef.current = window.setTimeout(() => {
+      membersAutoCloseTimerRef.current = null
+      setMembersDrawerOpen(false)
+    }, 10000)
+  }, [clearMembersAutoCloseTimer])
   const [emojis, setEmojis] = useState([])
   const [voicePresence, setVoicePresence] = useState({})
   const [connectedUserIds, setConnectedUserIds] = useState([])
@@ -464,17 +491,21 @@ export default function ServerView() {
   }, [id])
 
   useEffect(() => {
-    if (showInlineMembersPanel) setMembersDrawerOpen(false)
-  }, [showInlineMembersPanel])
+    if (showInlineMembersPanel) closeMembersPanel()
+  }, [showInlineMembersPanel, closeMembersPanel])
+
+  useEffect(() => {
+    return () => clearMembersAutoCloseTimer()
+  }, [clearMembersAutoCloseTimer])
 
   useEffect(() => {
     if (!membersDrawerOpen) return
     const onKey = (e) => {
-      if (e.key === 'Escape') setMembersDrawerOpen(false)
+      if (e.key === 'Escape') closeMembersPanel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [membersDrawerOpen])
+  }, [membersDrawerOpen, closeMembersPanel])
 
   useEffect(() => {
     if (!membersDrawerOpen) return
@@ -549,9 +580,7 @@ export default function ServerView() {
             rtcVoiceChannelId={rtcVoiceChannelId}
             rtcVoiceChannelName={rtcVoiceChannelMeta?.name}
             onOpenChannelSettings={() => setChannelSettingsOpen(true)}
-            onOpenMembersPanel={
-              showInlineMembersPanel ? undefined : () => setMembersDrawerOpen(true)
-            }
+            onOpenMembersPanel={showInlineMembersPanel ? undefined : openMembersPanel}
             membersCount={members.length}
           />
           {showInlineMembersPanel && (
@@ -561,28 +590,34 @@ export default function ServerView() {
           )}
         </div>
 
-        {!showInlineMembersPanel && membersDrawerOpen && (
-          <div
-            className="members-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="members-drawer-title"
-          >
+        {!showInlineMembersPanel &&
+          membersDrawerOpen &&
+          createPortal(
             <div
-              className="members-drawer-backdrop"
-              role="presentation"
-              onClick={() => setMembersDrawerOpen(false)}
-            />
-            <div className="members-drawer-panel">
-              <MembersPanel
-                members={members}
-                connectedUserIds={connectedUserIds}
-                currentUser={user}
-                onClose={() => setMembersDrawerOpen(false)}
+              className="members-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="members-drawer-title"
+            >
+              <div
+                className="members-drawer-backdrop"
+                role="presentation"
+                onClick={closeMembersPanel}
               />
-            </div>
-          </div>
-        )}
+              <div className="members-drawer-panel">
+                <p className="members-drawer-hint muted small">
+                  Se cierra sola en ~10 s. Toca fuera, ✕ o Esc para cerrar antes.
+                </p>
+                <MembersPanel
+                  members={members}
+                  connectedUserIds={connectedUserIds}
+                  currentUser={user}
+                  onClose={closeMembersPanel}
+                />
+              </div>
+            </div>,
+            document.body
+          )}
 
         {toast && (
           <div className="toast" role="status">
