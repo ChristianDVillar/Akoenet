@@ -67,6 +67,17 @@ const reportRateLimiter = rateLimit({
   },
 });
 
+/** Public legal forms (DMCA, DPO) — stricter than generic API. */
+const legalFormsRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.LEGAL_FORMS_RATE_LIMIT_MAX || 8),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many legal form submissions from this IP. Try again later.",
+  },
+});
+
 module.exports = {
   globalIpRateLimiter,
   uploadRateLimiter,
@@ -74,4 +85,5 @@ module.exports = {
   reactionRateLimiter,
   userDataRateLimiter,
   reportRateLimiter,
+  legalFormsRateLimiter,
 };

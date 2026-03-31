@@ -8,6 +8,8 @@ import ServerView from './pages/ServerView'
 import TwitchCallback from './pages/TwitchCallback'
 import DashboardAdmin from './pages/DashboardAdmin'
 import LegalDocPage from './pages/LegalDocPage'
+import DmcaPage from './pages/DmcaPage'
+import DpoPage from './pages/DpoPage'
 import InvitePage from './pages/InvitePage'
 import CookieConsentBanner from './components/CookieConsentBanner'
 
@@ -79,6 +81,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
+        <Route path="/legal/dmca" element={<DmcaPage />} />
+        <Route path="/legal/dpo" element={<DpoPage />} />
         <Route path="/legal/:slug" element={<LegalDocPage />} />
         <Route path="/invite/:token" element={<InvitePage />} />
         <Route path="/" element={<Home />} />

@@ -11,7 +11,45 @@ function Latency({ ms }) {
   return <span className="status-latency">{ms} ms</span>
 }
 
-export default function DashboardAdmin() {
+function formatNum(n) {
+  if (n == null || Number.isNaN(Number(n))) return '—'
+  return Number(n).toLocaleString()
+}
+
+function formatUptimeMs(ms) {
+  if (ms == null || !Number.isFinite(Number(ms))) return '—'
+  const s = Math.floor(Number(ms) / 1000)
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (d > 0) return `${d}d ${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
+function KpiCard({ icon, title, value, delta, deltaLabel, sub }) {
+  const d = delta
+  const showDelta = d != null && !Number.isNaN(Number(d))
+  return (
+    <div className="admin-kpi-card">
+      <div className="admin-kpi-card-head">
+        <span aria-hidden>{icon}</span>
+        <span>{title}</span>
+      </div>
+      <div className="admin-kpi-value">{value}</div>
+      {showDelta ? (
+        <div className={`admin-kpi-delta ${Number(d) >= 0 ? 'is-pos' : 'is-neg'}`}>
+          {Number(d) >= 0 ? '+' : ''}
+          {d}%
+          {deltaLabel ? <span className="muted small"> {deltaLabel}</span> : null}
+        </div>
+      ) : null}
+      {sub ? <div className="admin-kpi-sub muted">{sub}</div> : null}
+    </div>
+  )
+}
+
+export default function DashboardAdmin({ embedded = false }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [health, setHealth] = useState(null)
@@ -32,7 +70,15 @@ export default function DashboardAdmin() {
   const [reportStatus, setReportStatus] = useState('open')
   const [reportServerId, setReportServerId] = useState('')
   const [metrics, setMetrics] = useState(null)
+  const [overview, setOverview] = useState(null)
+  const [overviewEndpointAvailable, setOverviewEndpointAvailable] = useState(true)
+  const [reportsEndpointAvailable, setReportsEndpointAvailable] = useState(true)
+  const [metricsEndpointAvailable, setMetricsEndpointAvailable] = useState(true)
+  const [loadWarnings, setLoadWarnings] = useState([])
   const docsUrl = `${String(api.defaults.baseURL || '').replace(/\/$/, '')}/docs`
+
+  /** Axios rejects on 404 unless we accept all statuses; keeps partial UI when one admin route is missing (old deploy). */
+  const acceptAllStatuses = { validateStatus: () => true }
 
   function pushHistory(payload) {
     setHistory((prev) => {
@@ -48,39 +94,124 @@ export default function DashboardAdmin() {
   async function load() {
     setLoading(true)
     setError('')
-    try {
-      const auditParams = new URLSearchParams()
-      auditParams.set('limit', String(auditLimit))
-      auditParams.set('offset', String(auditOffset))
-      if (auditAction.trim()) auditParams.set('action', auditAction.trim())
-      if (auditServerId.trim()) auditParams.set('server_id', auditServerId.trim())
-      if (auditFrom) auditParams.set('from', new Date(auditFrom).toISOString())
-      if (auditTo) auditParams.set('to', new Date(auditTo).toISOString())
-      const reportParams = new URLSearchParams()
-      reportParams.set('limit', String(reportLimit))
-      reportParams.set('offset', String(reportOffset))
-      reportParams.set('status', reportStatus)
-      if (reportServerId.trim()) reportParams.set('server_id', reportServerId.trim())
+    setLoadWarnings([])
+    const warnings = []
 
-      const [healthRes, depsRes, auditRes, reportRes, metricsRes] = await Promise.all([
-        api.get('/health'),
-        api.get('/admin/health/deps', {
-          validateStatus: () => true,
-        }),
-        api.get(`/admin/audit-logs?${auditParams.toString()}`),
-        api.get(`/admin/reports/messages?${reportParams.toString()}`),
-        api.get('/admin/metrics', { validateStatus: () => true }),
-      ])
+    const auditParams = new URLSearchParams()
+    auditParams.set('limit', String(auditLimit))
+    auditParams.set('offset', String(auditOffset))
+    if (auditAction.trim()) auditParams.set('action', auditAction.trim())
+    if (auditServerId.trim()) auditParams.set('server_id', auditServerId.trim())
+    if (auditFrom) auditParams.set('from', new Date(auditFrom).toISOString())
+    if (auditTo) auditParams.set('to', new Date(auditTo).toISOString())
+    const reportParams = new URLSearchParams()
+    reportParams.set('limit', String(reportLimit))
+    reportParams.set('offset', String(reportOffset))
+    reportParams.set('status', reportStatus)
+    if (reportServerId.trim()) reportParams.set('server_id', reportServerId.trim())
+
+    try {
+      const healthRes = await api.get('/health')
       setHealth(healthRes.data)
-      setDeps(depsRes.data)
-      setMetrics(metricsRes.status === 200 ? metricsRes.data : null)
-      setAuditLogs(Array.isArray(auditRes?.data?.items) ? auditRes.data.items : [])
-      setAuditTotal(Number(auditRes?.data?.total || 0))
-      setReportItems(Array.isArray(reportRes?.data?.items) ? reportRes.data.items : [])
-      setReportTotal(Number(reportRes?.data?.total || 0))
-      pushHistory(depsRes.data)
     } catch {
-      setError('Could not load system diagnostics')
+      setError('Could not reach API /health. Is the backend running and VITE_API_URL correct?')
+      setLoading(false)
+      return
+    }
+
+    try {
+      const reqs = [
+        api.get('/admin/health/deps', acceptAllStatuses),
+        api.get(`/admin/audit-logs?${auditParams.toString()}`, acceptAllStatuses),
+        reportsEndpointAvailable
+          ? api.get(`/admin/reports/messages?${reportParams.toString()}`, acceptAllStatuses)
+          : Promise.resolve({ status: 404, data: null }),
+        metricsEndpointAvailable
+          ? api.get('/admin/metrics', acceptAllStatuses)
+          : Promise.resolve({ status: 404, data: null }),
+        overviewEndpointAvailable
+          ? api.get('/admin/overview', acceptAllStatuses)
+          : Promise.resolve({ status: 404, data: null }),
+      ]
+      const [depsRes, auditRes, reportRes, metricsRes, overviewRes] = await Promise.all(reqs)
+
+      const depsBody = depsRes.data && typeof depsRes.data === 'object' ? depsRes.data : null
+      if (depsBody?.deps && typeof depsBody.deps === 'object') {
+        setDeps(depsBody)
+        pushHistory(depsBody)
+      } else {
+        setDeps(null)
+        if (depsRes.status === 404) {
+          warnings.push(
+            'GET /admin/health/deps → 404. This process does not expose admin routes (outdated backend image or wrong service on this port). Redeploy the API from the current repo.'
+          )
+        } else if (depsRes.status === 401 || depsRes.status === 403) {
+          warnings.push('Admin health denied (401/403). Sign out and sign in again with an admin account.')
+        } else {
+          warnings.push(`GET /admin/health/deps → HTTP ${depsRes.status}. Check server logs.`)
+        }
+      }
+
+      if (auditRes.status === 200 && auditRes.data && Array.isArray(auditRes.data.items)) {
+        setAuditLogs(auditRes.data.items)
+        setAuditTotal(Number(auditRes.data.total || 0))
+      } else {
+        setAuditLogs([])
+        setAuditTotal(0)
+        if (auditRes.status === 404) {
+          warnings.push('GET /admin/audit-logs → 404. Backend build likely predates admin.routes.')
+        } else if (auditRes.status && auditRes.status !== 200) {
+          warnings.push(`GET /admin/audit-logs → HTTP ${auditRes.status}.`)
+        }
+      }
+
+      if (reportRes.status === 200 && reportRes.data && Array.isArray(reportRes.data.items)) {
+        setReportItems(reportRes.data.items)
+        setReportTotal(Number(reportRes.data.total || 0))
+        setReportsEndpointAvailable(true)
+      } else {
+        setReportItems([])
+        setReportTotal(0)
+        if (reportRes.status === 404) {
+          if (reportsEndpointAvailable) setReportsEndpointAvailable(false)
+          warnings.push(
+            'GET /admin/reports/messages → 404. Update the backend so admin message reports exist, or confirm requests hit this app (not another server on :3000).'
+          )
+        } else if (reportRes.status && reportRes.status !== 200) {
+          warnings.push(`GET /admin/reports/messages → HTTP ${reportRes.status}.`)
+        }
+      }
+
+      if (metricsRes.status === 200 && metricsRes.data && typeof metricsRes.data === 'object') {
+        setMetrics(metricsRes.data)
+        setMetricsEndpointAvailable(true)
+      } else {
+        setMetrics(null)
+        if (metricsRes.status === 404) {
+          if (metricsEndpointAvailable) setMetricsEndpointAvailable(false)
+          warnings.push('GET /admin/metrics → 404. Same fix as other /admin/* 404s (redeploy current backend).')
+        }
+      }
+
+      if (overviewRes.status === 200 && overviewRes.data?.ok) {
+        setOverview(overviewRes.data)
+        setOverviewEndpointAvailable(true)
+      } else {
+        setOverview(null)
+        if (overviewRes.status === 404) {
+          if (overviewEndpointAvailable) setOverviewEndpointAvailable(false)
+          warnings.push(
+            'GET /admin/overview → 404. Redeploy backend with latest admin routes to see KPI aggregates.'
+          )
+        } else if (overviewRes.status && overviewRes.status !== 200) {
+          warnings.push(`GET /admin/overview → HTTP ${overviewRes.status}.`)
+        }
+      }
+
+      setLoadWarnings(warnings)
+    } catch {
+      setError('Could not load admin endpoints (network error).')
+      setLoadWarnings(warnings)
     } finally {
       setLoading(false)
     }
@@ -138,23 +269,163 @@ export default function DashboardAdmin() {
   const canPrevReports = reportOffset > 0
   const canNextReports = reportOffset + reportLimit < reportTotal
 
-  return (
-    <div className="auth-page">
-      <div className="auth-card status-page">
-        <div className="status-header">
-          <h1>Admin dashboard</h1>
-          <Link to="/" className="btn ghost">
-            Back
-          </Link>
-        </div>
+  const ov = overview
+  const kpis = ov?.kpis
+  const act = ov?.activity
+  const sch = deps?.deps?.scheduler
+  const pendingFromOverview = ov?.alerts?.pending_message_reports
 
-        {error && <div className="error-banner">{error}</div>}
+  const content = (
+    <>
+      {error && <div className="error-banner">{error}</div>}
+      {!loading &&
+        loadWarnings.length > 0 &&
+        loadWarnings.map((w) => (
+          <div key={w} className="info-banner" style={{ marginBottom: '0.75rem' }}>
+            {w}
+          </div>
+        ))}
+
+      <div className="admin-overview">
+        <div className="admin-overview-top">
+          <h1 className="admin-overview-title">📊 Admin overview</h1>
+          <div className="status-actions" style={{ marginTop: 0 }}>
+            <button type="button" className="btn secondary" onClick={load} disabled={loading}>
+              Refrescar 🔄
+            </button>
+            {!embedded ? (
+              <Link to="/" className="btn ghost">
+                Back
+              </Link>
+            ) : null}
+          </div>
+        </div>
 
         {loading ? (
           <p className="muted">Checking services…</p>
         ) : (
           <>
-            <p className="muted small">Use this panel to quickly verify dependencies and troubleshoot incidents.</p>
+            <div className="admin-kpi-grid">
+              <KpiCard
+                icon="👥"
+                title="Usuarios"
+                value={kpis ? formatNum(kpis.users.total) : '—'}
+                delta={kpis?.users?.delta_pct_24h}
+                deltaLabel="nuevos vs 24h previos"
+                sub={kpis ? `${formatNum(kpis.users.new_today)} nuevos hoy (calendario)` : 'Actualiza el backend para KPIs'}
+              />
+              <KpiCard icon="🎫" title="Licencias" value="—" sub="No integrado en AkoeNet" />
+              <KpiCard icon="💰" title="Ingresos" value="—" sub="No integrado en AkoeNet" />
+              <KpiCard
+                icon="💬"
+                title="Mensajes"
+                value={kpis ? formatNum(kpis.messages.total_in_db) : '—'}
+                delta={kpis?.messages?.delta_pct_hour_vs_prior}
+                deltaLabel="últ. hora vs hora anterior (DB)"
+                sub={
+                  kpis
+                    ? `Canal ${formatNum(kpis.messages.channel_total)} · DM ${formatNum(kpis.messages.dm_total)}`
+                    : 'Total en base de datos'
+                }
+              />
+            </div>
+
+            {deps?.deps ? (
+              <div className="admin-health-strip">
+                <h3>
+                  <span>🟢 Health status</span>
+                  <span className="muted small">
+                    Última comprobación:{' '}
+                    {deps.checked_at ? new Date(deps.checked_at).toLocaleString() : '—'}
+                  </span>
+                </h3>
+                <div className="admin-health-line">
+                  <span>
+                    <strong>API</strong> {health?.ok ? '✅' : '❌'}{' '}
+                    <Latency ms={deps.deps.api?.latency_ms} />
+                  </span>
+                  <span>
+                    <strong>DB</strong> {deps.deps.db?.ok ? '✅' : '❌'}{' '}
+                    <Latency ms={deps.deps.db?.latency_ms} />
+                  </span>
+                  <span>
+                    <strong>Redis</strong>{' '}
+                    {deps.deps.redis?.enabled ? (deps.deps.redis?.ok ? '✅' : '❌') : '⚪'}{' '}
+                    <Latency ms={deps.deps.redis?.latency_ms} />
+                  </span>
+                  <span>
+                    <strong>Storage</strong> {deps.deps.storage?.ok ? '✅' : '❌'} ({deps.deps.storage?.driver || 'local'})
+                  </span>
+                  <span>
+                    <strong>Scheduler API</strong>{' '}
+                    {!sch?.configured ? '⚪ no configurado' : sch?.ok ? '✅' : '❌'}
+                    {sch?.configured && sch?.version
+                      ? ` v${sch.version}${sch?.legacy ? ' (legacy)' : ''}`
+                      : ''}
+                  </span>
+                </div>
+                <p className="muted small" style={{ margin: '0.55rem 0 0' }}>
+                  Uptime proceso: {formatUptimeMs(deps.uptime_ms)} · App <code className="inline-code">{deps.version || 'unknown'}</code> ·
+                  chequeo total <Latency ms={deps.total_latency_ms} />
+                </p>
+              </div>
+            ) : null}
+
+            <div className="admin-overview-columns">
+              <div className="admin-overview-panel">
+                <h3>📈 Actividad reciente</h3>
+                <ul>
+                  <li>
+                    Mensajes última hora (canal):{' '}
+                    {act?.messages_last_hour ? formatNum(act.messages_last_hour.channel) : '—'}
+                  </li>
+                  <li>
+                    DMs última hora: {act?.messages_last_hour ? formatNum(act.messages_last_hour.dm) : '—'}
+                  </li>
+                  <li>
+                    Usuarios activos (24h, enviaron mensaje/DM):{' '}
+                    {act?.users_active_24h != null ? formatNum(act.users_active_24h) : '—'}
+                  </li>
+                  <li>
+                    Nuevos usuarios hoy: {act?.users_new_today != null ? formatNum(act.users_new_today) : '—'}
+                  </li>
+                  {kpis ? (
+                    <li>Servidores totales: {formatNum(kpis.servers_total)}</li>
+                  ) : null}
+                  {metrics ? (
+                    <li className="muted small" style={{ listStyle: 'none', paddingLeft: 0 }}>
+                      Proceso (no persistente): últimos ~60s canal {metrics.messages_last_60s?.channel ?? 0} · DM{' '}
+                      {metrics.messages_last_60s?.dm ?? 0}
+                    </li>
+                  ) : null}
+                </ul>
+              </div>
+              <div className="admin-overview-panel">
+                <h3>⚠️ Alertas y pendientes</h3>
+                <ul>
+                  <li>Licencias por vencer: no aplica (producto sin licencias)</li>
+                  <li>
+                    Reportes de mensajes pendientes:{' '}
+                    {pendingFromOverview != null ? formatNum(pendingFromOverview) : '—'}
+                  </li>
+                  <li>Usuarios con contraseña débil: no comprobado</li>
+                  {sch?.configured && sch?.legacy ? (
+                    <li>Scheduler API en modo legacy (discovery ausente o antiguo)</li>
+                  ) : null}
+                  {sch?.configured && sch?.hint ? <li>{sch.hint}</li> : null}
+                </ul>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {!loading && (
+        <>
+            <p className="muted small" style={{ marginTop: '1rem' }}>
+              Use this panel to verify dependencies, audit logs, and message reports. Licencias e ingresos son placeholders
+              hasta que exista integración comercial.
+            </p>
             <div className="status-meta">
               <span>
                 <strong>Version:</strong> {deps?.version || 'unknown'}
@@ -261,6 +532,16 @@ export default function DashboardAdmin() {
               <a href={docsUrl} target="_blank" rel="noreferrer" className="btn ghost">
                 API Docs
               </a>
+              {deps?.deps?.scheduler?.admin_url ? (
+                <a
+                  href={deps.deps.scheduler.admin_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn ghost"
+                >
+                  Scheduler Admin
+                </a>
+              ) : null}
             </div>
 
             <div className="status-history">
@@ -347,6 +628,12 @@ export default function DashboardAdmin() {
             </div>
             <div className="status-history">
               <h3>Message reports moderation</h3>
+              {!reportsEndpointAvailable ? (
+                <p className="muted small">
+                  Message reports endpoint is not available in this backend build (`/admin/reports/messages` returns
+                  404).
+                </p>
+              ) : null}
               <form onSubmit={(e) => e.preventDefault()} className="form-inline" style={{ marginBottom: '0.6rem', gap: '0.4rem', flexWrap: 'wrap' }}>
                 <select value={reportStatus} onChange={(e) => { setReportStatus(e.target.value); setReportOffset(0) }}>
                   <option value="open">Open</option>
@@ -405,9 +692,18 @@ export default function DashboardAdmin() {
                 </span>
               </div>
             </div>
-          </>
-        )}
-      </div>
+        </>
+      )}
+    </>
+  )
+
+  if (embedded) {
+    return <section className="card status-page status-page--wide">{content}</section>
+  }
+
+  return (
+    <div className="auth-page">
+      <div className="auth-card status-page status-page--wide">{content}</div>
     </div>
   )
 }

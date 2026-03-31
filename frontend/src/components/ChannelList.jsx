@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import SchedulerUpcomingWidget from './SchedulerUpcomingWidget'
+import AppChromeToolbar from './AppChromeToolbar'
 
 export default function ChannelList({
   serverName,
@@ -51,9 +52,11 @@ export default function ChannelList({
     return Math.min(99, Math.floor(n))
   }
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [userAvatarFailed, setUserAvatarFailed] = useState(false)
   const [voiceAvatarFailed, setVoiceAvatarFailed] = useState(() => new Set())
   const closeUserMenu = useCallback(() => setUserMenuOpen(false), [])
   const userMenuRef = useDismissiblePopover(userMenuOpen, closeUserMenu)
+  const avatarInitial = String(user?.username || 'U').trim().charAt(0).toUpperCase() || 'U'
 
   /** null | top (channel vs section) | add channel inside category | clone type beside channel */
   const [createUI, setCreateUI] = useState(null)
@@ -87,6 +90,10 @@ export default function ChannelList({
       setDraftPrivate(Boolean(ch?.is_private))
     }
   }, [createUI, channels])
+
+  useEffect(() => {
+    setUserAvatarFailed(false)
+  }, [user?.avatar_url])
 
   const grouped = categories.map((category) => ({
     ...category,
@@ -520,21 +527,27 @@ export default function ChannelList({
           </button>
         </div>
         <div className="channel-header-row">
-          <div className="user-bar" ref={userMenuRef}>
+          <div className="channel-header-leading">
+            <AppChromeToolbar />
+            <div className="user-bar" ref={userMenuRef}>
             <button
               type="button"
               className="btn ghost small user-menu-trigger channel-user-trigger"
               onClick={() => setUserMenuOpen((v) => !v)}
             >
               <span className="user-trigger-content">
-                <img
-                  className="user-avatar-tiny"
-                  src={user?.avatar_url ? resolveImageUrl(user.avatar_url) : '/vite.svg'}
-                  alt="User avatar"
-                  onError={(e) => {
-                    e.currentTarget.src = '/vite.svg'
-                  }}
-                />
+                {user?.avatar_url && !userAvatarFailed ? (
+                  <img
+                    className="user-avatar-tiny"
+                    src={resolveImageUrl(user.avatar_url)}
+                    alt="User avatar"
+                    onError={() => setUserAvatarFailed(true)}
+                  />
+                ) : (
+                  <span className="user-avatar-tiny user-avatar-fallback" aria-hidden="true">
+                    {avatarInitial}
+                  </span>
+                )}
                 <span>{user?.username || 'User'}</span>
               </span>
             </button>
@@ -597,6 +610,7 @@ export default function ChannelList({
                 </button>
               </div>
             )}
+          </div>
           </div>
           <div className="channel-header-actions">
             <button

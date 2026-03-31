@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
+import { postAuthDestination } from '../lib/postAuthDestination'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
@@ -27,7 +28,7 @@ export default function Register() {
   async function onSubmit(e) {
     e.preventDefault()
     if (!acceptLegal) {
-      setError('Debes aceptar términos y privacidad para registrarte')
+      setError('You must accept the terms and privacy policy to register.')
       return
     }
     if (!birthDate) {
@@ -37,7 +38,7 @@ export default function Register() {
     setError('')
     setBusy(true)
     try {
-      await register(username, email, password, birthDate)
+      const { user: newUser } = await register(username, email, password, birthDate)
       const inv =
         searchParams.get(INVITE_QUERY_PARAM) ||
         (() => {
@@ -64,7 +65,7 @@ export default function Register() {
           return
         }
       }
-      navigate('/')
+      navigate(postAuthDestination(newUser))
     } catch (err) {
       const code = err.response?.data?.error
       const details = err.response?.data?.details
@@ -182,8 +183,8 @@ export default function Register() {
               required
             />
             <span>
-              Acepto los <Link to="/legal/terminos">términos</Link> y la{' '}
-              <Link to="/legal/privacidad">política de privacidad</Link>.
+              I accept the <Link to="/legal/terminos">terms</Link> and{' '}
+              <Link to="/legal/privacidad">privacy policy</Link>.
             </span>
           </label>
           <button type="submit" className="btn primary" disabled={busy}>
@@ -191,9 +192,9 @@ export default function Register() {
           </button>
         </form>
         <p className="muted small legal-register-note">
-          Al registrarte aceptas los{' '}
-          <Link to="/legal/terminos">términos</Link> y la{' '}
-          <Link to="/legal/privacidad">política de privacidad</Link>.
+          By signing up you agree to the{' '}
+          <Link to="/legal/terminos">terms</Link> and{' '}
+          <Link to="/legal/privacidad">privacy policy</Link>.
         </p>
         <p className="muted small">
           Already have an account?{' '}

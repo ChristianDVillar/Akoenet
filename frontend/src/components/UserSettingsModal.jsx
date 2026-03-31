@@ -25,6 +25,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [presenceStatus, setPresenceStatus] = useState('online')
   const [customStatus, setCustomStatus] = useState('')
   const [schedulerStreamerUsername, setSchedulerStreamerUsername] = useState('')
+  const [avatarPreviewFailed, setAvatarPreviewFailed] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [saving, setSaving] = useState(false)
@@ -53,6 +54,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     setActiveSection(initialSection || 'profile')
     setUsername(user?.username || '')
     setAvatarUrl(user?.avatar_url || '')
+    setAvatarPreviewFailed(false)
     setBannerUrl(user?.banner_url || '')
     setAccentColor(user?.accent_color || '#7c3aed')
     setBio(user?.bio || '')
@@ -71,6 +73,10 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     setStartMuted(voice.startMuted)
     setStartDeafened(voice.startDeafened)
   }, [open, user, initialSection])
+
+  useEffect(() => {
+    setAvatarPreviewFailed(false)
+  }, [avatarUrl])
 
   useEffect(() => {
     if (!open) stopMicTest()
@@ -301,7 +307,22 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                 <div style={previewStyle}>
                   <div style={{ height: 86, backgroundImage: bannerUrl ? `url("${resolveImageUrl(bannerUrl).replace(/"/g, '\\"')}")` : 'linear-gradient(120deg, #1f2937, #0f172a)', backgroundSize: 'cover', backgroundPosition: 'center' }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.65rem 0.75rem' }}>
-                    <img src={avatarUrl ? resolveImageUrl(avatarUrl) : '/vite.svg'} alt="avatar preview" style={{ width: 42, height: 42, borderRadius: '999px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)' }} onError={(e) => { e.currentTarget.src = '/vite.svg' }} />
+                    {avatarUrl && !avatarPreviewFailed ? (
+                      <img
+                        src={resolveImageUrl(avatarUrl)}
+                        alt="avatar preview"
+                        style={{ width: 42, height: 42, borderRadius: '999px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)' }}
+                        onError={() => setAvatarPreviewFailed(true)}
+                      />
+                    ) : (
+                      <span
+                        className="user-avatar-fallback"
+                        aria-hidden="true"
+                        style={{ width: 42, height: 42, borderRadius: '999px', border: '1px solid rgba(255,255,255,0.2)' }}
+                      >
+                        {String(username || user?.username || 'U').trim().charAt(0).toUpperCase() || 'U'}
+                      </span>
+                    )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 8, height: 8, borderRadius: '999px', display: 'inline-block', background: presenceStatus === 'online' ? '#22c55e' : presenceStatus === 'idle' ? '#f59e0b' : presenceStatus === 'dnd' ? '#ef4444' : '#6b7280' }} />

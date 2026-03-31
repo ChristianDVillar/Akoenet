@@ -8,7 +8,9 @@ import { inviteLandingPath } from '../lib/invites'
 import ServerSidebar from '../components/ServerSidebar'
 import UserSettingsModal from '../components/UserSettingsModal'
 import AppChrome from '../components/AppChrome'
+import AppChromeToolbar from '../components/AppChromeToolbar'
 import WelcomeOnboardingModal, { hasSeenOnboarding } from '../components/WelcomeOnboardingModal'
+import DashboardAdmin from './DashboardAdmin'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
@@ -27,9 +29,15 @@ export default function Dashboard() {
   const [joiningById, setJoiningById] = useState(false)
   const [joiningByLinkState, setJoiningByLinkState] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [userAvatarFailed, setUserAvatarFailed] = useState(false)
   const [welcomeOpen, setWelcomeOpen] = useState(() => !hasSeenOnboarding())
   const closeUserMenu = useCallback(() => setUserMenuOpen(false), [])
   const userMenuRef = useDismissiblePopover(userMenuOpen, closeUserMenu)
+  const avatarInitial = String(user?.username || 'U').trim().charAt(0).toUpperCase() || 'U'
+
+  useEffect(() => {
+    setUserAvatarFailed(false)
+  }, [user?.avatar_url])
 
   async function load() {
     setLoading(true)
@@ -191,21 +199,27 @@ export default function Dashboard() {
             <h1>AkoeNet</h1>
             <p className="akoenet-tag">AkoeNet · your communities</p>
           </div>
-          <div className="user-bar" ref={userMenuRef}>
+          <div className="home-header-actions">
+            <AppChromeToolbar />
+            <div className="user-bar" ref={userMenuRef}>
             <button
               type="button"
               className="btn ghost small user-menu-trigger"
               onClick={() => setUserMenuOpen((v) => !v)}
             >
               <span className="user-trigger-content">
-                <img
-                  className="user-avatar-tiny"
-                  src={user?.avatar_url ? resolveImageUrl(user.avatar_url) : '/vite.svg'}
-                  alt="User avatar"
-                  onError={(e) => {
-                    e.currentTarget.src = '/vite.svg'
-                  }}
-                />
+                {user?.avatar_url && !userAvatarFailed ? (
+                  <img
+                    className="user-avatar-tiny"
+                    src={resolveImageUrl(user.avatar_url)}
+                    alt="User avatar"
+                    onError={() => setUserAvatarFailed(true)}
+                  />
+                ) : (
+                  <span className="user-avatar-tiny user-avatar-fallback" aria-hidden="true">
+                    {avatarInitial}
+                  </span>
+                )}
                 <span>{user?.username || 'User'}</span>
               </span>
             </button>
@@ -245,6 +259,7 @@ export default function Dashboard() {
                 </button>
               </div>
             )}
+          </div>
           </div>
         </header>
 
@@ -336,6 +351,8 @@ export default function Dashboard() {
             </ul>
           )}
         </section>
+
+        {user?.is_admin ? <DashboardAdmin embedded /> : null}
 
       </div>
       <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />

@@ -1,9 +1,27 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useLandingLocale } from '../hooks/useLandingLocale'
 
 const CONSENT_KEY = 'akoenet_cookie_consent_v1'
 
+const COPY = {
+  en: {
+    text: 'We use local storage and technical cookies for session and preferences. See ',
+    privacy: 'Privacy',
+    accept: 'Accept',
+    aria: 'Cookie consent',
+  },
+  es: {
+    text: 'Usamos almacenamiento local/cookies técnicas para sesión y preferencias. Consulta ',
+    privacy: 'Privacidad',
+    accept: 'Aceptar',
+    aria: 'Consentimiento de cookies',
+  },
+}
+
 export default function CookieConsentBanner() {
+  const { locale } = useLandingLocale()
+  const t = COPY[locale === 'es' ? 'es' : 'en']
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -27,13 +45,13 @@ export default function CookieConsentBanner() {
   if (!visible) return null
 
   return (
-    <div className="cookie-banner" role="dialog" aria-live="polite" aria-label="Cookie consent">
+    <div className="cookie-banner" role="dialog" aria-live="polite" aria-label={t.aria}>
       <p>
-        Usamos almacenamiento local/cookies técnicas para sesión y preferencias. Consulta{' '}
-        <Link to="/legal/privacidad">Privacidad</Link>.
+        {t.text}
+        <Link to="/legal/privacidad">{t.privacy}</Link>.
       </p>
       <button type="button" className="btn primary small" onClick={accept}>
-        Aceptar
+        {t.accept}
       </button>
     </div>
   )

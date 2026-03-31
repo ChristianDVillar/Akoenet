@@ -214,6 +214,17 @@ function buildOpenApiSpec() {
           },
         },
       },
+      "/admin/overview": {
+        get: {
+          summary: "Admin dashboard KPIs and activity aggregates (admin)",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: "Aggregates from DB (users, messages, reports, etc.)" },
+            403: { description: "Admin only" },
+            500: { description: "Query failed" },
+          },
+        },
+      },
       "/admin/audit-logs": {
         get: {
           summary: "List moderation audit logs (admin)",

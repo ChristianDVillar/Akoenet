@@ -13,7 +13,7 @@ export default function Home() {
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Cargando AkoeNet…</p>
+        <p className="muted">Loading AkoeNet…</p>
       </div>
     )
   }

@@ -205,8 +205,8 @@ router.post("/register", authRateLimiter, validate({ body: registerSchema }), as
     }
     const hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      `INSERT INTO users (username, email, password, birth_date)
-       VALUES ($1, $2, $3, $4::date)
+      `INSERT INTO users (username, email, password, birth_date, age_verified_at)
+       VALUES ($1, $2, $3, $4::date, NOW())
        RETURNING id, username, email, created_at`,
       [username, email, hash, birthDate]
     );

@@ -1,0 +1,30 @@
+# Example Caddy 2 reverse proxy: TLS termination + backend API + SPA static files.
+# Replace hostnames and paths; point DNS to this server.
+#
+# Backend listens on http://backend:3000 in Docker network.
+# Frontend build: copy dist/ to /var/www/akoenet (or adjust root).
+
+example.com {
+	encode gzip zstd
+
+	@api path /auth* /servers* /channels* /messages* /upload* /dm* /integrations* /admin* /health* /docs* /dpo* /dmca*
+	handle @api {
+		reverse_proxy localhost:3000
+	}
+
+	handle /socket.io/* {
+		reverse_proxy localhost:3000
+	}
+
+	handle {
+		root * /var/www/akoenet
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}

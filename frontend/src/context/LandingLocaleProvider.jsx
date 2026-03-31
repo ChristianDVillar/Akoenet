@@ -3,6 +3,7 @@ import { LandingLocaleContext } from './landingLocaleContext'
 
 const STORAGE_KEY = 'akoenet_landing_locale'
 
+/** Default UI language is English; Spanish is opt-in via landing toggle or localStorage. */
 function readStoredLocale() {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
