@@ -4,7 +4,7 @@ import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
-import { inviteLandingPath } from '../lib/invites'
+import { inviteLandingPath, parseInviteTokenFromInput } from '../lib/invites'
 import ServerSidebar from '../components/ServerSidebar'
 import UserSettingsModal from '../components/UserSettingsModal'
 import AppChrome from '../components/AppChrome'
@@ -133,29 +133,9 @@ export default function Dashboard() {
     }
   }
 
-  function extractInviteToken(raw) {
-    const value = raw.trim()
-    if (!value) return ''
-    try {
-      const u = value.startsWith('http')
-        ? new URL(value)
-        : new URL(value, 'https://invite.local')
-      const fromQuery = u.searchParams.get('invite')
-      if (fromQuery) return fromQuery.trim()
-    } catch {
-      /* fall through */
-    }
-    if (value.includes('/')) {
-      const chunks = value.split('/').filter(Boolean)
-      const last = chunks[chunks.length - 1] || ''
-      return last.split('?')[0] || ''
-    }
-    return value
-  }
-
   async function joinByLink(e) {
     e.preventDefault()
-    const token = extractInviteToken(joinLink)
+    const token = parseInviteTokenFromInput(joinLink)
     if (!token) {
       setError('Invalid invite link')
       return
@@ -293,34 +273,41 @@ export default function Dashboard() {
               </button>
             </form>
           </div>
-          <div className="card">
-            <h2>Join server</h2>
-            <p className="muted small">Use this if someone shared a numeric server ID with you.</p>
-            <form onSubmit={joinServer} className="form-inline">
-              <input
-                id="dashboard-join-server-id"
-                name="server_id"
-                placeholder="Numeric server ID"
-                value={joinId}
-                onChange={(e) => setJoinId(e.target.value)}
-              />
-              <button type="submit" className="btn secondary" disabled={joiningById || !joinId.trim()}>
-                {joiningById ? 'Joining…' : 'Join'}
-              </button>
-            </form>
-            <p className="muted small">
-              You can join by ID or invite link. To create or manage invite links, open a server and use Server settings (gear).
+          <div className="card card-join-server">
+            <h2>Join a server</h2>
+            <p className="muted small join-lead">
+              <strong>Invite link or code</strong> — paste what someone sent you (full URL or short code).
             </p>
             <form onSubmit={joinByLink} className="form-inline invite-inline">
               <input
                 id="dashboard-join-invite-link"
                 name="invite_link"
-                placeholder="Paste invite link/token"
+                placeholder="Paste invite link or code"
                 value={joinLink}
                 onChange={(e) => setJoinLink(e.target.value)}
+                autoComplete="off"
               />
-              <button type="submit" className="btn secondary" disabled={joiningByLinkState || !joinLink.trim()}>
-                {joiningByLinkState ? 'Joining…' : 'Join by link'}
+              <button type="submit" className="btn primary" disabled={joiningByLinkState || !joinLink.trim()}>
+                {joiningByLinkState ? 'Joining…' : 'Join'}
+              </button>
+            </form>
+            <p className="muted small join-hint">
+              To create invites for your own servers, open a server → <strong>Server settings</strong> (gear).
+            </p>
+            <p className="join-or-divider muted small" role="presentation">
+              or join with a numeric ID
+            </p>
+            <form onSubmit={joinServer} className="form-inline">
+              <input
+                id="dashboard-join-server-id"
+                name="server_id"
+                placeholder="Server ID (number)"
+                value={joinId}
+                onChange={(e) => setJoinId(e.target.value)}
+                inputMode="numeric"
+              />
+              <button type="submit" className="btn secondary" disabled={joiningById || !joinId.trim()}>
+                {joiningById ? 'Joining…' : 'Join by ID'}
               </button>
             </form>
           </div>
@@ -331,7 +318,9 @@ export default function Dashboard() {
           {loading ? (
             <p className="muted">Loading…</p>
           ) : servers.length === 0 ? (
-            <p className="muted">You do not have servers yet. Create one above.</p>
+            <p className="muted">
+              You are not in any server yet. Join with an invite above, or create your own server.
+            </p>
           ) : (
             <ul className="server-tiles">
               {servers.map((s) => (

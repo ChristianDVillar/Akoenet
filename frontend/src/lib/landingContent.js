@@ -68,6 +68,13 @@ export const landingContent = {
         'We can’t reach the API server. Sign-in may not work until the backend is available (check VITE_API_URL or wait for the service to wake up).',
       retry: 'Retry connection',
     },
+    inviteJoin: {
+      title: 'Have an invite?',
+      hint: 'Paste the full link or the short code from your host. You can sign in or create an account on the next screen.',
+      placeholder: 'Invite link or code',
+      button: 'Continue',
+      error: 'Paste a link or invite code.',
+    },
   },
   es: {
     nav: {
@@ -136,6 +143,13 @@ export const landingContent = {
       message:
         'No hay conexión con el servidor. El inicio de sesión puede fallar hasta que el backend esté disponible (revisa VITE_API_URL o espera a que el servicio arranque).',
       retry: 'Reintentar',
+    },
+    inviteJoin: {
+      title: '¿Tienes una invitación?',
+      hint: 'Pega el enlace completo o el código que te pasó el anfitrión. Si no tienes cuenta, podrás crearla en el siguiente paso.',
+      placeholder: 'Enlace o código de invitación',
+      button: 'Continuar',
+      error: 'Pega un enlace o un código de invitación.',
     },
   },
 }

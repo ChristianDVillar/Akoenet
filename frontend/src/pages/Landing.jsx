@@ -1,9 +1,55 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import SiteFooter from '../components/SiteFooter'
 import { useLandingLocale } from '../hooks/useLandingLocale'
 import { landingContent } from '../lib/landingContent'
+import { inviteLandingPath, parseInviteTokenFromInput } from '../lib/invites'
 
 const FEATURE_ICONS = ['💬', '🎙️', '🛡️', '✉️']
+
+function LandingInviteStrip({ t }) {
+  const navigate = useNavigate()
+  const [raw, setRaw] = useState('')
+  const [err, setErr] = useState('')
+  function onSubmit(e) {
+    e.preventDefault()
+    const token = parseInviteTokenFromInput(raw)
+    if (!token) {
+      setErr(t.inviteJoin.error)
+      return
+    }
+    setErr('')
+    navigate(inviteLandingPath(token))
+  }
+  return (
+    <section className="landing-invite-join" aria-labelledby="landing-invite-heading">
+      <div className="landing-invite-join-inner">
+        <h2 id="landing-invite-heading" className="landing-invite-join-title">
+          {t.inviteJoin.title}
+        </h2>
+        <p className="landing-invite-join-hint">{t.inviteJoin.hint}</p>
+        <form onSubmit={onSubmit} className="landing-invite-join-form">
+          <input
+            type="text"
+            name="invite_paste"
+            autoComplete="off"
+            placeholder={t.inviteJoin.placeholder}
+            value={raw}
+            onChange={(e) => {
+              setRaw(e.target.value)
+              if (err) setErr('')
+            }}
+            className="landing-invite-join-input"
+          />
+          <button type="submit" className="btn primary landing-invite-join-btn">
+            {t.inviteJoin.button}
+          </button>
+        </form>
+        {err ? <p className="landing-invite-join-err">{err}</p> : null}
+      </div>
+    </section>
+  )
+}
 
 export default function Landing({ apiUnreachable = false, onRetryApi }) {
   const { locale, setLocale } = useLandingLocale()
@@ -76,6 +122,8 @@ export default function Landing({ apiUnreachable = false, onRetryApi }) {
             </div>
           </div>
         </section>
+
+        <LandingInviteStrip t={t} />
 
         <section id="features" className="landing-section landing-features">
           <div className="landing-section-inner">

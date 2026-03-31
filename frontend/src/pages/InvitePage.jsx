@@ -99,6 +99,26 @@ export default function InvitePage() {
     )
   }
 
+  if (fetchError === 'invalid') {
+    return (
+      <div className="auth-page">
+        <div className="auth-card invite-landing-card">
+          <div className="brand-block" style={{ justifyContent: 'center' }}>
+            <span className="brand-akoenet">AkoeNet</span>
+          </div>
+          <h1>Missing invite</h1>
+          <p className="muted">
+            Open the invite link you were sent. You can also paste an invite on the home page before signing in, or use{' '}
+            <strong>Join a server</strong> on your dashboard after you sign in.
+          </p>
+          <Link to="/" className="btn primary" style={{ display: 'inline-block', marginTop: '0.75rem' }}>
+            Go to AkoeNet
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   if (fetchError === 'not_found' || fetchError === 'failed') {
     return (
       <div className="auth-page">
@@ -162,20 +182,20 @@ export default function InvitePage() {
         ) : (
           <>
             <p className="muted small" style={{ marginTop: '0.5rem' }}>
-              Sign in or create an account to join.
+              Use the same email you normally use — after you sign in or sign up, you will land in this server.
             </p>
             <div className="invite-landing-actions">
               <Link
-                to={`/login?${INVITE_QUERY_PARAM}=${encodeURIComponent(String(token || ''))}`}
+                to={`/register?${INVITE_QUERY_PARAM}=${encodeURIComponent(String(token || ''))}`}
                 className="btn primary"
               >
-                Sign in
+                Create account & join
               </Link>
               <Link
-                to={`/register?${INVITE_QUERY_PARAM}=${encodeURIComponent(String(token || ''))}`}
+                to={`/login?${INVITE_QUERY_PARAM}=${encodeURIComponent(String(token || ''))}`}
                 className="btn ghost"
               >
-                Create account
+                I already have an account
               </Link>
             </div>
           </>

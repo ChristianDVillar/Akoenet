@@ -11,6 +11,14 @@ const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_not
 const TWITCH_OAUTH_ERR_KEY = 'akoenet_twitch_oauth_error'
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
+function readPendingInviteFromSession() {
+  try {
+    return sessionStorage.getItem(PENDING_INVITE_KEY)
+  } catch {
+    return null
+  }
+}
+
 export default function Login() {
   const { login, user, loading } = useAuth()
   const navigate = useNavigate()
@@ -137,8 +145,8 @@ export default function Login() {
         </p>
         <h1>Sign in</h1>
         <p className="muted">
-          {searchParams.get(INVITE_QUERY_PARAM)
-            ? 'After signing in you will join the server from your invite.'
+          {searchParams.get(INVITE_QUERY_PARAM) || readPendingInviteFromSession()
+            ? 'After you sign in, we will add you to the invited server automatically.'
             : 'Communities and real-time chat.'}
         </p>
         <form onSubmit={onSubmit} className="form-stack">
