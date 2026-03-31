@@ -42,7 +42,7 @@ const DM_LIST_SELECT = `
   FROM direct_messages dm
   JOIN users u ON u.id = dm.sender_id
   LEFT JOIN direct_messages rp ON rp.id = dm.reply_to_id
-  LEFT JOIN users ru ON ru.id = rp.user_id
+  LEFT JOIN users ru ON ru.id = rp.sender_id
 `;
 const dmMessageIdParamSchema = z.object({
   dmMessageId: z.coerce.number().int().positive(),
