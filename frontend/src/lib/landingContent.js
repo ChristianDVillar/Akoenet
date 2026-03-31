@@ -4,7 +4,8 @@ export const landingContent = {
     nav: {
       features: 'Features',
       faq: 'FAQ',
-      legal: 'Legal',
+      terms: 'Terms',
+      privacy: 'Privacy',
       signIn: 'Sign in',
       signUp: 'Create account',
       langLabel: 'Language',
@@ -13,7 +14,7 @@ export const landingContent = {
       eyebrow: 'Communities + streaming',
       title: 'Organize your community and your streaming schedule',
       lead:
-        'Built-in Streamer Scheduler commands (`!schedule`, `!next`), servers with text and voice, DMs, mentions, and roles — not just another chat clone.',
+        'Built-in Streamer Scheduler commands (`!schedule`, `!next`), servers with text and voice, DMs, mentions, and roles — more than a chat platform, built for communities and streamers.',
       ctaPrimary: 'Get started',
       ctaSecondary: 'I already have an account',
     },
@@ -60,7 +61,7 @@ export const landingContent = {
       },
       {
         q: 'Where are the terms and privacy policy?',
-        a: 'Links are in the footer (Terms, Privacy, Legal). The Markdown sources live in `docs/legal/` in the repository.',
+        a: 'Use the footer links: Terms of Service, Privacy Policy, and Legal notice. Cookies and local storage are described in the Privacy Policy.',
       },
     ],
     apiOfflineBanner: {
@@ -80,7 +81,8 @@ export const landingContent = {
     nav: {
       features: 'Funciones',
       faq: 'FAQ',
-      legal: 'Legal',
+      terms: 'Términos',
+      privacy: 'Privacidad',
       signIn: 'Entrar',
       signUp: 'Crear cuenta',
       langLabel: 'Idioma',
@@ -89,7 +91,7 @@ export const landingContent = {
       eyebrow: 'Comunidades + streaming',
       title: 'Organiza tu comunidad y tu calendario de streams',
       lead:
-        'Integración con Streamer Scheduler (`!schedule`, `!next`), servidores con texto y voz, DM, menciones y roles — más que un clon de chat genérico.',
+        'Integración con Streamer Scheduler (`!schedule`, `!next`), servidores con texto y voz, DM, menciones y roles — una plataforma amplia, pensada para comunidades y streamers.',
       ctaPrimary: 'Empezar gratis',
       ctaSecondary: 'Ya tengo cuenta',
     },
@@ -136,7 +138,7 @@ export const landingContent = {
       },
       {
         q: '¿Dónde leo términos y privacidad?',
-        a: 'En el pie de página hay enlaces a Términos, Privacidad y el documento de protección legal. Los Markdown fuente están en `docs/legal/` del repositorio.',
+        a: 'En el pie de página: Términos del servicio, Política de privacidad y aviso legal. Las cookies y el almacenamiento local se describen en la política de privacidad.',
       },
     ],
     apiOfflineBanner: {
@@ -158,23 +160,27 @@ export const footerContent = {
   en: {
     versionTitle: 'Web client version',
     legalNav: 'Legal links',
-    terms: 'Terms',
-    privacy: 'Privacy',
+    terms: 'Terms of Service',
+    privacy: 'Privacy Policy',
     legal: 'Legal notice',
     dmca: 'DMCA',
     dpo: 'Data protection',
     credit: 'Project and development by',
     independentNotice: 'AkoeNet is independent software and is not affiliated with Discord Inc.',
+    twitchDisclaimer:
+      'Twitch is a trademark of Twitch Interactive, Inc. This service is not affiliated with, endorsed by, or sponsored by Twitch.',
   },
   es: {
     versionTitle: 'Versión del cliente web',
     legalNav: 'Enlaces legales',
-    terms: 'Términos',
-    privacy: 'Privacidad',
-    legal: 'Protección legal',
+    terms: 'Términos del servicio',
+    privacy: 'Política de privacidad',
+    legal: 'Aviso legal',
     dmca: 'DMCA',
     dpo: 'Protección de datos',
     credit: 'Proyecto y desarrollo por',
     independentNotice: 'AkoeNet es software independiente y no está afiliado a Discord Inc.',
+    twitchDisclaimer:
+      'Twitch es una marca de Twitch Interactive, Inc. Este servicio no está afiliado, patrocinado ni respaldado por Twitch.',
   },
 }

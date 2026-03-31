@@ -4343,6 +4343,12 @@ input:focus {
   color: var(--nexora-muted);
 }
 
+.site-footer-trademark {
+  max-width: 42rem;
+  margin-top: 0.4rem;
+  line-height: 1.45;
+}
+
 .cookie-banner {
   position: fixed;
   left: 1rem;
