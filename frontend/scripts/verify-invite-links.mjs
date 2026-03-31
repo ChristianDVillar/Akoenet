@@ -9,11 +9,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const invitesPath = join(__dirname, '../src/lib/invites.js')
 const s = readFileSync(invitesPath, 'utf8')
 
-const expectedReturn =
-  'return `${base}/?${INVITE_QUERY_PARAM}=${encodeURIComponent(token)}`'
-if (!s.includes(expectedReturn)) {
+// BrowserRouter: `https://host/?invite=…` — query on `/` so static hosts serve index.html.
+// HashRouter: `https://host/#/?invite=…` — invite lives in the hash (same query shape). Never share `/invite/:token`.
+const okBrowserOnly =
+  s.includes('return `${base}/?${INVITE_QUERY_PARAM}=${encodeURIComponent(token)}`')
+const okPathAndQuery =
+  s.includes('const pathAndQuery = `/?${INVITE_QUERY_PARAM}=${enc}`') &&
+  s.includes('return useHash ? `${base}/#${pathAndQuery}` : `${base}${pathAndQuery}`')
+if (!okBrowserOnly && !okPathAndQuery) {
   console.error(
-    '[verify-invite-links] invites.js: inviteFullUrl must use query on / (see expected one-liner in script).'
+    '[verify-invite-links] invites.js: inviteFullUrl must use `/?invite=` (and optional `/#/?invite=` for HashRouter), not path /invite/. See script.'
   )
   process.exit(1)
 }
