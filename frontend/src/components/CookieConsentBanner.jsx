@@ -7,13 +7,13 @@ const CONSENT_KEY = 'akoenet_cookie_consent_v1'
 const COPY = {
   en: {
     text: 'We use local storage and technical cookies for session and preferences. See ',
-    privacy: 'Privacy',
+    privacy: 'Privacy Policy',
     accept: 'Accept',
     aria: 'Cookie consent',
   },
   es: {
     text: 'Usamos almacenamiento local/cookies técnicas para sesión y preferencias. Consulta ',
-    privacy: 'Privacidad',
+    privacy: 'Política de privacidad',
     accept: 'Aceptar',
     aria: 'Consentimiento de cookies',
   },

@@ -42,6 +42,7 @@ export default function SiteFooter({ className = '' }) {
           {f.credit} <strong>{author}</strong>
         </p>
         <p className="site-footer-disclaimer">{f.independentNotice}</p>
+        <p className="site-footer-disclaimer site-footer-trademark">{f.twitchDisclaimer}</p>
       </div>
     </footer>
   )

@@ -49,6 +49,11 @@ Queda prohibido:
 - Si consideras que contenido compartido infringe tus derechos, puedes enviar notificacion a [CONTACTO_LEGAL] con evidencia suficiente.
 - Evaluaremos solicitudes de takedown y aplicaremos medidas proporcionadas conforme a ley aplicable.
 
+## 5.3 Invitaciones y control de acceso
+
+- Los enlaces y codigos de invitacion son emitidos por administradores u otros miembros con permiso en cada servidor. Quien los comparte es responsable de su uso y de a quien concede acceso.
+- Unirse mediante invitacion puede dar acceso a espacios que el servidor considere privados o restringidos; el uso del servicio sigue estas condiciones y los avisos de la comunidad.
+
 ## 6. Propiedad intelectual
 
 - El software, codigo, diseno, marca, logos y documentacion de AkoeNet pertenecen a su titular o licenciantes.
@@ -66,6 +71,7 @@ Nos reservamos el derecho de suspender o cerrar cuentas en caso de incumplimient
 
 - El servicio se ofrece "tal cual", sin garantia de disponibilidad continua.
 - Podemos modificar funciones, limites tecnicos o condiciones cuando sea necesario.
+- Las descripciones de funciones en la web o en la aplicacion son orientativas; pueden cambiar o no estar disponibles segun la configuracion del despliegue o la cuenta.
 
 ## 9. Limitacion de responsabilidad
 

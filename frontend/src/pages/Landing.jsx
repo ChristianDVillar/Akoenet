@@ -95,7 +95,8 @@ export default function Landing({ apiUnreachable = false, onRetryApi }) {
             </div>
             <a href="#features">{t.nav.features}</a>
             <a href="#faq">{t.nav.faq}</a>
-            <Link to="/legal/terminos">{t.nav.legal}</Link>
+            <Link to="/legal/terminos">{t.nav.terms}</Link>
+            <Link to="/legal/privacidad">{t.nav.privacy}</Link>
             <Link to="/login" className="btn ghost small landing-nav-cta">
               {t.nav.signIn}
             </Link>
