@@ -4,6 +4,7 @@ import { getSocket } from '../services/socket'
 import VoiceRoom from './VoiceRoom'
 import EmojiText from './EmojiText'
 import RichMessageText from './RichMessageText'
+import MessageLinkPreview from './MessageLinkPreview'
 import StandardEmojiPicker from './StandardEmojiPicker'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 
@@ -38,11 +39,16 @@ export default function Chat({
   const [searchResults, setSearchResults] = useState([])
   const [searchBusy, setSearchBusy] = useState(false)
   const [replyTo, setReplyTo] = useState(null)
+  /** When set, show messages belonging to this thread (root message id). */
+  const [threadRootId, setThreadRootId] = useState(null)
+  const threadRootIdRef = useRef(null)
   const [editingMessageId, setEditingMessageId] = useState(null)
   const [editingDraft, setEditingDraft] = useState('')
   const bottomRef = useRef(null)
   const messageNodeRef = useRef(new Map())
   const composerInputRef = useRef(null)
+  const fileDragDepthRef = useRef(0)
+  const [fileDragOver, setFileDragOver] = useState(false)
   const emojiPickerWrapRef = useRef(null)
   const reactionPickerWrapRef = useRef(null)
   const typingStopTimerRef = useRef(null)
@@ -56,6 +62,10 @@ export default function Chat({
   useEffect(() => {
     currentUserIdRef.current = user?.id != null ? Number(user.id) : null
   }, [user?.id])
+
+  useEffect(() => {
+    threadRootIdRef.current = threadRootId
+  }, [threadRootId])
 
   const emojiMap = Object.fromEntries(emojis.map((e) => [e.name, resolveImageUrl(e.image_url)]))
   const memberAvatarByUserId = useMemo(() => {
@@ -107,7 +117,8 @@ export default function Chat({
     let cancelled = false
     ;(async () => {
       try {
-        const { data } = await api.get(`/messages/channel/${channelId}`)
+        const params = threadRootId ? { thread_root: threadRootId } : {}
+        const { data } = await api.get(`/messages/channel/${channelId}`, { params })
         if (!cancelled) setMessages(data)
       } catch {
         if (!cancelled) setMessages([])
@@ -116,7 +127,7 @@ export default function Chat({
     return () => {
       cancelled = true
     }
-  }, [channelId])
+  }, [channelId, threadRootId])
 
   useEffect(() => {
     const s = getSocket()
@@ -126,6 +137,12 @@ export default function Chat({
 
     const onMsg = (msg) => {
       if (String(msg.channel_id) !== String(channelId)) return
+      const tr = threadRootIdRef.current
+      if (tr == null) {
+        if (msg.thread_root_message_id) return
+      } else if (Number(msg.id) !== Number(tr) && Number(msg.thread_root_message_id) !== Number(tr)) {
+        return
+      }
       setMessages((prev) => {
         const cleaned = prev.filter((m) => {
           if (!m._optimistic) return true
@@ -179,8 +196,9 @@ export default function Chat({
     }
     s.on('channel_typing', onTyping)
     const onReconnect = () => {
+      const params = threadRootIdRef.current ? { thread_root: threadRootIdRef.current } : {}
       api
-        .get(`/messages/channel/${channelId}`)
+        .get(`/messages/channel/${channelId}`, { params })
         .then(({ data }) => setMessages(data))
         .catch(() => {})
     }
@@ -194,13 +212,14 @@ export default function Chat({
       s.off('channel_typing', onTyping)
       s.emit('leave_channel', channelId)
     }
-  }, [channelId])
+  }, [channelId, threadRootId])
 
   useEffect(() => {
     setSearchOpen(false)
     setSearchQuery('')
     setSearchResults([])
     setReplyTo(null)
+    setThreadRootId(null)
     setEditingMessageId(null)
     setEditingDraft('')
     setComposerHistoryIndex(0)
@@ -301,6 +320,7 @@ export default function Chat({
         channel_id: channelId,
         content: toSend,
         ...(replyId ? { reply_to_message_id: replyId } : {}),
+        ...(threadRootId ? { thread_root_message_id: threadRootId } : {}),
       },
       (ack) => {
         setMessages((prev) => prev.filter((m) => m._clientId !== clientId))
@@ -465,10 +485,9 @@ export default function Chat({
     }
   }
 
-  async function onFile(e) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
+  async function uploadChannelImage(file) {
     if (!file || !channelId) return
+    if (!file.type.startsWith('image/')) return
     setUploading(true)
     try {
       const form = new FormData()
@@ -488,6 +507,7 @@ export default function Chat({
           channel_id: channelId,
           content: '',
           image_url: data.url,
+          ...(threadRootId ? { thread_root_message_id: threadRootId } : {}),
         },
         (ack) => {
           if (ack?.error === 'rate_limited') {
@@ -503,6 +523,46 @@ export default function Chat({
     } finally {
       setUploading(false)
     }
+  }
+
+  async function onFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    await uploadChannelImage(file)
+  }
+
+  function onChatDragEnter(e) {
+    if (!channelId || channelType === 'voice') return
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    e.preventDefault()
+    fileDragDepthRef.current += 1
+    setFileDragOver(true)
+  }
+
+  function onChatDragLeave(e) {
+    fileDragDepthRef.current -= 1
+    if (fileDragDepthRef.current <= 0) {
+      fileDragDepthRef.current = 0
+      setFileDragOver(false)
+    }
+  }
+
+  function onChatDragOver(e) {
+    if (!channelId || channelType === 'voice') return
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }
+
+  async function onChatDrop(e) {
+    if (!channelId || channelType === 'voice') return
+    fileDragDepthRef.current = 0
+    setFileDragOver(false)
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    e.preventDefault()
+    const file = e.dataTransfer?.files?.[0]
+    await uploadChannelImage(file)
   }
 
   if (!channelId) {
@@ -538,7 +598,13 @@ export default function Chat({
   }
 
   return (
-    <main className="chat-panel">
+    <main
+      className={`chat-panel${fileDragOver ? ' chat-panel--file-drag' : ''}`}
+      onDragEnter={onChatDragEnter}
+      onDragLeave={onChatDragLeave}
+      onDragOver={onChatDragOver}
+      onDrop={onChatDrop}
+    >
       <header className="chat-header">
         <div className="chat-header-topic">
           <span className="hash" aria-hidden="true">
@@ -608,6 +674,15 @@ export default function Chat({
           </span>
         </div>
       </header>
+
+      {threadRootId && !isVoice && (
+        <div className="thread-banner" role="region" aria-label="Thread">
+          <button type="button" className="btn ghost small" onClick={() => setThreadRootId(null)}>
+            ← Back to channel
+          </button>
+          <span className="thread-banner-label">Thread</span>
+        </div>
+      )}
 
       {!isVoice && (
       <>
@@ -809,6 +884,9 @@ export default function Chat({
                   <RichMessageText text={m.content} emojis={emojiMap} />
                 </p>
               )}
+              {m.content && m.content !== '(imagen)' && (
+                <MessageLinkPreview content={m.content} />
+              )}
               {m.image_url && (
                 <a href={m.image_url} target="_blank" rel="noreferrer">
                   <img
@@ -877,6 +955,17 @@ export default function Chat({
                     onClick={() => startReply(m)}
                   >
                     ↩
+                  </button>
+                )}
+                {!m._optimistic && !threadRootId && channelType === 'text' && (
+                  <button
+                    type="button"
+                    className="message-action-icon"
+                    title="Open thread"
+                    aria-label="Open thread"
+                    onClick={() => setThreadRootId(Number(m.id))}
+                  >
+                    #
                   </button>
                 )}
                 {!m._optimistic && (

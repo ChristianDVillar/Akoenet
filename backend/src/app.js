@@ -25,6 +25,11 @@ const auth = require("./middleware/auth");
 const requireAdmin = require("./middleware/require-admin");
 const { buildOpenApiSpec } = require("./docs/openapi");
 const { fetchSchedulerDiscovery } = require("./lib/scheduler-client");
+const { initPrometheusIfEnabled, metricsHandler } = require("./lib/prometheus-metrics");
+const linkPreviewRoutes = require("./routes/link-preview.routes");
+const socialRoutes = require("./routes/social.routes");
+
+initPrometheusIfEnabled();
 
 async function buildDepsReport(app) {
   const startedAt = Date.now();
@@ -167,6 +172,7 @@ function createApp() {
     })
   );
   app.use(pinoHttp({ logger }));
+  app.get("/metrics", metricsHandler);
   app.use(globalIpRateLimiter);
   app.use(express.json());
   app.use("/dmca", dmcaRoutes);
@@ -213,6 +219,8 @@ function createApp() {
   app.use("/upload", uploadRoutes);
   app.use("/dm", dmRoutes);
   app.use("/integrations", integrationRoutes);
+  app.use("/link-preview", linkPreviewRoutes);
+  app.use("/social", socialRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

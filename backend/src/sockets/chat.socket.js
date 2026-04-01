@@ -21,6 +21,7 @@ const { sanitizeMediaUrl, sanitizeImageUrlField } = require("../lib/sanitize-med
 const { getJwtSecret } = require("../lib/jwt-secret");
 const { textContainsBlockedLanguage } = require("../lib/blocked-content");
 const { notifyChannelMentions } = require("../lib/mentions");
+const { areUsersBlocked } = require("../lib/social-guard");
 const { recordDmMessage } = require("../lib/runtime-metrics");
 
 /** Set on first initSocket(io) — used by GET /servers/:id/voice-presence */
@@ -357,8 +358,8 @@ function initSocket(io) {
       try {
         if (schCmd) {
           const result = await pool.query(
-            `INSERT INTO messages (channel_id, user_id, content, image_url)
-             VALUES ($1, $2, $3, NULL)
+            `INSERT INTO messages (channel_id, user_id, content, image_url, thread_root_message_id)
+             VALUES ($1, $2, $3, NULL, NULL)
              RETURNING *`,
             [channelId, socket.userId, content.trim()]
           );
@@ -456,11 +457,20 @@ function initSocket(io) {
           }
         }
 
+        const threadRootRaw = parseInt(payload?.thread_root_message_id, 10);
+        let threadRootId = null;
+        if (!Number.isNaN(threadRootRaw) && threadRootRaw > 0) {
+          const trCheck = await pool.query(`SELECT id, channel_id FROM messages WHERE id = $1`, [threadRootRaw]);
+          if (trCheck.rows.length && Number(trCheck.rows[0].channel_id) === channelId) {
+            threadRootId = threadRootRaw;
+          }
+        }
+
         const result = await pool.query(
-          `INSERT INTO messages (channel_id, user_id, content, image_url, reply_to_id)
-           VALUES ($1, $2, $3, $4, $5)
+          `INSERT INTO messages (channel_id, user_id, content, image_url, reply_to_id, thread_root_message_id)
+           VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING *`,
-          [channelId, socket.userId, content.trim() || "(imagen)", imageUrl, replyToId]
+          [channelId, socket.userId, content.trim() || "(imagen)", imageUrl, replyToId, threadRootId]
         );
         const row = result.rows[0];
         const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [
@@ -791,6 +801,13 @@ function initSocket(io) {
       );
       if (!conv.rows.length) {
         if (typeof ack === "function") ack({ error: "forbidden" });
+        return;
+      }
+      const cRow = conv.rows[0];
+      const peerDm =
+        Number(cRow.user_low_id) === Number(socket.userId) ? cRow.user_high_id : cRow.user_low_id;
+      if (await areUsersBlocked(socket.userId, peerDm)) {
+        if (typeof ack === "function") ack({ error: "blocked" });
         return;
       }
       if (content && textContainsBlockedLanguage(content, { source: "socket_dm_message", userId: socket.userId })) {

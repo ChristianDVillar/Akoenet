@@ -65,9 +65,28 @@ async function getServerMemberIds(pool, serverId, excludeUserId) {
 }
 
 /**
- * Emit lightweight in-app notifications for @user and @everyone (mods+).
- * @everyone only if sender can manage channels (admin/moderator).
- * @here: no extra signal in MVP (same as omitting).
+ * User IDs with an active socket joined to `channel:{channelId}` (text channel view).
+ */
+async function getUserIdsInChannelRoom(io, channelId) {
+  if (!io || !channelId) return [];
+  try {
+    const room = `channel:${channelId}`;
+    const sockets = await io.in(room).fetchSockets();
+    const ids = new Set();
+    for (const s of sockets) {
+      const uid = typeof s.userId === "number" ? s.userId : Number(s.userId);
+      if (Number.isInteger(uid) && uid > 0) ids.add(uid);
+    }
+    return [...ids];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Emit lightweight in-app notifications for @user, @everyone and @here (mods+).
+ * @everyone / @here only if sender can manage channels (admin/moderator).
+ * @here notifies members currently in the channel Socket.IO room (same as “online in channel”).
  */
 async function notifyChannelMentions(io, pool, { serverId, channelId, messageId, senderId, content }) {
   if (!io || !content) return;
@@ -87,6 +106,16 @@ async function notifyChannelMentions(io, pool, { serverId, channelId, messageId,
     }
   }
 
+  if (parsed.here) {
+    const allowed = await canManageChannels(senderId, serverId);
+    if (allowed) {
+      const hereIds = await getUserIdsInChannelRoom(io, channelId);
+      for (const uid of hereIds) {
+        if (uid !== senderId) targets.add(uid);
+      }
+    }
+  }
+
   if (targets.size === 0) return;
 
   const meta = await pool.query(
@@ -101,9 +130,11 @@ async function notifyChannelMentions(io, pool, { serverId, channelId, messageId,
   const snippet = String(content).trim().slice(0, 140);
 
   let n = 0;
+  const pushIds = [];
   for (const uid of targets) {
     if (n >= MAX_TARGETS) break;
     n += 1;
+    pushIds.push(uid);
     io.to(`user:${uid}`).emit("in_app_notification", {
       type: "mention",
       channel_id: channelId,
@@ -114,6 +145,18 @@ async function notifyChannelMentions(io, pool, { serverId, channelId, messageId,
       server_name: row.server_name || "server",
       snippet,
     });
+  }
+  if (pushIds.length) {
+    try {
+      const { sendPushToUsers } = require("./web-push-notify");
+      sendPushToUsers(pushIds, {
+        title: row.server_name || "AkoeNet",
+        body: `${row.from_username || "Someone"} — ${snippet}`,
+        url: `/server/${serverId}?channel=${channelId}`,
+      }).catch(() => {});
+    } catch {
+      /* web-push optional */
+    }
   }
 }
 

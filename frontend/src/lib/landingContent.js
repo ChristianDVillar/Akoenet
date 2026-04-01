@@ -165,7 +165,10 @@ export const footerContent = {
     legal: 'Legal notice',
     dmca: 'DMCA',
     dpo: 'Data protection',
-    credit: 'Project and development by',
+    status: 'System status',
+    copyrightReserved: 'All rights reserved.',
+    copyrightSubject: 'Use is subject to',
+    copyrightBetweenLinks: 'and',
     independentNotice: 'AkoeNet is independent software and is not affiliated with Discord Inc.',
     twitchDisclaimer:
       'Twitch is a trademark of Twitch Interactive, Inc. This service is not affiliated with, endorsed by, or sponsored by Twitch.',
@@ -178,9 +181,36 @@ export const footerContent = {
     legal: 'Aviso legal',
     dmca: 'DMCA',
     dpo: 'Protección de datos',
-    credit: 'Proyecto y desarrollo por',
+    status: 'Estado del sistema',
+    copyrightReserved: 'Todos los derechos reservados.',
+    copyrightSubject: 'El uso está sujeto a',
+    copyrightBetweenLinks: 'y',
     independentNotice: 'AkoeNet es software independiente y no está afiliado a Discord Inc.',
     twitchDisclaimer:
       'Twitch es una marca de Twitch Interactive, Inc. Este servicio no está afiliado, patrocinado ni respaldado por Twitch.',
   },
+}
+
+/** Login/register: browser language → footer-style legal line (no landing locale in tree). */
+export const authFooter = {
+  en: {
+    copyrightReserved: 'All rights reserved.',
+    copyrightSubject: 'Use is subject to',
+    copyrightBetweenLinks: 'and',
+    terms: 'Terms of Service',
+    privacy: 'Privacy Policy',
+  },
+  es: {
+    copyrightReserved: 'Todos los derechos reservados.',
+    copyrightSubject: 'El uso está sujeto a',
+    copyrightBetweenLinks: 'y',
+    terms: 'Términos del servicio',
+    privacy: 'Política de privacidad',
+  },
+}
+
+export function resolveAuthFooterLocale() {
+  if (typeof navigator === 'undefined') return 'en'
+  const lang = String(navigator.language || '').toLowerCase()
+  return lang.startsWith('es') ? 'es' : 'en'
 }

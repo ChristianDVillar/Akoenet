@@ -24,6 +24,8 @@ La **landing pública** y el **pie de página** enlazan a estas rutas.
 
 Sustituye los placeholders de contacto (`[CONTACTO_LEGAL]`, `[CONTACTO_PRIVACIDAD]`, etc.) en los Markdown y revisa el texto con asesoría jurídica si el servicio es público.
 
-## Autoría en el pie de página
+## Copyright y aviso corto en el cliente
 
-El nombre mostrado como “Proyecto y desarrollo por …” se configura con la variable de entorno del frontend `VITE_APP_AUTHOR` (ver `frontend/.env.example`). Si no se define, se usa **Christian** por defecto (coherente con los documentos legales actuales).
+- **Pie público (`SiteFooter`):** línea `© <año> <autor>. …` con enlaces a términos y privacidad; el idioma sigue al selector de la landing (EN/ES) vía `footerContent` en `frontend/src/lib/landingContent.js`.
+- **Login y registro:** componente `AuthLegalStrip` con el mismo esquema; el idioma se elige por el idioma del navegador (`es` si `navigator.language` empieza por `es`, si no inglés).
+- El nombre del titular se configura con **`VITE_APP_AUTHOR`** (ver `frontend/.env.example`); por defecto **Christian**.

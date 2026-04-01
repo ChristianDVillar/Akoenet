@@ -11,6 +11,7 @@ import LegalDocPage from './pages/LegalDocPage'
 import DmcaPage from './pages/DmcaPage'
 import DpoPage from './pages/DpoPage'
 import InvitePage from './pages/InvitePage'
+import SystemStatus from './pages/SystemStatus'
 import CookieConsentBanner from './components/CookieConsentBanner'
 
 function PrivateRoute({ children }) {
@@ -85,6 +86,7 @@ export default function App() {
         <Route path="/legal/dpo" element={<DpoPage />} />
         <Route path="/legal/:slug" element={<LegalDocPage />} />
         <Route path="/invite/:token" element={<InvitePage />} />
+        <Route path="/status" element={<SystemStatus />} />
         <Route path="/" element={<Home />} />
         <Route
           path="/messages"

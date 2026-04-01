@@ -4,6 +4,9 @@ const { Server } = require("socket.io");
 const { createClient } = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createApp } = require("./app");
+const { registerDomainHandlers } = require("./lib/register-domain-handlers");
+
+registerDomainHandlers();
 const initSocket = require("./sockets/chat.socket");
 const logger = require("./lib/logger");
 const { appEvents } = require("./lib/app-events");

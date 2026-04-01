@@ -8,6 +8,7 @@ export default function SiteFooter({ className = '' }) {
   const { locale } = useLandingLocale()
   const f = footerContent[locale]
   const v = __APP_VERSION__
+  const year = new Date().getFullYear()
   const rootClass = ['site-footer', className].filter(Boolean).join(' ')
 
   return (
@@ -37,9 +38,15 @@ export default function SiteFooter({ className = '' }) {
             ·
           </span>
           <Link to="/legal/dpo">{f.dpo}</Link>
+          <span className="site-footer-dot" aria-hidden>
+            ·
+          </span>
+          <Link to="/status">{f.status}</Link>
         </nav>
-        <p className="site-footer-credit">
-          {f.credit} <strong>{author}</strong>
+        <p className="site-footer-copyright muted small">
+          © {year} <strong>{author}</strong>. {f.copyrightReserved} {f.copyrightSubject}{' '}
+          <Link to="/legal/terminos">{f.terms}</Link> {f.copyrightBetweenLinks}{' '}
+          <Link to="/legal/privacidad">{f.privacy}</Link>.
         </p>
         <p className="site-footer-disclaimer">{f.independentNotice}</p>
         <p className="site-footer-disclaimer site-footer-trademark">{f.twitchDisclaimer}</p>

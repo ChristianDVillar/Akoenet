@@ -13,6 +13,7 @@ const {
 const { postJoinWelcomeMessage } = require("../lib/join-welcome-message");
 
 const { sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
+const { cacheGet, cacheSet } = require("../lib/redis-cache");
 
 const router = express.Router();
 const hiddenServerName = (process.env.HIDDEN_SYSTEM_SERVER_NAME || "AkoeNet").trim().toLowerCase();
@@ -40,6 +41,14 @@ const inviteTokenParamSchema = z.object({
 const inviteIdParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
   inviteId: z.coerce.number().int().positive(),
+});
+const webhookIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  webhookId: z.coerce.number().int().positive(),
+});
+const createWebhookSchema = z.object({
+  url: z.string().trim().url().max(2000),
+  event_types: z.array(z.enum(["message.create"])).optional(),
 });
 
 /** Public: invite landing page (no auth). */
@@ -169,6 +178,15 @@ router.post("/", validate({ body: createServerSchema }), async (req, res) => {
 
 /** Servers the user belongs to */
 router.get("/", async (req, res) => {
+  const cacheKey = `servers:list:${req.user.id}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) {
+    try {
+      return res.json(JSON.parse(cached));
+    } catch {
+      /* fall through */
+    }
+  }
   const result = await pool.query(
     `SELECT s.* FROM servers s
      INNER JOIN server_members m ON m.server_id = s.id
@@ -178,6 +196,7 @@ router.get("/", async (req, res) => {
      ORDER BY s.created_at ASC`,
     [req.user.id, hiddenServerName]
   );
+  await cacheSet(cacheKey, JSON.stringify(result.rows), 15);
   res.json(result.rows);
 });
 
@@ -489,5 +508,55 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
   });
   res.json(withEffectivePresence.map((row) => sanitizeUserMediaFields(row)));
 });
+
+/** Outgoing webhooks (manage channels permission) */
+router.get(
+  "/:serverId/webhooks",
+  validate({ params: serverIdParamSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const r = await pool.query(
+      `SELECT id, url, event_types, created_at FROM server_webhooks WHERE server_id = $1 ORDER BY id ASC`,
+      [serverId]
+    );
+    res.json(r.rows);
+  }
+);
+
+router.post(
+  "/:serverId/webhooks",
+  validate({ params: serverIdParamSchema, body: createWebhookSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const secret = crypto.randomBytes(32).toString("hex");
+    const types = req.body.event_types?.length ? req.body.event_types : ["message.create"];
+    const ins = await pool.query(
+      `INSERT INTO server_webhooks (server_id, url, secret, event_types, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, url, event_types, created_at`,
+      [serverId, req.body.url.trim(), secret, types, req.user.id]
+    );
+    res.status(201).json({ ...ins.rows[0], secret });
+  }
+);
+
+router.delete(
+  "/:serverId/webhooks/:webhookId",
+  validate({ params: webhookIdParamSchema }),
+  async (req, res) => {
+    const { serverId, webhookId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    await pool.query(`DELETE FROM server_webhooks WHERE id = $1 AND server_id = $2`, [webhookId, serverId]);
+    res.json({ ok: true });
+  }
+);
 
 module.exports = router;

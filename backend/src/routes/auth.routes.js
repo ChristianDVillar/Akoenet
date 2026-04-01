@@ -11,6 +11,9 @@ const logger = require("../lib/logger");
 const { sanitizeUserMediaFields } = require("../lib/sanitize-media-url");
 const { getJwtSecret } = require("../lib/jwt-secret");
 const { assertContentAllowed, BLOCKED_MESSAGE } = require("../lib/blocked-content");
+const { sha256Hex, createStoredRefreshToken } = require("../lib/refresh-token");
+const { authenticator } = require("otplib");
+const { generateSecret, verify: verifyTotp } = require("../lib/totp");
 
 const router = express.Router();
 const secret = getJwtSecret();
@@ -78,9 +81,10 @@ const twitchRedirectUri = (() => {
  * return 404 on many static hosts (including Render) unless a /* → /index.html rewrite is set.
  * / always serves index.html, so this works without dashboard rules.
  */
-function twitchOAuthSuccessUrl(appToken) {
+function twitchOAuthSuccessUrl(appToken, refreshToken) {
   const u = new URL("/", frontendBase);
   u.searchParams.set("twitch_token", appToken);
+  if (refreshToken) u.searchParams.set("refresh_token", refreshToken);
   return u.toString();
 }
 
@@ -93,6 +97,8 @@ function twitchOAuthErrorUrl(code) {
 /** Base URL shown in /auth/twitch/status (OAuth returns ?twitch_token= or ?twitch_error= on /). */
 const frontendOAuthRedirect = new URL("/", frontendBase).href;
 
+const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "7d";
+
 function signAppToken(user) {
   return jwt.sign(
     {
@@ -103,7 +109,7 @@ function signAppToken(user) {
     },
     secret,
     {
-      expiresIn: "7d",
+      expiresIn: jwtExpiresIn,
     }
   );
 }
@@ -149,6 +155,32 @@ const loginSchema = z.object({
   email: z.string().trim().email().max(120),
   password: z.string().min(1).max(200),
 });
+
+const refreshTokenSchema = z.object({
+  refresh_token: z.string().min(20).max(512),
+});
+
+const login2faSchema = z.object({
+  two_factor_token: z.string().min(20),
+  code: z.string().min(6).max(12),
+});
+
+const totpEnableSchema = z.object({
+  code: z.string().min(6).max(12),
+});
+
+const totpDisableSchema = z.object({
+  password: z.string().min(1).max(200),
+  code: z.string().min(6).max(12),
+});
+
+const pushSubscribeSchema = z.object({
+  endpoint: z.string().url().max(4000),
+  keys: z.object({
+    p256dh: z.string().min(20).max(2000),
+    auth: z.string().min(10).max(500),
+  }),
+});
 const emptyToNull = (v) => (v === "" ? null : v);
 
 const updateSettingsSchema = z
@@ -182,6 +214,7 @@ const updateSettingsSchema = z
       emptyToNull,
       z.union([z.string().trim().min(1).max(80), z.null()]).optional()
     ),
+    push_notifications_enabled: z.boolean().optional(),
     current_password: z.string().min(1).max(200).optional(),
     new_password: z.string().min(6).max(200).optional(),
   })
@@ -241,9 +274,19 @@ router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (r
     if (!valid) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
+    if (user.totp_enabled && user.totp_secret) {
+      const two_factor_token = jwt.sign(
+        { purpose: "2fa_login", uid: user.id, tv: tokenVersion },
+        secret,
+        { expiresIn: "5m" }
+      );
+      return res.json({ requires_2fa: true, two_factor_token });
+    }
     const token = signAppToken(user);
+    const refresh_token = await createStoredRefreshToken(pool, user.id);
     res.json({
       token,
+      refresh_token,
       user: sanitizeUserMediaFields({
         id: user.id,
         username: user.username,
@@ -256,11 +299,130 @@ router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (r
         custom_status: user.custom_status,
         is_admin: Boolean(user.is_admin),
         twitch_username: user.twitch_username ?? null,
+        totp_enabled: Boolean(user.totp_enabled),
+        push_notifications_enabled: user.push_notifications_enabled !== false,
       }),
     });
   } catch (e) {
     logger.error({ err: e }, "Login failed");
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+router.post("/login/2fa", authRateLimiter, validate({ body: login2faSchema }), async (req, res) => {
+  let decoded;
+  try {
+    decoded = jwt.verify(req.body.two_factor_token, secret);
+  } catch {
+    return res.status(401).json({ error: "invalid_two_factor_token" });
+  }
+  if (decoded.purpose !== "2fa_login" || decoded.uid == null || decoded.tv !== tokenVersion) {
+    return res.status(401).json({ error: "invalid_two_factor_token" });
+  }
+  try {
+    const userRes = await pool.query(`SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL`, [decoded.uid]);
+    if (!userRes.rows.length) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const user = userRes.rows[0];
+    if (!user.totp_enabled || !user.totp_secret) {
+      return res.status(400).json({ error: "2fa_not_active" });
+    }
+    if (!verifyTotp(user.totp_secret, req.body.code)) {
+      return res.status(401).json({ error: "invalid_code" });
+    }
+    const token = signAppToken(user);
+    const refresh_token = await createStoredRefreshToken(pool, user.id);
+    res.json({
+      token,
+      refresh_token,
+      user: sanitizeUserMediaFields({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        avatar_url: user.avatar_url,
+        banner_url: user.banner_url,
+        accent_color: user.accent_color,
+        bio: user.bio,
+        presence_status: user.presence_status,
+        custom_status: user.custom_status,
+        is_admin: Boolean(user.is_admin),
+        twitch_username: user.twitch_username ?? null,
+        totp_enabled: true,
+        push_notifications_enabled: user.push_notifications_enabled !== false,
+      }),
+    });
+  } catch (e) {
+    logger.error({ err: e }, "Login 2FA failed");
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+router.post("/refresh", authRateLimiter, validate({ body: refreshTokenSchema }), async (req, res) => {
+  try {
+    const raw = req.body.refresh_token;
+    const hash = sha256Hex(raw);
+    const found = await pool.query(
+      `SELECT rt.id, rt.user_id, rt.expires_at
+       FROM refresh_tokens rt
+       INNER JOIN users u ON u.id = rt.user_id AND u.deleted_at IS NULL
+       WHERE rt.token_hash = $1 AND rt.revoked_at IS NULL`,
+      [hash]
+    );
+    if (!found.rows.length) {
+      return res.status(401).json({ error: "invalid_refresh_token" });
+    }
+    const row = found.rows[0];
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      await pool.query(`UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1`, [row.id]);
+      return res.status(401).json({ error: "refresh_token_expired" });
+    }
+    const userRes = await pool.query(`SELECT * FROM users WHERE id = $1`, [row.user_id]);
+    if (!userRes.rows.length) {
+      return res.status(401).json({ error: "invalid_refresh_token" });
+    }
+    const user = userRes.rows[0];
+    await pool.query(`UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1`, [row.id]);
+    const token = signAppToken(user);
+    const refresh_token = await createStoredRefreshToken(pool, user.id);
+    res.json({
+      token,
+      refresh_token,
+      user: sanitizeUserMediaFields({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        avatar_url: user.avatar_url,
+        banner_url: user.banner_url,
+        accent_color: user.accent_color,
+        bio: user.bio,
+        presence_status: user.presence_status,
+        custom_status: user.custom_status,
+        is_admin: Boolean(user.is_admin),
+        twitch_username: user.twitch_username ?? null,
+        totp_enabled: Boolean(user.totp_enabled),
+        push_notifications_enabled: user.push_notifications_enabled !== false,
+      }),
+    });
+  } catch (e) {
+    logger.error({ err: e }, "Refresh token failed");
+    res.status(500).json({ error: "Refresh failed" });
+  }
+});
+
+router.post("/logout", authRateLimiter, async (req, res) => {
+  try {
+    const raw = req.body?.refresh_token;
+    if (typeof raw === "string" && raw.length >= 20) {
+      await pool.query(
+        `UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1 AND revoked_at IS NULL`,
+        [sha256Hex(raw)]
+      );
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error({ err: e }, "Logout failed");
+    res.status(500).json({ error: "Logout failed" });
   }
 });
 
@@ -394,16 +556,97 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
 
     const user = userRes.rows[0];
     const appToken = signAppToken(user);
-    return res.redirect(twitchOAuthSuccessUrl(appToken));
+    const refreshRaw = await createStoredRefreshToken(pool, user.id);
+    return res.redirect(twitchOAuthSuccessUrl(appToken, refreshRaw));
   } catch (e) {
     logger.error({ err: e }, "Twitch callback failed");
     return res.redirect(twitchOAuthErrorUrl("twitch_auth_failed"));
   }
 });
 
+router.get("/push/vapid-public-key", (_req, res) => {
+  const k = String(process.env.VAPID_PUBLIC_KEY || "").trim();
+  if (!k) return res.status(503).json({ error: "push_not_configured" });
+  res.json({ publicKey: k });
+});
+
+router.post("/push/subscribe", auth, validate({ body: pushSubscribeSchema }), async (req, res) => {
+  try {
+    const { endpoint, keys } = req.body;
+    await pool.query(
+      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+      [req.user.id, endpoint, keys.p256dh, keys.auth]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error({ err: e }, "push subscribe failed");
+    res.status(500).json({ error: "subscribe_failed" });
+  }
+});
+
+router.delete("/push/subscribe", auth, async (req, res) => {
+  const endpoint = String(req.query.endpoint || "").trim();
+  if (!endpoint) {
+    await pool.query(`DELETE FROM push_subscriptions WHERE user_id = $1`, [req.user.id]);
+  } else {
+    await pool.query(`DELETE FROM push_subscriptions WHERE user_id = $1 AND endpoint = $2`, [
+      req.user.id,
+      endpoint,
+    ]);
+  }
+  res.json({ ok: true });
+});
+
+router.post("/2fa/setup", auth, userDataRateLimiter, async (req, res) => {
+  try {
+    const row = await pool.query(`SELECT totp_enabled FROM users WHERE id = $1`, [req.user.id]);
+    if (row.rows[0]?.totp_enabled) {
+      return res.status(400).json({ error: "already_enabled" });
+    }
+    const sec = generateSecret();
+    await pool.query(`UPDATE users SET totp_pending_secret = $1 WHERE id = $2`, [sec, req.user.id]);
+    const label = String(req.user.email || `user_${req.user.id}`);
+    const otpauth_url = authenticator.keyuri(label, "AkoeNet", sec);
+    res.json({ secret: sec, otpauth_url });
+  } catch (e) {
+    logger.error({ err: e }, "2fa setup failed");
+    res.status(500).json({ error: "setup_failed" });
+  }
+});
+
+router.post("/2fa/enable", auth, userDataRateLimiter, validate({ body: totpEnableSchema }), async (req, res) => {
+  const row = await pool.query(`SELECT totp_pending_secret FROM users WHERE id = $1`, [req.user.id]);
+  const pending = row.rows[0]?.totp_pending_secret;
+  if (!pending) return res.status(400).json({ error: "no_pending_setup" });
+  if (!verifyTotp(pending, req.body.code)) return res.status(400).json({ error: "invalid_code" });
+  await pool.query(
+    `UPDATE users SET totp_secret = totp_pending_secret, totp_pending_secret = NULL, totp_enabled = true WHERE id = $1`,
+    [req.user.id]
+  );
+  res.json({ ok: true });
+});
+
+router.post("/2fa/disable", auth, userDataRateLimiter, validate({ body: totpDisableSchema }), async (req, res) => {
+  const userRes = await pool.query(`SELECT * FROM users WHERE id = $1`, [req.user.id]);
+  const user = userRes.rows[0];
+  if (!user?.totp_enabled) return res.status(400).json({ error: "not_enabled" });
+  const pwOk = await bcrypt.compare(req.body.password, user.password);
+  if (!pwOk) return res.status(400).json({ error: "invalid_password" });
+  if (!verifyTotp(user.totp_secret, req.body.code)) return res.status(400).json({ error: "invalid_code" });
+  await pool.query(
+    `UPDATE users SET totp_secret = NULL, totp_pending_secret = NULL, totp_enabled = false WHERE id = $1`,
+    [req.user.id]
+  );
+  res.json({ ok: true });
+});
+
 router.get("/me", auth, async (req, res) => {
   const result = await pool.query(
-    `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at
+    `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
+            COALESCE(totp_enabled, false) AS totp_enabled,
+            COALESCE(push_notifications_enabled, true) AS push_notifications_enabled
      FROM users WHERE id = $1`,
     [req.user.id]
   );
@@ -470,6 +713,7 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
     presence_status: presenceStatus,
     custom_status: customStatus,
     scheduler_streamer_username: schedulerStreamerUsername,
+    push_notifications_enabled: pushNotificationsEnabled,
     current_password: currentPassword,
     new_password: newPassword,
   } = req.body;
@@ -477,7 +721,8 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
   try {
     await client.query("BEGIN");
     const current = await client.query(
-      `SELECT id, username, email, password, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at
+      `SELECT id, username, email, password, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
+              COALESCE(push_notifications_enabled, true) AS push_notifications_enabled
        FROM users WHERE id = $1 FOR UPDATE`,
       [req.user.id]
     );
@@ -504,6 +749,8 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
     const nextCustomStatus = customStatus !== undefined ? customStatus : user.custom_status;
     const nextSchedulerSlug =
       schedulerStreamerUsername !== undefined ? schedulerStreamerUsername : user.scheduler_streamer_username;
+    const nextPush =
+      pushNotificationsEnabled !== undefined ? Boolean(pushNotificationsEnabled) : user.push_notifications_enabled;
     const nextPasswordHash = newPassword ? await bcrypt.hash(newPassword, 10) : user.password;
 
     const profileStrings = [nextUsername, nextBio, nextCustomStatus, nextSchedulerSlug].filter(
@@ -526,9 +773,12 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
            password = $7,
            presence_status = $8,
            custom_status = $9,
-           scheduler_streamer_username = $10
+           scheduler_streamer_username = $10,
+           push_notifications_enabled = $11
        WHERE id = $1
-       RETURNING id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at`,
+       RETURNING id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
+                 COALESCE(totp_enabled, false) AS totp_enabled,
+                 COALESCE(push_notifications_enabled, true) AS push_notifications_enabled`,
       [
         req.user.id,
         nextUsername,
@@ -540,6 +790,7 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
         nextPresence,
         nextCustomStatus,
         nextSchedulerSlug,
+        nextPush,
       ]
     );
     await client.query("COMMIT");
@@ -575,6 +826,8 @@ router.delete(
       const anonymizedUsername = `deleted_user_${userId}`;
       const anonymizedEmail = `deleted_user_${userId}@deleted.akoenet.local`;
       const randomPasswordHash = await bcrypt.hash(crypto.randomBytes(24).toString("hex"), 10);
+      await client.query(`UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1`, [userId]);
+      await client.query(`DELETE FROM push_subscriptions WHERE user_id = $1`, [userId]);
       await client.query(
         `UPDATE users
          SET username = $2,

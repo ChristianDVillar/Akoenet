@@ -10,20 +10,9 @@ const {
   dmcaNotifyTeamHtml,
   dmcaComplainantConfirmationHtml,
 } = require("../lib/resend-mail");
+const { getDmcaNotifyRecipients } = require("../lib/legal-mail");
 
 const router = express.Router();
-
-function dmcaNotifyRecipients() {
-  const raw =
-    process.env.DMCA_NOTIFY_EMAIL ||
-    process.env.ADMIN_NOTIFY_EMAIL ||
-    process.env.DPO_EMAIL ||
-    "";
-  return String(raw)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
 
 const emptyToNull = (v) => (v === "" || v == null ? null : v);
 
@@ -78,32 +67,25 @@ router.post("/takedown", legalFormsRateLimiter, validate({ body: takedownSchema 
 
     if (isResendConfigured()) {
       const ref = row.id;
-      const team = dmcaNotifyRecipients();
-      if (team.length) {
-        const teamRes = await sendResendEmail({
-          to: team,
-          subject: `[AkoeNet DMCA #${ref}] New copyright notice`,
-          html: dmcaNotifyTeamHtml({
-            referenceId: ref,
-            complainant_name: b.complainant_name,
-            complainant_email: b.complainant_email,
-            complainant_phone: phone,
-            copyright_holder: b.copyright_holder,
-            infringing_url: b.infringing_url,
-            original_work_url: orig,
-            description: b.description,
-            signature: b.signature,
-          }),
-          replyTo: b.complainant_email,
-        });
-        if (!teamRes.ok) {
-          logger.warn({ ref, error: teamRes.error }, "DMCA team notify email failed");
-        }
-      } else {
-        logger.warn(
-          { ref },
-          "RESEND_API_KEY set but no DMCA_NOTIFY_EMAIL / ADMIN_NOTIFY_EMAIL / DPO_EMAIL — team not notified by mail"
-        );
+      const team = getDmcaNotifyRecipients();
+      const teamRes = await sendResendEmail({
+        to: team,
+        subject: `[AkoeNet DMCA #${ref}] New copyright notice`,
+        html: dmcaNotifyTeamHtml({
+          referenceId: ref,
+          complainant_name: b.complainant_name,
+          complainant_email: b.complainant_email,
+          complainant_phone: phone,
+          copyright_holder: b.copyright_holder,
+          infringing_url: b.infringing_url,
+          original_work_url: orig,
+          description: b.description,
+          signature: b.signature,
+        }),
+        replyTo: b.complainant_email,
+      });
+      if (!teamRes.ok) {
+        logger.warn({ ref, error: teamRes.error }, "DMCA team notify email failed");
       }
       const userRes = await sendResendEmail({
         to: b.complainant_email,

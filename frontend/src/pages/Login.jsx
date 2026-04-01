@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { getApiBaseUrl } from '../lib/apiBase'
 import api from '../services/api'
 import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
 import { postAuthDestination } from '../lib/postAuthDestination'
+import AuthLegalStrip from '../components/AuthLegalStrip'
 
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_notice']
@@ -20,7 +22,8 @@ function readPendingInviteFromSession() {
 }
 
 export default function Login() {
-  const { login, user, loading } = useAuth()
+  const { login, completeLogin2fa, user, loading } = useAuth()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
@@ -28,6 +31,8 @@ export default function Login() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [twoFactorToken, setTwoFactorToken] = useState(null)
+  const [code2fa, setCode2fa] = useState('')
   const [twitchConfigured, setTwitchConfigured] = useState(null)
   const apiBase = getApiBaseUrl()
 
@@ -90,7 +95,20 @@ export default function Login() {
     setError('')
     setBusy(true)
     try {
-      const { user: loggedInUser } = await login(email, password)
+      let loggedInUser
+      if (twoFactorToken) {
+        loggedInUser = await completeLogin2fa(twoFactorToken, code2fa.trim())
+        setTwoFactorToken(null)
+        setCode2fa('')
+      } else {
+        const result = await login(email, password)
+        if (result?.requires2fa) {
+          setTwoFactorToken(result.twoFactorToken)
+          setBusy(false)
+          return
+        }
+        loggedInUser = result.user
+      }
       const inv =
         searchParams.get(INVITE_QUERY_PARAM) ||
         (() => {
@@ -119,7 +137,7 @@ export default function Login() {
       }
       navigate(postAuthDestination(loggedInUser))
     } catch {
-      setError('Invalid credentials')
+      setError(twoFactorToken ? 'Invalid code' : 'Invalid credentials')
     } finally {
       setBusy(false)
     }
@@ -128,7 +146,7 @@ export default function Login() {
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('common.loading')}</p>
       </div>
     )
   }
@@ -141,9 +159,9 @@ export default function Login() {
           <span className="brand-sub">Community</span>
         </div>
         <p className="muted small" style={{ marginBottom: '0.75rem' }}>
-          <Link to="/">← Home</Link>
+          <Link to="/">← {t('login.home')}</Link>
         </p>
-        <h1>Sign in</h1>
+        <h1>{twoFactorToken ? t('login.twoFactorTitle') : t('login.title')}</h1>
         <p className="muted">
           {searchParams.get(INVITE_QUERY_PARAM) || readPendingInviteFromSession()
             ? 'After you sign in, we will add you to the invited server automatically.'
@@ -152,8 +170,40 @@ export default function Login() {
         <form onSubmit={onSubmit} className="form-stack">
           {notice && <div className="info-banner">{notice}</div>}
           {error && <div className="error-banner">{error}</div>}
+          {twoFactorToken ? (
+            <>
+              <p className="muted small">{t('login.twoFactorHint')}</p>
+              <label>
+                {t('login.twoFactorCode')}
+                <input
+                  name="totp"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code2fa}
+                  onChange={(e) => setCode2fa(e.target.value)}
+                  required
+                />
+              </label>
+              <button type="submit" className="btn primary" disabled={busy}>
+                {busy ? t('login.signingIn') : t('login.verify')}
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => {
+                  setTwoFactorToken(null)
+                  setCode2fa('')
+                  setError('')
+                }}
+              >
+                {t('login.back')}
+              </button>
+            </>
+          ) : (
+            <>
           <label>
-            Email
+            {t('login.email')}
             <input
               id="login-email"
               name="email"
@@ -165,7 +215,7 @@ export default function Login() {
             />
           </label>
           <label>
-            Password
+            {t('login.password')}
             <input
               id="login-password"
               name="password"
@@ -177,7 +227,7 @@ export default function Login() {
             />
           </label>
           <button type="submit" className="btn primary" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
+            {busy ? t('login.signingIn') : t('login.signIn')}
           </button>
           <button
             type="button"
@@ -213,9 +263,12 @@ export default function Login() {
               <code>{apiBase}/auth/twitch/callback</code>).
             </p>
           )}
+            </>
+          )}
         </form>
+        {!twoFactorToken && (
         <p className="muted small">
-          Do not have an account?{' '}
+          {t('login.noAccount')}{' '}
           <Link
             to={
               searchParams.get(INVITE_QUERY_PARAM)
@@ -223,9 +276,11 @@ export default function Login() {
                 : '/register'
             }
           >
-            Sign up
+            {t('login.signUp')}
           </Link>
         </p>
+        )}
+        <AuthLegalStrip />
       </div>
     </div>
   )

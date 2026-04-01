@@ -8,6 +8,7 @@ const { logAdminAction } = require("../lib/audit-log");
 const { sanitizeMediaUrl, sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 const { getConnectedUserIdsGlobal } = require("../sockets/chat.socket");
 const { textContainsBlockedLanguage, BLOCKED_MESSAGE } = require("../lib/blocked-content");
+const { areUsersBlocked } = require("../lib/social-guard");
 
 const router = express.Router();
 router.use(auth);
@@ -109,6 +110,9 @@ router.post("/conversations", validate({ body: createConversationSchema }), asyn
   const targetExists = await pool.query("SELECT id FROM users WHERE id = $1", [targetUserId]);
   if (!targetExists.rows.length) {
     return res.status(404).json({ error: "User not found" });
+  }
+  if (await areUsersBlocked(req.user.id, targetUserId)) {
+    return res.status(403).json({ error: "blocked" });
   }
   const { low, high } = pairUsers(req.user.id, targetUserId);
   const result = await pool.query(
@@ -219,6 +223,15 @@ router.post(
   const allowed = await isConversationParticipant(conversationId, req.user.id);
   if (!allowed) {
     return res.status(403).json({ error: "Forbidden" });
+  }
+  const peerRes = await pool.query(
+    `SELECT CASE WHEN c.user_low_id = $1 THEN c.user_high_id ELSE c.user_low_id END AS peer
+     FROM direct_conversations c WHERE c.id = $2`,
+    [req.user.id, conversationId]
+  );
+  const peerId = peerRes.rows[0]?.peer;
+  if (peerId != null && (await areUsersBlocked(req.user.id, peerId))) {
+    return res.status(403).json({ error: "blocked" });
   }
   const text = String(content || "").trim();
   if (text && textContainsBlockedLanguage(text, { source: "rest_dm_post", userId: req.user.id })) {

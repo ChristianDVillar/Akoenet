@@ -13,6 +13,7 @@ const {
   sanitizeMediaUrl,
 } = require("../lib/sanitize-media-url");
 const { textContainsBlockedLanguage } = require("../lib/blocked-content");
+const { searchGlobalElastic } = require("../lib/elastic-index");
 
 const router = express.Router();
 router.use(auth);
@@ -35,6 +36,7 @@ const channelIdParamSchema = z.object({
 const historyQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
   before: z.coerce.number().int().positive().optional(),
+  thread_root: z.coerce.number().int().positive().optional(),
 });
 const messageIdParamSchema = z.object({
   messageId: z.coerce.number().int().positive(),
@@ -92,14 +94,25 @@ router.get(
       return res.json([]);
     }
     try {
-      const result = await pool.query(
-        `${GLOBAL_MESSAGE_SELECT}
-         WHERE m.channel_id = ANY($1::int[])
-           AND to_tsvector('simple', coalesce(m.content, '')) @@ plainto_tsquery('simple', $2)
-         ORDER BY m.created_at DESC
-         LIMIT $3`,
-        [channelIds, q, limit]
-      );
+      const elasticIds = await searchGlobalElastic(channelIds, q, limit);
+      let result;
+      if (elasticIds !== null && elasticIds.length > 0) {
+        result = await pool.query(
+          `${GLOBAL_MESSAGE_SELECT}
+           WHERE m.id = ANY($1::bigint[])
+           ORDER BY array_position($1::bigint[], m.id)`,
+          [elasticIds]
+        );
+      } else {
+        result = await pool.query(
+          `${GLOBAL_MESSAGE_SELECT}
+           WHERE m.channel_id = ANY($1::int[])
+             AND to_tsvector('simple', coalesce(m.content, '')) @@ plainto_tsquery('simple', $2)
+           ORDER BY m.created_at DESC
+           LIMIT $3`,
+          [channelIds, q, limit]
+        );
+      }
       const rows = result.rows.reverse();
       const enriched = await withReactionsOnMessages(rows, req.user.id);
       res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
@@ -118,10 +131,17 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
   const limit = req.query.limit || DEFAULT_LIMIT;
   const beforeId = req.query.before || null;
 
+  const threadRoot = req.query.thread_root ? Number(req.query.thread_root) : null;
   let query = `${MESSAGE_LIST_SELECT}
     WHERE m.channel_id = $1
   `;
   const params = [channelId];
+  if (threadRoot && Number.isFinite(threadRoot)) {
+    params.push(threadRoot);
+    query += ` AND (m.thread_root_message_id = $${params.length} OR m.id = $${params.length})`;
+  } else {
+    query += ` AND m.thread_root_message_id IS NULL`;
+  }
   if (beforeId) {
     params.push(beforeId);
     query += ` AND m.id < $${params.length}`;

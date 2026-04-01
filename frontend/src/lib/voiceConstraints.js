@@ -20,3 +20,11 @@ export function getVoiceVideoConstraints() {
     facingMode: 'user',
   }
 }
+
+/** Screen / window share (getDisplayMedia). Browser may still offer window or tab. */
+export function getScreenShareConstraints() {
+  return {
+    video: { cursor: 'motion' },
+    audio: false,
+  }
+}

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
 import { postAuthDestination } from '../lib/postAuthDestination'
+import AuthLegalStrip from '../components/AuthLegalStrip'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
@@ -216,6 +217,7 @@ export default function Register() {
             Sign in
           </Link>
         </p>
+        <AuthLegalStrip />
       </div>
     </div>
   )

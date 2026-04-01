@@ -15,8 +15,11 @@ const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 /** True when the browser got no HTTP response (server down, restarting, wrong port, etc.). */
 function isUnreachableApiError(err) {
   if (!err) return false
-  if (err.code === 'ERR_NETWORK' || err.code === 'ECONNABORTED') return true
+  const code = err.code
+  if (code === 'ERR_NETWORK' || code === 'ECONNABORTED' || code === 'ECONNREFUSED') return true
   if (err.message === 'Network Error') return true
+  const msg = String(err.message || '')
+  if (msg.includes('CONNECTION_REFUSED') || msg.includes('Failed to fetch')) return true
   return !err.response
 }
 
@@ -25,8 +28,17 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [serverUnreachable, setServerUnreachable] = useState(false)
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const rt = localStorage.getItem('refresh_token')
+    try {
+      if (rt) {
+        await api.post('/auth/logout', { refresh_token: rt })
+      }
+    } catch {
+      /* ignore */
+    }
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
     disconnectAkoeNet()
     setUser(null)
     setServerUnreachable(false)
@@ -35,6 +47,7 @@ export function AuthProvider({ children }) {
   const refreshUser = useCallback(async () => {
     const token = localStorage.getItem('token')
     if (!token) {
+      localStorage.removeItem('refresh_token')
       setUser(null)
       setServerUnreachable(false)
       setLoading(false)
@@ -52,7 +65,7 @@ export function AuthProvider({ children }) {
       try {
         const { data } = await api.get('/auth/me')
         setUser(data)
-        connectAkoeNet(token)
+        connectAkoeNet(localStorage.getItem('token') || token)
         setServerUnreachable(false)
         setLoading(false)
         return
@@ -83,6 +96,7 @@ export function AuthProvider({ children }) {
       )
     }
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
     disconnectAkoeNet()
     setUser(null)
     setServerUnreachable(false)
@@ -95,11 +109,28 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password })
+    if (data.requires_2fa && data.two_factor_token) {
+      return { requires2fa: true, twoFactorToken: data.two_factor_token }
+    }
     localStorage.setItem('token', data.token)
+    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
     setUser(data.user)
     setServerUnreachable(false)
     connectAkoeNet(data.token)
-    return data
+    return { user: data.user, requires2fa: false }
+  }, [])
+
+  const completeLogin2fa = useCallback(async (twoFactorToken, code) => {
+    const { data } = await api.post('/auth/login/2fa', {
+      two_factor_token: twoFactorToken,
+      code,
+    })
+    localStorage.setItem('token', data.token)
+    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
+    setUser(data.user)
+    setServerUnreachable(false)
+    connectAkoeNet(data.token)
+    return data.user
   }, [])
 
   const loginWithToken = useCallback(async (token) => {
@@ -128,13 +159,25 @@ export function AuthProvider({ children }) {
       loading,
       serverUnreachable,
       login,
+      completeLogin2fa,
       loginWithToken,
       register,
       logout,
       refreshUser,
       updateCurrentUser,
     }),
-    [user, loading, serverUnreachable, login, loginWithToken, register, logout, refreshUser, updateCurrentUser]
+    [
+      user,
+      loading,
+      serverUnreachable,
+      login,
+      completeLogin2fa,
+      loginWithToken,
+      register,
+      logout,
+      refreshUser,
+      updateCurrentUser,
+    ]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
