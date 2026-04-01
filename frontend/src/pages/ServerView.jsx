@@ -99,10 +99,6 @@ export default function ServerView() {
   const openMembersPanel = useCallback(() => {
     clearMembersAutoCloseTimer()
     setMembersDrawerOpen(true)
-    membersAutoCloseTimerRef.current = window.setTimeout(() => {
-      membersAutoCloseTimerRef.current = null
-      setMembersDrawerOpen(false)
-    }, 10000)
   }, [clearMembersAutoCloseTimer])
   const [emojis, setEmojis] = useState([])
   const [voicePresence, setVoicePresence] = useState({})
@@ -606,7 +602,7 @@ export default function ServerView() {
               />
               <div className="members-drawer-panel">
                 <p className="members-drawer-hint muted small">
-                  Se cierra sola en ~10 s. Toca fuera, ✕ o Esc para cerrar antes.
+                  Toca fuera, ✕ o Esc para cerrar.
                 </p>
                 <MembersPanel
                   members={members}

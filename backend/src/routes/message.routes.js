@@ -25,7 +25,7 @@ const MESSAGE_LIST_SELECT = `
   FROM messages m
   JOIN users u ON u.id = m.user_id
   LEFT JOIN messages rp ON rp.id = m.reply_to_id
-  LEFT JOIN users ru ON ru.id = rp.user_id
+  LEFT JOIN users ru ON ru.id = rp.sender_id
 `;
 
 const DEFAULT_LIMIT = 50;
@@ -75,7 +75,7 @@ const GLOBAL_MESSAGE_SELECT = `
   FROM messages m
   JOIN users u ON u.id = m.user_id
   LEFT JOIN messages rp ON rp.id = m.reply_to_id
-  LEFT JOIN users ru ON ru.id = rp.user_id
+  LEFT JOIN users ru ON ru.id = rp.sender_id
   INNER JOIN channels c ON c.id = m.channel_id
   INNER JOIN servers s ON s.id = c.server_id
 `;
