@@ -44,7 +44,9 @@ exports.up = (pgm) => {
   pgm.addConstraint("user_friendships", "user_friendships_pair_unique", {
     unique: ["requester_id", "addressee_id"],
   });
-  pgm.createIndex("user_friendships_addressee_idx", "user_friendships", ["addressee_id", "status"]);
+  pgm.createIndex("user_friendships", ["addressee_id", "status"], {
+    name: "user_friendships_addressee_idx",
+  });
 
   pgm.createTable("user_blocks", {
     blocker_id: {
@@ -80,21 +82,24 @@ exports.up = (pgm) => {
     created_by: { type: "bigint", references: "users", onDelete: "set null" },
     created_at: { type: "timestamptz", notNull: true, default: pgm.func("NOW()") },
   });
-  pgm.createIndex("server_webhooks_server_idx", "server_webhooks", ["server_id"]);
+  pgm.createIndex("server_webhooks", ["server_id"], {
+    name: "server_webhooks_server_idx",
+  });
 
   pgm.addColumn("messages", "thread_root_message_id", {
     type: "bigint",
     references: "messages",
     onDelete: "set null",
   });
-  pgm.createIndex("messages_thread_root_idx", "messages", ["thread_root_message_id"], {
+  pgm.createIndex("messages", ["thread_root_message_id"], {
+    name: "messages_thread_root_idx",
     where: "thread_root_message_id IS NOT NULL",
   });
 };
 
 /** @param {import('node-pg-migrate').MigrationBuilder} pgm */
 exports.down = (pgm) => {
-  pgm.dropIndex("messages", "messages_thread_root_idx", { ifExists: true });
+  pgm.dropIndex("messages", [], { name: "messages_thread_root_idx", ifExists: true });
   pgm.dropColumn("messages", "thread_root_message_id");
   pgm.dropTable("server_webhooks");
   pgm.dropTable("user_blocks");
