@@ -8,8 +8,8 @@ const { sanitizeMediaUrl } = require("./sanitize-media-url");
  */
 async function broadcastChannelMessage(io, pool, { channelId, userId, content }) {
   const insertResult = await pool.query(
-    `INSERT INTO messages (channel_id, user_id, content, image_url)
-     VALUES ($1, $2, $3, NULL)
+    `INSERT INTO messages (channel_id, user_id, content, image_url, thread_root_message_id)
+     VALUES ($1, $2, $3, NULL, NULL)
      RETURNING *`,
     [channelId, userId, content]
   );

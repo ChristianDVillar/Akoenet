@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; i += 1) outputArray[i] = rawData.charCodeAt(i)
+  return outputArray
+}
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import { getVoiceAudioConstraints } from '../lib/voiceConstraints'
 import { getSavedVoiceSettings } from './VoiceSettingsModal'
@@ -35,6 +44,10 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [eraseConfirm, setEraseConfirm] = useState('')
   const [exportBusy, setExportBusy] = useState(false)
   const [eraseBusy, setEraseBusy] = useState(false)
+  const [totpSetupSecret, setTotpSetupSecret] = useState('')
+  const [totpEnableCode, setTotpEnableCode] = useState('')
+  const [disable2faPassword, setDisable2faPassword] = useState('')
+  const [disable2faCode, setDisable2faCode] = useState('')
   const [micLevel, setMicLevel] = useState(0)
   const [micGain, setMicGain] = useState(100)
   const [monitorMic, setMonitorMic] = useState(true)
@@ -351,6 +364,127 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                   <label>New password<input id="settings-new-password" name="new_password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
                   <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save account settings'}</button>
                 </form>
+                <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>Two-factor authentication</h4>
+                  {user?.totp_enabled ? (
+                    <div className="form-stack">
+                      <p className="muted small">2FA is enabled.</p>
+                      <label>
+                        Current password
+                        <input
+                          type="password"
+                          value={disable2faPassword}
+                          onChange={(e) => setDisable2faPassword(e.target.value)}
+                          autoComplete="current-password"
+                        />
+                      </label>
+                      <label>
+                        Authenticator code
+                        <input value={disable2faCode} onChange={(e) => setDisable2faCode(e.target.value)} />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn ghost small"
+                        onClick={async () => {
+                          setError('')
+                          try {
+                            await api.post('/auth/2fa/disable', {
+                              password: disable2faPassword,
+                              code: disable2faCode,
+                            })
+                            setDisable2faPassword('')
+                            setDisable2faCode('')
+                            await refreshUser()
+                            setInfo('2FA disabled.')
+                          } catch {
+                            setError('Could not disable 2FA.')
+                          }
+                        }}
+                      >
+                        Disable 2FA
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="form-stack">
+                      {!totpSetupSecret ? (
+                        <button
+                          type="button"
+                          className="btn secondary small"
+                          onClick={async () => {
+                            setError('')
+                            try {
+                              const { data } = await api.post('/auth/2fa/setup')
+                              setTotpSetupSecret(data.secret)
+                              setInfo('Enter the secret in your authenticator app, then confirm with a code.')
+                            } catch {
+                              setError('Could not start 2FA setup.')
+                            }
+                          }}
+                        >
+                          Set up authenticator
+                        </button>
+                      ) : (
+                        <>
+                          <p className="muted small" style={{ wordBreak: 'break-all' }}>
+                            Secret: {totpSetupSecret}
+                          </p>
+                          <label>
+                            6-digit code
+                            <input value={totpEnableCode} onChange={(e) => setTotpEnableCode(e.target.value)} />
+                          </label>
+                          <button
+                            type="button"
+                            className="btn primary small"
+                            onClick={async () => {
+                              setError('')
+                              try {
+                                await api.post('/auth/2fa/enable', { code: totpEnableCode })
+                                setTotpSetupSecret('')
+                                setTotpEnableCode('')
+                                await refreshUser()
+                                setInfo('2FA enabled.')
+                              } catch {
+                                setError('Invalid code.')
+                              }
+                            }}
+                          >
+                            Enable 2FA
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <h4 className="muted small" style={{ margin: '1rem 0 0.5rem' }}>Browser notifications</h4>
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={async () => {
+                      setError('')
+                      try {
+                        const { data } = await api.get('/auth/push/vapid-public-key')
+                        if (!data?.publicKey) {
+                          setError('Push not configured (set VAPID keys on server).')
+                          return
+                        }
+                        const reg = await navigator.serviceWorker.register('/sw.js')
+                        const sub = await reg.pushManager.subscribe({
+                          userVisibleOnly: true,
+                          applicationServerKey: urlBase64ToUint8Array(data.publicKey),
+                        })
+                        const j = sub.toJSON()
+                        await api.post('/auth/push/subscribe', {
+                          endpoint: j.endpoint,
+                          keys: { p256dh: j.keys.p256dh, auth: j.keys.auth },
+                        })
+                        setInfo('Push notifications enabled for this browser.')
+                      } catch {
+                        setError('Could not enable push (HTTPS + VAPID required).')
+                      }
+                    }}
+                  >
+                    Enable push notifications
+                  </button>
+                </div>
                 <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                   <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>Data & privacy</h4>
                   <p className="muted small" style={{ margin: '0 0 0.75rem' }}>

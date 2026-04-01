@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, HashRouter } from 'react-router-dom'
 
 const AppRouter = __SPA_HASH_ROUTER__ ? HashRouter : BrowserRouter
+import './i18n.js'
 import './index.css'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
@@ -18,8 +19,11 @@ function consumeTwitchOAuthFromUrl() {
     const err = params.get('twitch_error')
     if (!token && !err) return
     if (token) localStorage.setItem('token', token)
+    const refresh = params.get('refresh_token')
+    if (refresh) localStorage.setItem('refresh_token', refresh)
     if (err) sessionStorage.setItem(TWITCH_OAUTH_ERR_KEY, err)
     params.delete('twitch_token')
+    params.delete('refresh_token')
     params.delete('twitch_error')
     const q = params.toString()
     const path = err ? '/login' : window.location.pathname || '/'

@@ -2,6 +2,7 @@ const logger = require("./logger");
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
+/** Must match a verified sender domain in Resend; aligned with LEGAL_INBOX_EMAIL in lib/legal-mail.js */
 const DEFAULT_FROM = "AkoeNet <akonet@streamautomator.com>";
 
 function escapeHtml(s) {

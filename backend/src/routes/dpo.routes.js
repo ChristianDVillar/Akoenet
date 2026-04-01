@@ -10,13 +10,15 @@ const {
   dpoNotifyDpoHtml,
   dpoUserConfirmationHtml,
 } = require("../lib/resend-mail");
+const { getLegalInboxEmail } = require("../lib/legal-mail");
 
 const router = express.Router();
 
 function dpoContactFromEnv() {
+  const email = String(process.env.DPO_EMAIL || "").trim() || getLegalInboxEmail();
   return {
-    name: process.env.DPO_NAME || "",
-    email: process.env.DPO_EMAIL || "",
+    name: String(process.env.DPO_NAME || "").trim() || "AkoeNet",
+    email,
     phone: process.env.DPO_PHONE || "",
     address: process.env.DPO_ADDRESS || "",
     purpose:
@@ -25,14 +27,7 @@ function dpoContactFromEnv() {
 }
 
 router.get("/contact", (_req, res) => {
-  const c = dpoContactFromEnv();
-  if (!c.email && !c.name) {
-    return res.json({
-      ...c,
-      note: "DPO contact is not fully configured on this server (set DPO_EMAIL and DPO_NAME in the backend environment).",
-    });
-  }
-  res.json(c);
+  res.json(dpoContactFromEnv());
 });
 
 const messageSchema = z.object({
@@ -76,25 +71,21 @@ router.post("/message", legalFormsRateLimiter, validate({ body: messageSchema })
       const dpo = dpoContactFromEnv();
       const ref = row.id;
       const subLine = subject ? subject : "Privacy / data protection request";
-      if (dpo.email) {
-        const toDpo = await sendResendEmail({
-          to: dpo.email,
-          subject: `[AkoeNet DPO #${ref}] ${subLine}`,
-          html: dpoNotifyDpoHtml({
-            referenceId: ref,
-            requestType,
-            name: b.name,
-            email: b.email,
-            subject,
-            message: b.message,
-          }),
-          replyTo: b.email,
-        });
-        if (!toDpo.ok) {
-          logger.warn({ ref, error: toDpo.error }, "DPO notify email to DPO failed");
-        }
-      } else {
-        logger.warn({ ref }, "RESEND_API_KEY set but DPO_EMAIL missing — DPO not notified by mail");
+      const toDpo = await sendResendEmail({
+        to: dpo.email,
+        subject: `[AkoeNet DPO #${ref}] ${subLine}`,
+        html: dpoNotifyDpoHtml({
+          referenceId: ref,
+          requestType,
+          name: b.name,
+          email: b.email,
+          subject,
+          message: b.message,
+        }),
+        replyTo: b.email,
+      });
+      if (!toDpo.ok) {
+        logger.warn({ ref, error: toDpo.error }, "DPO notify email to operator inbox failed");
       }
       const toUser = await sendResendEmail({
         to: b.email,

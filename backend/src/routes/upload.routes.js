@@ -30,6 +30,7 @@ const allowedMimeTypes = new Set([
   "image/png",
   "image/webp",
   "image/gif",
+  "image/avif",
 ]);
 
 function validateImageMime(file) {
@@ -37,7 +38,7 @@ function validateImageMime(file) {
     return "file required";
   }
   if (!allowedMimeTypes.has(String(file.mimetype || "").toLowerCase())) {
-    return "Unsupported file type. Allowed: jpeg, png, webp, gif";
+    return "Unsupported file type. Allowed: jpeg, png, webp, gif, avif";
   }
   return null;
 }

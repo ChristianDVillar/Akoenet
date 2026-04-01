@@ -5,6 +5,8 @@ import { getSocket } from '../services/socket'
 import { getApiBaseUrl } from '../lib/apiBase'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import StandardEmojiPicker from './StandardEmojiPicker'
+import RichMessageText from './RichMessageText'
+import MessageLinkPreview from './MessageLinkPreview'
 
 const baseURL = getApiBaseUrl()
 
@@ -54,6 +56,8 @@ export default function DirectMessagesPanel({ user }) {
   const dmTypingStopTimerRef = useRef(null)
   const lastDmTypingEmitRef = useRef(0)
   const currentUserIdRef = useRef(null)
+  const fileDragDepthRef = useRef(0)
+  const [fileDragOver, setFileDragOver] = useState(false)
 
   async function loadConversations() {
     const { data } = await api.get('/dm/conversations')
@@ -509,10 +513,9 @@ export default function DirectMessagesPanel({ user }) {
     }
   }
 
-  async function onFile(e) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
+  async function uploadDmImage(file) {
     if (!file || !selectedConversationId) return
+    if (!file.type.startsWith('image/')) return
     setUploading(true)
     setError('')
     try {
@@ -559,6 +562,46 @@ export default function DirectMessagesPanel({ user }) {
     } finally {
       setUploading(false)
     }
+  }
+
+  async function onFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    await uploadDmImage(file)
+  }
+
+  function onDmDragEnter(e) {
+    if (!selectedConversationId) return
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    e.preventDefault()
+    fileDragDepthRef.current += 1
+    setFileDragOver(true)
+  }
+
+  function onDmDragLeave(e) {
+    fileDragDepthRef.current -= 1
+    if (fileDragDepthRef.current <= 0) {
+      fileDragDepthRef.current = 0
+      setFileDragOver(false)
+    }
+  }
+
+  function onDmDragOver(e) {
+    if (!selectedConversationId) return
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }
+
+  async function onDmDrop(e) {
+    if (!selectedConversationId) return
+    fileDragDepthRef.current = 0
+    setFileDragOver(false)
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    e.preventDefault()
+    const file = e.dataTransfer?.files?.[0]
+    await uploadDmImage(file)
   }
 
   async function reportDmMessage(dmMessageId) {
@@ -667,12 +710,16 @@ export default function DirectMessagesPanel({ user }) {
         <div
           className={`dm-chat ${isMobileDm ? 'dm-chat-mobile' : ''} ${
             isMobileDm && mobileChatOpen ? 'is-open' : ''
-          }`}
+          }${fileDragOver ? ' dm-chat--file-drag' : ''}`}
           style={
             isMobileDm
               ? { '--dm-sheet-drag': `${mobileChatOpen ? mobileDragOffset : 0}px` }
               : undefined
           }
+          onDragEnter={onDmDragEnter}
+          onDragLeave={onDmDragLeave}
+          onDragOver={onDmDragOver}
+          onDrop={onDmDrop}
           onTouchStart={onMobileSheetTouchStart}
           onTouchMove={onMobileSheetTouchMove}
           onTouchEnd={onMobileSheetTouchEnd}
@@ -913,7 +960,12 @@ export default function DirectMessagesPanel({ user }) {
                   ) : (
                     <>
                   {m.content && m.content !== '(imagen)' && (
-                    <p className="message-body">{m.content}</p>
+                    <p className="message-body">
+                      <RichMessageText text={m.content} emojis={{}} />
+                    </p>
+                  )}
+                  {m.content && m.content !== '(imagen)' && (
+                    <MessageLinkPreview content={m.content} />
                   )}
                   {m.image_url && (
                     <a href={resolveImageUrl(m.image_url)} target="_blank" rel="noreferrer">

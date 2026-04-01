@@ -1,9 +1,16 @@
 const rateLimit = require("express-rate-limit");
 
+const defaultGlobalMax =
+  process.env.GLOBAL_RATE_LIMIT_MAX != null && String(process.env.GLOBAL_RATE_LIMIT_MAX).trim() !== ""
+    ? Number(process.env.GLOBAL_RATE_LIMIT_MAX)
+    : process.env.NODE_ENV === "production"
+      ? 200
+      : 400;
+
 /** Broad per-IP cap on all API traffic (feature-specific limits still apply). */
 const globalIpRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: Number(process.env.GLOBAL_RATE_LIMIT_MAX || 400),
+  max: Number.isFinite(defaultGlobalMax) && defaultGlobalMax > 0 ? defaultGlobalMax : 400,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -78,6 +85,17 @@ const legalFormsRateLimiter = rateLimit({
   },
 });
 
+/** Open Graph / link preview (server-side fetch; abuse-sensitive). */
+const linkPreviewRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.LINK_PREVIEW_RATE_LIMIT_MAX || 20),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many link preview requests. Try again later.",
+  },
+});
+
 module.exports = {
   globalIpRateLimiter,
   uploadRateLimiter,
@@ -86,4 +104,5 @@ module.exports = {
   userDataRateLimiter,
   reportRateLimiter,
   legalFormsRateLimiter,
+  linkPreviewRateLimiter,
 };
