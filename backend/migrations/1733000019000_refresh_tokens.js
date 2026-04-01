@@ -13,7 +13,8 @@ exports.up = (pgm) => {
     created_at: { type: "timestamptz", notNull: true, default: pgm.func("NOW()") },
     revoked_at: { type: "timestamptz" },
   });
-  pgm.createIndex("refresh_tokens_user_active_idx", "refresh_tokens", ["user_id"], {
+  pgm.createIndex("refresh_tokens", ["user_id"], {
+    name: "refresh_tokens_user_active_idx",
     where: "revoked_at IS NULL",
   });
 };
