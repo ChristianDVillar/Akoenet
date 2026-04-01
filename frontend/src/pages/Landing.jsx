@@ -69,7 +69,10 @@ export default function Landing({ apiUnreachable = false, onRetryApi }) {
       )}
       <header className="landing-nav">
         <div className="landing-nav-inner">
-          <span className="landing-logo">AkoeNet</span>
+          <span className="landing-logo">
+            <span className="landing-logo-text">AkoeNet</span>
+            <img src="/Akoenet.png" alt="" className="landing-logo-mark" aria-hidden="true" />
+          </span>
           <nav className="landing-nav-links" aria-label={locale === 'es' ? 'Principal' : 'Primary'}>
             <div
               className="landing-lang-toggle"

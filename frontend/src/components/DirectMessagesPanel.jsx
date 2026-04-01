@@ -13,6 +13,14 @@ function isPresenceOnline(status) {
   return s === 'online' || s === 'idle' || s === 'dnd'
 }
 
+function formatConversationPreview(message) {
+  if (!message) return 'No messages yet'
+  const text = String(message).trim()
+  if (!text) return 'Shared an image'
+  if (text === '(imagen)') return 'Shared an image'
+  return text
+}
+
 export default function DirectMessagesPanel({ user }) {
   const [conversations, setConversations] = useState([])
   const [selectedConversationId, setSelectedConversationId] = useState(null)
@@ -32,9 +40,16 @@ export default function DirectMessagesPanel({ user }) {
   const [dmSearchResults, setDmSearchResults] = useState([])
   const [dmSearchBusy, setDmSearchBusy] = useState(false)
   const [failedAvatarKeys, setFailedAvatarKeys] = useState(() => new Set())
+  const [isMobileDm, setIsMobileDm] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 720px)').matches : false
+  )
+  const [mobileChatOpen, setMobileChatOpen] = useState(false)
+  const [mobileDragOffset, setMobileDragOffset] = useState(0)
   const messageNodeRef = useRef(new Map())
   const bottomRef = useRef(null)
   const dmComposerInputRef = useRef(null)
+  const mobileTouchStartYRef = useRef(null)
+  const mobileDraggingRef = useRef(false)
   const [composerHistoryIndex, setComposerHistoryIndex] = useState(0)
   const dmTypingStopTimerRef = useRef(null)
   const lastDmTypingEmitRef = useRef(0)
@@ -86,6 +101,39 @@ export default function DirectMessagesPanel({ user }) {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const mq = window.matchMedia('(max-width: 720px)')
+    const onChange = (e) => setIsMobileDm(e.matches)
+    mq.addEventListener('change', onChange)
+    setIsMobileDm(mq.matches)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    if (!isMobileDm) setMobileChatOpen(false)
+  }, [isMobileDm])
+
+  useEffect(() => {
+    if (!(isMobileDm && mobileChatOpen)) {
+      setMobileDragOffset(0)
+      return undefined
+    }
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [isMobileDm, mobileChatOpen])
+
+  useEffect(() => {
+    if (!(isMobileDm && mobileChatOpen)) return
+    const id = window.setTimeout(() => {
+      dmComposerInputRef.current?.focus?.()
+    }, 120)
+    return () => window.clearTimeout(id)
+  }, [isMobileDm, mobileChatOpen])
+
+  useEffect(() => {
     setPeerTypingName('')
     setReplyTo(null)
     setEditingMessageId(null)
@@ -95,6 +143,45 @@ export default function DirectMessagesPanel({ user }) {
     setDmSearchResults([])
     setComposerHistoryIndex(0)
   }, [selectedConversationId])
+
+  function handleSelectConversation(conversationId) {
+    setSelectedConversationId(conversationId)
+    if (isMobileDm) setMobileChatOpen(true)
+  }
+
+  function closeMobileChat() {
+    setMobileChatOpen(false)
+    setMobileDragOffset(0)
+  }
+
+  function onMobileSheetTouchStart(event) {
+    if (!isMobileDm || !mobileChatOpen) return
+    const y = event.touches?.[0]?.clientY
+    if (typeof y !== 'number') return
+    mobileTouchStartYRef.current = y
+    mobileDraggingRef.current = true
+  }
+
+  function onMobileSheetTouchMove(event) {
+    if (!isMobileDm || !mobileDraggingRef.current) return
+    const y = event.touches?.[0]?.clientY
+    const start = mobileTouchStartYRef.current
+    if (typeof y !== 'number' || typeof start !== 'number') return
+    const delta = Math.max(0, y - start)
+    setMobileDragOffset(Math.min(delta, 180))
+  }
+
+  function onMobileSheetTouchEnd() {
+    if (!isMobileDm) return
+    mobileDraggingRef.current = false
+    const shouldClose = mobileDragOffset > 90
+    if (shouldClose) {
+      closeMobileChat()
+    } else {
+      setMobileDragOffset(0)
+    }
+    mobileTouchStartYRef.current = null
+  }
 
   useEffect(() => {
     setReportFeedback('')
@@ -226,6 +313,7 @@ export default function DirectMessagesPanel({ user }) {
     try {
       const { data } = await api.post('/dm/conversations', { target_user_id: targetUserId })
       setSelectedConversationId(data.id)
+      if (isMobileDm) setMobileChatOpen(true)
       setResults([])
       setUserQuery('')
       await loadConversations()
@@ -538,11 +626,24 @@ export default function DirectMessagesPanel({ user }) {
               <button
                 key={c.id}
                 type="button"
-                className={`server-tile ${c.id === selectedConversationId ? 'active' : ''}`}
-                onClick={() => setSelectedConversationId(c.id)}
+                className={`server-tile server-tile--dm ${c.id === selectedConversationId ? 'active' : ''}`}
+                onClick={() => handleSelectConversation(c.id)}
               >
                 <span className="server-initial">{c.peer_username.slice(0, 2).toUpperCase()}</span>
-                <span className="server-name">{c.peer_username}</span>
+                <span className="dm-conversation-meta">
+                  <span className="server-name">{c.peer_username}</span>
+                  <span className="dm-conversation-preview">
+                    {formatConversationPreview(c.last_message)}
+                  </span>
+                </span>
+                <span className="dm-conversation-time">
+                  {c.last_message_at
+                    ? new Date(c.last_message_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : ''}
+                </span>
                 <span
                   className={`dm-presence-dot ${
                     isPresenceOnline(c?.peer_presence_status) ? 'online' : 'offline'
@@ -554,13 +655,50 @@ export default function DirectMessagesPanel({ user }) {
           )}
         </aside>
 
-        <div className="dm-chat">
+        {isMobileDm && mobileChatOpen && (
+          <button
+            type="button"
+            className="dm-chat-mobile-backdrop"
+            aria-label="Close direct message chat"
+            onClick={closeMobileChat}
+          />
+        )}
+
+        <div
+          className={`dm-chat ${isMobileDm ? 'dm-chat-mobile' : ''} ${
+            isMobileDm && mobileChatOpen ? 'is-open' : ''
+          }`}
+          style={
+            isMobileDm
+              ? { '--dm-sheet-drag': `${mobileChatOpen ? mobileDragOffset : 0}px` }
+              : undefined
+          }
+          onTouchStart={onMobileSheetTouchStart}
+          onTouchMove={onMobileSheetTouchMove}
+          onTouchEnd={onMobileSheetTouchEnd}
+          onTouchCancel={onMobileSheetTouchEnd}
+        >
           <div className="dm-chat-header">
+            {isMobileDm && (
+              <div className="dm-mobile-sheet-grab-wrap" aria-hidden="true">
+                <span className="dm-mobile-sheet-grab" />
+              </div>
+            )}
             {selectedConversation ? (
               <>
                 <div className="dm-chat-header-row">
                   <span>{`Chat with ${selectedConversation.peer_username}`}</span>
                   <div className="dm-chat-header-actions">
+                    {isMobileDm && (
+                      <button
+                        type="button"
+                        className="btn ghost small"
+                        onClick={closeMobileChat}
+                        title="Back to conversations"
+                      >
+                        Back
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn ghost small"
