@@ -31,6 +31,10 @@ const dmSearchQuerySchema = z.object({
   q: z.string().trim().min(2).max(200),
   limit: z.coerce.number().int().positive().max(50).optional(),
 });
+const dmHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  after: z.coerce.number().int().positive().optional(),
+});
 const editDmBodySchema = z.object({
   content: z.string().trim().min(1).max(4000),
 });
@@ -193,19 +197,30 @@ router.get(
 
 router.get(
   "/conversations/:conversationId/messages",
-  validate({ params: conversationParamsSchema }),
+  validate({ params: conversationParamsSchema, query: dmHistoryQuerySchema }),
   async (req, res) => {
   const conversationId = req.params.conversationId;
+  const limit = req.query.limit || 50;
+  const afterId = req.query.after || null;
   const allowed = await isConversationParticipant(conversationId, req.user.id);
   if (!allowed) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const result = await pool.query(
-    `${DM_LIST_SELECT}
-     WHERE dm.conversation_id = $1
-     ORDER BY dm.created_at ASC`,
-    [conversationId]
-  );
+  const result = afterId
+    ? await pool.query(
+        `${DM_LIST_SELECT}
+         WHERE dm.conversation_id = $1
+           AND dm.id > $2
+         ORDER BY dm.created_at ASC
+         LIMIT $3`,
+        [conversationId, afterId, limit]
+      )
+    : await pool.query(
+        `${DM_LIST_SELECT}
+         WHERE dm.conversation_id = $1
+         ORDER BY dm.created_at ASC`,
+        [conversationId]
+      );
   res.json(result.rows.map((row) => sanitizeUserMediaFields(sanitizeImageUrlField(row))));
 });
 
@@ -311,6 +326,7 @@ router.patch(
     if (!allowed) {
       return res.status(403).json({ error: "Forbidden" });
     }
+    const oldContent = String(row.rows[0].content || "");
     const updated = await pool.query(
       `UPDATE direct_messages
        SET content = $2, edited_at = NOW()
@@ -318,6 +334,13 @@ router.patch(
        RETURNING *`,
       [dmMessageId, content]
     );
+    if (oldContent !== content) {
+      await pool.query(
+        `INSERT INTO message_edit_history (direct_message_id, old_content, new_content, edited_by)
+         VALUES ($1, $2, $3, $4)`,
+        [dmMessageId, oldContent, content, req.user.id]
+      );
+    }
     const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [req.user.id]);
     const payload = sanitizeUserMediaFields(
       sanitizeImageUrlField({
@@ -333,6 +356,34 @@ router.patch(
     res.json(payload);
   }
 );
+
+router.get("/messages/:dmMessageId/edit-history", validate({ params: dmMessageIdParamSchema }), async (req, res) => {
+  const dmMessageId = req.params.dmMessageId;
+  const row = await pool.query(
+    `SELECT id, sender_id, conversation_id
+     FROM direct_messages
+     WHERE id = $1`,
+    [dmMessageId]
+  );
+  if (!row.rows.length) {
+    return res.status(404).json({ error: "Message not found" });
+  }
+  const msg = row.rows[0];
+  const allowed = await isConversationParticipant(msg.conversation_id, req.user.id);
+  if (!allowed) return res.status(403).json({ error: "Forbidden" });
+  if (Number(msg.sender_id) !== Number(req.user.id)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const result = await pool.query(
+    `SELECT meh.id, meh.old_content, meh.new_content, meh.edited_by, meh.edited_at, u.username AS edited_by_username
+     FROM message_edit_history meh
+     JOIN users u ON u.id = meh.edited_by
+     WHERE meh.direct_message_id = $1
+     ORDER BY meh.edited_at DESC`,
+    [dmMessageId]
+  );
+  return res.json(result.rows);
+});
 
 router.post(
   "/messages/:dmMessageId/report",

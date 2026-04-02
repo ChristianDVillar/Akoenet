@@ -69,6 +69,7 @@ export default function ServerView() {
   const [channels, setChannels] = useState([])
   const [categories, setCategories] = useState([])
   const [members, setMembers] = useState([])
+  const [banStatus, setBanStatus] = useState(null)
   const [activeChannelId, setActiveChannelId] = useState(null)
   const [serverName, setServerName] = useState('')
   const [toast, setToast] = useState(null)
@@ -165,12 +166,23 @@ export default function ServerView() {
     }
     ;(async () => {
       try {
+        setBanStatus(null)
         const { data } = await api.get('/servers')
         setServers(data)
         const current = data.find((s) => s.id === id)
         if (!current) {
-          navigate('/')
-          return
+          try {
+            await api.get(`/servers/${id}/ban-status`)
+            navigate('/')
+            return
+          } catch (e) {
+            if (e?.response?.status === 403 && e?.response?.data?.banned) {
+              setBanStatus(e.response.data)
+              return
+            }
+            navigate('/')
+            return
+          }
         }
         setServerName(current.name)
       } catch {
@@ -182,6 +194,7 @@ export default function ServerView() {
   useEffect(() => {
     if (Number.isNaN(id)) return
     setActiveChannelId(null)
+    setBanStatus(null)
     ;(async () => {
       try {
         const [{ data: channelData }, { data: categoriesData }, { data: membersData }] =
@@ -196,7 +209,19 @@ export default function ServerView() {
         setActiveChannelId(channelData[0]?.id ?? null)
         const { data: emojiData } = await api.get(`/servers/${id}/emojis`)
         setEmojis(emojiData)
-      } catch {
+      } catch (e) {
+        if (e?.response?.status === 403) {
+          try {
+            await api.get(`/servers/${id}/ban-status`)
+            navigate('/')
+            return
+          } catch (banErr) {
+            if (banErr?.response?.status === 403 && banErr?.response?.data?.banned) {
+              setBanStatus(banErr.response.data)
+              return
+            }
+          }
+        }
         navigate('/')
       }
     })()
@@ -525,6 +550,38 @@ export default function ServerView() {
   if (Number.isNaN(id)) return null
 
   const activeChannel = channels.find((c) => c.id === activeChannelId)
+
+  if (banStatus?.banned) {
+    return (
+      <AppChrome>
+        <section className="card" style={{ maxWidth: 680, margin: '2rem auto' }}>
+          <h2>Banned from this server</h2>
+          <p className="muted">
+            You cannot access this server while the ban is active.
+          </p>
+          {banStatus.reason ? (
+            <p>
+              <strong>Reason:</strong> {banStatus.reason}
+            </p>
+          ) : null}
+          {banStatus.expires_at ? (
+            <p>
+              <strong>Expires:</strong> {new Date(banStatus.expires_at).toLocaleString()}
+            </p>
+          ) : (
+            <p>
+              <strong>Duration:</strong> Permanent
+            </p>
+          )}
+          <div style={{ marginTop: '1rem' }}>
+            <button type="button" className="btn secondary" onClick={() => navigate('/')}>
+              Back to home
+            </button>
+          </div>
+        </section>
+      </AppChrome>
+    )
+  }
 
   return (
     <AppChrome>

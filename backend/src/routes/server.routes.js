@@ -5,7 +5,12 @@ const pool = require("../config/db");
 const auth = require("../middleware/auth");
 const validate = require("../middleware/validate");
 const logger = require("../lib/logger");
-const { canManageChannels, isServerMember } = require("../lib/membership");
+const {
+  canManageChannels,
+  isServerMember,
+  getActiveServerBan,
+  isUserBannedInServer,
+} = require("../lib/membership");
 const {
   getVoicePresenceSnapshotForServer,
   getConnectedUserIdsGlobal,
@@ -50,6 +55,15 @@ const createWebhookSchema = z.object({
   url: z.string().trim().url().max(2000),
   event_types: z.array(z.enum(["message.create"])).optional(),
 });
+const banUserSchema = z.object({
+  user_id: z.coerce.number().int().positive(),
+  reason: z.string().trim().max(500).optional().nullable(),
+  expires_at: z.string().trim().datetime({ offset: true }).optional().nullable(),
+});
+const banUserParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  userId: z.coerce.number().int().positive(),
+});
 
 /** Public: invite landing page (no auth). */
 router.get("/invite/:token/preview", async (req, res) => {
@@ -82,6 +96,18 @@ router.get("/invite/:token/preview", async (req, res) => {
 });
 
 router.use(auth);
+
+router.get("/:serverId/ban-status", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  const ban = await getActiveServerBan(req.user.id, serverId);
+  if (!ban) return res.json({ banned: false });
+  return res.status(403).json({
+    banned: true,
+    reason: ban.reason || null,
+    expires_at: ban.expires_at || null,
+    created_at: ban.created_at || null,
+  });
+});
 
 /** Live voice occupancy (same source as Socket.IO); HTTP fallback for sidebar UI */
 router.get(
@@ -203,6 +229,9 @@ router.get("/", async (req, res) => {
 /** Join server by id (invite flow MVP: user must know server id) */
 router.post("/:serverId/join", validate({ params: serverIdParamSchema }), async (req, res) => {
   const serverId = req.params.serverId;
+  if (await isUserBannedInServer(req.user.id, serverId)) {
+    return res.status(403).json({ error: "banned_from_server" });
+  }
   const exists = await pool.query("SELECT id, name, is_system FROM servers WHERE id = $1", [serverId]);
   if (exists.rows.length === 0) {
     return res.status(404).json({ error: "Server not found" });
@@ -400,6 +429,10 @@ router.post("/invite/:token/join", validate({ params: inviteTokenParamSchema }),
       return res.status(410).json({ error: "Invite usage limit reached" });
     }
     const serverId = invite.server_id;
+    if (await isUserBannedInServer(req.user.id, serverId)) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ error: "banned_from_server" });
+    }
     const exists = await client.query("SELECT id, name, is_system FROM servers WHERE id = $1", [serverId]);
     if (exists.rows.length === 0) {
       await client.query("ROLLBACK");
@@ -463,6 +496,96 @@ router.post("/invite/:token/join", validate({ params: inviteTokenParamSchema }),
     client.release();
   }
 });
+
+router.get("/:serverId/bans", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  if (!(await canManageChannels(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const r = await pool.query(
+    `SELECT sb.id, sb.user_id, u.username, sb.reason, sb.expires_at, sb.created_at, sb.banned_by
+     FROM server_bans sb
+     INNER JOIN users u ON u.id = sb.user_id
+     WHERE sb.server_id = $1
+       AND sb.revoked_at IS NULL
+       AND (sb.expires_at IS NULL OR sb.expires_at > NOW())
+     ORDER BY sb.created_at DESC`,
+    [serverId]
+  );
+  res.json(r.rows);
+});
+
+router.post(
+  "/:serverId/bans",
+  validate({ params: serverIdParamSchema, body: banUserSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const targetUserId = Number(req.body.user_id);
+    if (targetUserId === Number(req.user.id)) {
+      return res.status(400).json({ error: "cannot_ban_self" });
+    }
+    const exists = await pool.query(`SELECT 1 FROM users WHERE id = $1`, [targetUserId]);
+    if (!exists.rows.length) return res.status(404).json({ error: "User not found" });
+
+    const active = await getActiveServerBan(targetUserId, serverId);
+    if (active) return res.status(409).json({ error: "already_banned" });
+
+    const expiresAt = req.body.expires_at ? new Date(req.body.expires_at) : null;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const ins = await client.query(
+        `INSERT INTO server_bans (server_id, user_id, reason, banned_by, expires_at)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, server_id, user_id, reason, banned_by, expires_at, created_at`,
+        [serverId, targetUserId, req.body.reason || null, req.user.id, expiresAt]
+      );
+      await client.query(`DELETE FROM server_members WHERE user_id = $1 AND server_id = $2`, [targetUserId, serverId]);
+      await client.query(
+        `DELETE FROM user_roles ur
+         USING roles r
+         WHERE ur.role_id = r.id
+           AND ur.user_id = $1
+           AND r.server_id = $2`,
+        [targetUserId, serverId]
+      );
+      await client.query("COMMIT");
+      res.status(201).json(ins.rows[0]);
+    } catch (e) {
+      await client.query("ROLLBACK");
+      logger.error({ err: e }, "Ban user failed");
+      res.status(500).json({ error: "ban_failed" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+router.delete(
+  "/:serverId/bans/:userId",
+  validate({ params: banUserParamSchema }),
+  async (req, res) => {
+    const { serverId, userId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const updated = await pool.query(
+      `UPDATE server_bans
+       SET revoked_at = NOW(), revoked_by = $3
+       WHERE server_id = $1
+         AND user_id = $2
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())
+       RETURNING id`,
+      [serverId, userId, req.user.id]
+    );
+    if (!updated.rows.length) return res.status(404).json({ error: "active_ban_not_found" });
+    res.json({ ok: true, unbanned_user_id: Number(userId) });
+  }
+);
 
 /** Roles for a server (member only) */
 router.get("/:serverId/roles", validate({ params: serverIdParamSchema }), async (req, res) => {

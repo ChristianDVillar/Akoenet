@@ -13,6 +13,7 @@ import DpoPage from './pages/DpoPage'
 import InvitePage from './pages/InvitePage'
 import SystemStatus from './pages/SystemStatus'
 import CookieConsentBanner from './components/CookieConsentBanner'
+import ThemeSync from './components/ThemeSync'
 
 function PrivateRoute({ children }) {
   const { user, loading, serverUnreachable, refreshUser } = useAuth()
@@ -78,6 +79,7 @@ function AdminRoute({ children }) {
 export default function App() {
   return (
     <>
+      <ThemeSync />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

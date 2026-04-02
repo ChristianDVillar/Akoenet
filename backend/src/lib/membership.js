@@ -1,11 +1,33 @@
 const pool = require("../config/db");
 
 async function isServerMember(userId, serverId) {
+  const banned = await isUserBannedInServer(userId, serverId);
+  if (banned) return false;
   const r = await pool.query(
     "SELECT 1 FROM server_members WHERE user_id = $1 AND server_id = $2",
     [userId, serverId]
   );
   return r.rows.length > 0;
+}
+
+async function getActiveServerBan(userId, serverId) {
+  const r = await pool.query(
+    `SELECT id, server_id, user_id, reason, banned_by, expires_at, created_at
+     FROM server_bans
+     WHERE user_id = $1
+       AND server_id = $2
+       AND revoked_at IS NULL
+       AND (expires_at IS NULL OR expires_at > NOW())
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId, serverId]
+  );
+  return r.rows[0] || null;
+}
+
+async function isUserBannedInServer(userId, serverId) {
+  const row = await getActiveServerBan(userId, serverId);
+  return Boolean(row);
 }
 
 async function getChannelServerId(channelId) {
@@ -172,4 +194,6 @@ module.exports = {
   canSendToChannel,
   canConnectToChannel,
   getChannelPermissionsForUser,
+  getActiveServerBan,
+  isUserBannedInServer,
 };

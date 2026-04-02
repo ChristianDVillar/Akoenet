@@ -5,6 +5,7 @@ import { BrowserRouter, HashRouter } from 'react-router-dom'
 const AppRouter = __SPA_HASH_ROUTER__ ? HashRouter : BrowserRouter
 import './i18n.js'
 import './index.css'
+import { applyTheme, loadTheme } from './lib/themePreferences.js'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { LandingLocaleProvider } from './context/LandingLocaleProvider.jsx'
@@ -34,6 +35,17 @@ function consumeTwitchOAuthFromUrl() {
 }
 
 consumeTwitchOAuthFromUrl()
+
+/** Apply saved UI theme before React paints (reduces flash; accent syncs after /auth/me). */
+function bootstrapThemeEarly() {
+  try {
+    const uid = localStorage.getItem('akoenet_ui_theme_active_uid')
+    applyTheme(loadTheme(uid || undefined), { accentColor: null })
+  } catch {
+    /* ignore */
+  }
+}
+bootstrapThemeEarly()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
