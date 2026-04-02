@@ -306,6 +306,29 @@ router.patch(
     if (!updated.rows.length) {
       return res.status(404).json({ error: "Report not found" });
     }
+    try {
+      const row = updated.rows[0];
+      const reporterId = Number(row.actor_user_id);
+      const io = req.app?.locals?.io;
+      if (io && Number.isInteger(reporterId) && reporterId > 0) {
+        io.to(`user:${reporterId}`).emit("in_app_notification", {
+          type: "report_status",
+          report_id: Number(row.id),
+          status,
+          server_id: row.server_id ? Number(row.server_id) : null,
+          channel_id: row.channel_id ? Number(row.channel_id) : null,
+          message_id: row.target_message_id ? Number(row.target_message_id) : null,
+          snippet:
+            status === "resolved"
+              ? "Your report was resolved by moderation."
+              : status === "rejected"
+                ? "Your report was reviewed and rejected."
+                : "Your report was reopened.",
+        });
+      }
+    } catch {
+      /* notification is best-effort */
+    }
     res.json({ ok: true, item: updated.rows[0] });
   }
 );

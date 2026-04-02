@@ -6,11 +6,20 @@ import EmojiText from './EmojiText'
 import RichMessageText from './RichMessageText'
 import MessageLinkPreview from './MessageLinkPreview'
 import StandardEmojiPicker from './StandardEmojiPicker'
+import EditHistoryModal from './EditHistoryModal'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 import { getApiBaseUrl } from '../lib/apiBase'
 
 const baseURL = getApiBaseUrl()
+const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/avif',
+])
 
 export default function Chat({
   channelId,
@@ -44,6 +53,8 @@ export default function Chat({
   const threadRootIdRef = useRef(null)
   const [editingMessageId, setEditingMessageId] = useState(null)
   const [editingDraft, setEditingDraft] = useState('')
+  const [editHistoryModalOpen, setEditHistoryModalOpen] = useState(false)
+  const [editHistoryEntries, setEditHistoryEntries] = useState([])
   const bottomRef = useRef(null)
   const messageNodeRef = useRef(new Map())
   const composerInputRef = useRef(null)
@@ -222,6 +233,8 @@ export default function Chat({
     setThreadRootId(null)
     setEditingMessageId(null)
     setEditingDraft('')
+    setEditHistoryModalOpen(false)
+    setEditHistoryEntries([])
     setComposerHistoryIndex(0)
   }, [channelId])
 
@@ -426,6 +439,21 @@ export default function Chat({
     setEditingDraft('')
   }
 
+  async function showEditHistory(messageId) {
+    try {
+      const { data } = await api.get(`/messages/${messageId}/edit-history`)
+      const items = Array.isArray(data) ? data : []
+      setEditHistoryEntries(items.slice(0, 50))
+      setEditHistoryModalOpen(true)
+    } catch (err) {
+      if (err?.response?.status === 403) {
+        setSendError('You do not have permission to view edit history.')
+        return
+      }
+      setSendError('Could not load edit history.')
+    }
+  }
+
   function saveEdit() {
     if (!editingMessageId || !editingDraft.trim()) return
     const s = getSocket()
@@ -485,9 +513,46 @@ export default function Chat({
     }
   }
 
+  async function refreshLatestMessages() {
+    if (!channelId || channelType === 'voice') return
+    try {
+      const latestId = messages.reduce((max, m) => {
+        const n = Number(m?.id)
+        return Number.isFinite(n) ? Math.max(max, n) : max
+      }, 0)
+      const params = threadRootId ? { thread_root: threadRootId } : {}
+      if (latestId > 0) params.after = latestId
+      const { data } = await api.get(`/messages/channel/${channelId}`, { params })
+      const incoming = Array.isArray(data) ? data : []
+      if (!incoming.length) return
+      setMessages((prev) => {
+        const map = new Map(prev.map((m) => [String(m.id), m]))
+        for (const m of incoming) map.set(String(m.id), m)
+        return [...map.values()].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      })
+    } catch {
+      setSendError('Could not refresh messages right now.')
+    }
+  }
+
+  function validateUploadFile(file) {
+    if (!file) return 'Please select an image.'
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(String(file.type || '').toLowerCase())) {
+      return 'Invalid file type. Allowed: JPG, PNG, WEBP, GIF, AVIF.'
+    }
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      return 'File is too large. Maximum size is 5MB.'
+    }
+    return ''
+  }
+
   async function uploadChannelImage(file) {
     if (!file || !channelId) return
-    if (!file.type.startsWith('image/')) return
+    const fileError = validateUploadFile(file)
+    if (fileError) {
+      setSendError(fileError)
+      return
+    }
     setUploading(true)
     try {
       const form = new FormData()
@@ -618,6 +683,11 @@ export default function Chat({
           </div>
         </div>
         <div className="chat-header-actions">
+          {!isVoice && (
+            <button type="button" className="btn ghost small" onClick={refreshLatestMessages} title="Refresh messages">
+              Refresh
+            </button>
+          )}
           {channelId && (
             <button
               type="button"
@@ -1011,6 +1081,17 @@ export default function Chat({
                         ✎
                       </button>
                     )}
+                    {!!m.edited_at && (
+                      <button
+                        type="button"
+                        className="message-action-icon"
+                        title="View edit history"
+                        aria-label="View edit history"
+                        onClick={() => showEditHistory(m.id)}
+                      >
+                        🕘
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1165,6 +1246,15 @@ export default function Chat({
           </div>
         )}
       </footer>
+      <EditHistoryModal
+        open={editHistoryModalOpen}
+        title="Message edit history"
+        entries={editHistoryEntries}
+        onClose={() => {
+          setEditHistoryModalOpen(false)
+          setEditHistoryEntries([])
+        }}
+      />
     </main>
   )
 }

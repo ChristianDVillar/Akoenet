@@ -30,6 +30,18 @@ export default function NotificationBell() {
     setOpen(false)
   }
 
+  function titleForNotification(n) {
+    if (n?.type === 'mention') return `@${n.from_username || 'user'} in #${n.channel_name || 'channel'}`
+    if (n?.type === 'report_status') return `Report #${n.report_id || '?'} · ${n.status || 'updated'}`
+    return 'Notification'
+  }
+
+  function metaForNotification(n) {
+    if (n?.server_name || n?.channel_name) return `${n.server_name || 'Server'} · #${n.channel_name || 'channel'}`
+    if (n?.type === 'report_status') return 'Moderation update'
+    return ''
+  }
+
   const unread = items.length
 
   return (
@@ -60,11 +72,11 @@ export default function NotificationBell() {
                 <li key={n._id}>
                   <button type="button" className="notification-bell-item" onClick={() => goTo(n)}>
                     <span className="notification-bell-item-title">
-                      {n.type === 'mention' ? `@${n.from_username || 'user'} in #${n.channel_name || 'channel'}` : 'Notification'}
+                      {titleForNotification(n)}
                     </span>
-                    <span className="notification-bell-item-meta">
-                      {n.server_name} · #{n.channel_name}
-                    </span>
+                    {metaForNotification(n) ? (
+                      <span className="notification-bell-item-meta">{metaForNotification(n)}</span>
+                    ) : null}
                     {n.snippet ? <span className="notification-bell-item-snippet">{n.snippet}</span> : null}
                   </button>
                 </li>

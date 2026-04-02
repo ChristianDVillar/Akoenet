@@ -7,8 +7,17 @@ import { resolveImageUrl } from '../lib/resolveImageUrl'
 import StandardEmojiPicker from './StandardEmojiPicker'
 import RichMessageText from './RichMessageText'
 import MessageLinkPreview from './MessageLinkPreview'
+import EditHistoryModal from './EditHistoryModal'
 
 const baseURL = getApiBaseUrl()
+const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/avif',
+])
 
 function isPresenceOnline(status) {
   const s = String(status || '').toLowerCase()
@@ -41,6 +50,8 @@ export default function DirectMessagesPanel({ user }) {
   const [dmSearchQuery, setDmSearchQuery] = useState('')
   const [dmSearchResults, setDmSearchResults] = useState([])
   const [dmSearchBusy, setDmSearchBusy] = useState(false)
+  const [editHistoryModalOpen, setEditHistoryModalOpen] = useState(false)
+  const [editHistoryEntries, setEditHistoryEntries] = useState([])
   const [failedAvatarKeys, setFailedAvatarKeys] = useState(() => new Set())
   const [isMobileDm, setIsMobileDm] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 720px)').matches : false
@@ -145,6 +156,8 @@ export default function DirectMessagesPanel({ user }) {
     setDmSearchOpen(false)
     setDmSearchQuery('')
     setDmSearchResults([])
+    setEditHistoryModalOpen(false)
+    setEditHistoryEntries([])
     setComposerHistoryIndex(0)
   }, [selectedConversationId])
 
@@ -384,6 +397,21 @@ export default function DirectMessagesPanel({ user }) {
     setEditingDraft('')
   }
 
+  async function showDmEditHistory(dmMessageId) {
+    try {
+      const { data } = await api.get(`/dm/messages/${dmMessageId}/edit-history`)
+      const items = Array.isArray(data) ? data : []
+      setEditHistoryEntries(items.slice(0, 50))
+      setEditHistoryModalOpen(true)
+    } catch (err) {
+      if (err?.response?.status === 403) {
+        setError('You do not have permission to view edit history.')
+        return
+      }
+      setError('Could not load edit history.')
+    }
+  }
+
   function saveDmEdit() {
     if (!editingMessageId || !editingDraft.trim()) return
     const s = getSocket()
@@ -515,7 +543,11 @@ export default function DirectMessagesPanel({ user }) {
 
   async function uploadDmImage(file) {
     if (!file || !selectedConversationId) return
-    if (!file.type.startsWith('image/')) return
+    const fileError = validateUploadFile(file)
+    if (fileError) {
+      setError(fileError)
+      return
+    }
     setUploading(true)
     setError('')
     try {
@@ -618,6 +650,38 @@ export default function DirectMessagesPanel({ user }) {
           ? 'You are reporting too fast. Try again later.'
           : err?.response?.data?.error || 'Could not send report'
       setReportFeedback(msg)
+    }
+  }
+
+  function validateUploadFile(file) {
+    if (!file) return 'Please select an image.'
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(String(file.type || '').toLowerCase())) {
+      return 'Invalid file type. Allowed: JPG, PNG, WEBP, GIF, AVIF.'
+    }
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      return 'File is too large. Maximum size is 5MB.'
+    }
+    return ''
+  }
+
+  async function refreshLatestDirectMessages() {
+    if (!selectedConversationId) return
+    try {
+      const latestId = messages.reduce((max, m) => {
+        const n = Number(m?.id)
+        return Number.isFinite(n) ? Math.max(max, n) : max
+      }, 0)
+      const params = latestId > 0 ? { after: latestId } : undefined
+      const { data } = await api.get(`/dm/conversations/${selectedConversationId}/messages`, { params })
+      const incoming = Array.isArray(data) ? data : []
+      if (!incoming.length) return
+      setMessages((prev) => {
+        const map = new Map(prev.map((m) => [String(m.id), m]))
+        for (const m of incoming) map.set(String(m.id), m)
+        return [...map.values()].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      })
+    } catch {
+      setError('Could not refresh messages right now.')
     }
   }
 
@@ -736,6 +800,14 @@ export default function DirectMessagesPanel({ user }) {
                 <div className="dm-chat-header-row">
                   <span>{`Chat with ${selectedConversation.peer_username}`}</span>
                   <div className="dm-chat-header-actions">
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      title="Refresh messages"
+                      onClick={refreshLatestDirectMessages}
+                    >
+                      Refresh
+                    </button>
                     {isMobileDm && (
                       <button
                         type="button"
@@ -919,6 +991,19 @@ export default function DirectMessagesPanel({ user }) {
                             ✎
                           </button>
                         )}
+                      {!!m.edited_at &&
+                        !m._optimistic &&
+                        Number(m.sender_id) === Number(user?.id) && (
+                          <button
+                            type="button"
+                            className="message-action-icon"
+                            title="View edit history"
+                            aria-label="View edit history"
+                            onClick={() => showDmEditHistory(m.id)}
+                          >
+                            🕘
+                          </button>
+                        )}
                     </div>
                   </div>
                   {(m.reply_preview_username || m.reply_preview_content) && (
@@ -1084,6 +1169,15 @@ export default function DirectMessagesPanel({ user }) {
           </footer>
         </div>
       </div>
+      <EditHistoryModal
+        open={editHistoryModalOpen}
+        title="Direct message edit history"
+        entries={editHistoryEntries}
+        onClose={() => {
+          setEditHistoryModalOpen(false)
+          setEditHistoryEntries([])
+        }}
+      />
       <p className="muted small">Current session: {user?.username}</p>
     </section>
   )

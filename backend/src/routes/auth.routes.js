@@ -703,6 +703,30 @@ router.get("/me/export", auth, async (req, res) => {
   return res.json(payload);
 });
 
+router.get("/me/reports", auth, async (req, res) => {
+  const result = await pool.query(
+    `SELECT
+       a.id,
+       a.action AS report_action,
+       a.created_at,
+       a.server_id,
+       a.channel_id,
+       a.target_message_id,
+       COALESCE(a.metadata->>'status', 'open') AS status,
+       a.metadata->>'reason' AS reason,
+       a.metadata->>'details' AS details,
+       a.metadata->>'moderator_note' AS moderator_note,
+       a.metadata->>'reviewed_at' AS reviewed_at
+     FROM admin_audit_logs a
+     WHERE a.actor_user_id = $1
+       AND a.action IN ('message_report_user', 'dm_message_report_user')
+     ORDER BY a.created_at DESC
+     LIMIT 200`,
+    [req.user.id]
+  );
+  res.json(result.rows);
+});
+
 router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSchema }), async (req, res) => {
   const {
     username,

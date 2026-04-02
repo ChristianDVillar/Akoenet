@@ -26,7 +26,7 @@ const MESSAGE_LIST_SELECT = `
   FROM messages m
   JOIN users u ON u.id = m.user_id
   LEFT JOIN messages rp ON rp.id = m.reply_to_id
-  LEFT JOIN users ru ON ru.id = rp.sender_id
+  LEFT JOIN users ru ON ru.id = rp.user_id
 `;
 
 const DEFAULT_LIMIT = 50;
@@ -36,6 +36,7 @@ const channelIdParamSchema = z.object({
 const historyQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
   before: z.coerce.number().int().positive().optional(),
+  after: z.coerce.number().int().positive().optional(),
   thread_root: z.coerce.number().int().positive().optional(),
 });
 const messageIdParamSchema = z.object({
@@ -77,7 +78,7 @@ const GLOBAL_MESSAGE_SELECT = `
   FROM messages m
   JOIN users u ON u.id = m.user_id
   LEFT JOIN messages rp ON rp.id = m.reply_to_id
-  LEFT JOIN users ru ON ru.id = rp.sender_id
+  LEFT JOIN users ru ON ru.id = rp.user_id
   INNER JOIN channels c ON c.id = m.channel_id
   INNER JOIN servers s ON s.id = c.server_id
 `;
@@ -130,6 +131,7 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
   }
   const limit = req.query.limit || DEFAULT_LIMIT;
   const beforeId = req.query.before || null;
+  const afterId = req.query.after || null;
 
   const threadRoot = req.query.thread_root ? Number(req.query.thread_root) : null;
   let query = `${MESSAGE_LIST_SELECT}
@@ -142,9 +144,28 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
   } else {
     query += ` AND m.thread_root_message_id IS NULL`;
   }
+  if (beforeId && afterId) {
+    return res.status(400).json({ error: "Use either 'before' or 'after', not both." });
+  }
   if (beforeId) {
     params.push(beforeId);
     query += ` AND m.id < $${params.length}`;
+    query += ` ORDER BY m.created_at DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+    const result = await pool.query(query, params);
+    const rows = result.rows.reverse();
+    const enriched = await withReactionsOnMessages(rows, req.user.id);
+    return res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
+  }
+  if (afterId) {
+    params.push(afterId);
+    query += ` AND m.id > $${params.length}`;
+    query += ` ORDER BY m.created_at ASC LIMIT $${params.length + 1}`;
+    params.push(limit);
+    const result = await pool.query(query, params);
+    const rows = result.rows;
+    const enriched = await withReactionsOnMessages(rows, req.user.id);
+    return res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
   }
   query += ` ORDER BY m.created_at DESC LIMIT $${params.length + 1}`;
   params.push(limit);
@@ -361,6 +382,7 @@ router.patch(
     if (!(await canReadChannel(req.user.id, msg.channel_id))) {
       return res.status(403).json({ error: "No access to channel" });
     }
+    const oldContent = String(msg.content || "");
     const updated = await pool.query(
       `UPDATE messages
        SET content = $2, edited_at = NOW()
@@ -368,6 +390,13 @@ router.patch(
        RETURNING *`,
       [messageId, content]
     );
+    if (oldContent !== content) {
+      await pool.query(
+        `INSERT INTO message_edit_history (message_id, old_content, new_content, edited_by)
+         VALUES ($1, $2, $3, $4)`,
+        [messageId, oldContent, content, req.user.id]
+      );
+    }
     const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [req.user.id]);
     const payload = sanitizeUserMediaFields(
       sanitizeImageUrlField({
@@ -383,6 +412,38 @@ router.patch(
     res.json(payload);
   }
 );
+
+router.get("/:messageId/edit-history", validate({ params: messageIdParamSchema }), async (req, res) => {
+  const messageId = req.params.messageId;
+  const row = await pool.query(
+    `SELECT id, user_id, channel_id
+     FROM messages
+     WHERE id = $1`,
+    [messageId]
+  );
+  if (!row.rows.length) {
+    return res.status(404).json({ error: "Message not found" });
+  }
+  const msg = row.rows[0];
+  if (!(await canReadChannel(req.user.id, msg.channel_id))) {
+    return res.status(403).json({ error: "No access to channel" });
+  }
+  const serverId = await getChannelServerId(msg.channel_id);
+  const canManage = serverId ? await canManageChannels(req.user.id, serverId) : false;
+  const isOwner = Number(msg.user_id) === Number(req.user.id);
+  if (!isOwner && !canManage) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const result = await pool.query(
+    `SELECT meh.id, meh.old_content, meh.new_content, meh.edited_by, meh.edited_at, u.username AS edited_by_username
+     FROM message_edit_history meh
+     JOIN users u ON u.id = meh.edited_by
+     WHERE meh.message_id = $1
+     ORDER BY meh.edited_at DESC`,
+    [messageId]
+  );
+  return res.json(result.rows);
+});
 
 router.post("/:messageId/pin", validate({ params: messageIdParamSchema }), async (req, res) => {
   const messageId = req.params.messageId;

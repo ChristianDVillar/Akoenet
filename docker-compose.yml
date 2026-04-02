@@ -34,7 +34,8 @@ services:
       - ./backend/.env
     environment:
       PORT: "3000"
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      # JWT_SECRET must come from backend/.env (env_file). Do not set ${JWT_SECRET:-...} here:
+      # Compose substitutes from the host shell and would override .env with dev-secret-change-me.
       REDIS_URL: redis://redis:6379
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}

@@ -569,6 +569,7 @@ function initSocket(io) {
           if (typeof ack === "function") ack({ error: "forbidden" });
           return;
         }
+        const oldContent = String(msg.content || "");
         const updated = await pool.query(
           `UPDATE messages
            SET content = $2, edited_at = NOW()
@@ -576,6 +577,13 @@ function initSocket(io) {
            RETURNING *`,
           [messageId, content]
         );
+        if (oldContent !== content) {
+          await pool.query(
+            `INSERT INTO message_edit_history (message_id, old_content, new_content, edited_by)
+             VALUES ($1, $2, $3, $4)`,
+            [messageId, oldContent, content, socket.userId]
+          );
+        }
         const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
         const out = sanitizeImageUrlField({
           ...updated.rows[0],
@@ -912,6 +920,7 @@ function initSocket(io) {
           if (typeof ack === "function") ack({ error: "forbidden" });
           return;
         }
+        const oldContent = String(msg.content || "");
         const updated = await pool.query(
           `UPDATE direct_messages
            SET content = $2, edited_at = NOW()
@@ -919,6 +928,13 @@ function initSocket(io) {
            RETURNING *`,
           [dmMessageId, content]
         );
+        if (oldContent !== content) {
+          await pool.query(
+            `INSERT INTO message_edit_history (direct_message_id, old_content, new_content, edited_by)
+             VALUES ($1, $2, $3, $4)`,
+            [dmMessageId, oldContent, content, socket.userId]
+          );
+        }
         const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
         const out = sanitizeImageUrlField({
           ...updated.rows[0],

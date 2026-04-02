@@ -13,6 +13,14 @@ function urlBase64ToUint8Array(base64String) {
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import { getVoiceAudioConstraints } from '../lib/voiceConstraints'
 import { getSavedVoiceSettings } from './VoiceSettingsModal'
+import {
+  DARK_THEME,
+  LIGHT_THEME,
+  applyTheme,
+  loadTheme,
+  sanitizeFull,
+  saveTheme,
+} from '../lib/themePreferences'
 
 function toNullable(value) {
   const trimmed = value.trim()
@@ -54,6 +62,8 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [startWithCamera, setStartWithCamera] = useState(false)
   const [startMuted, setStartMuted] = useState(false)
   const [startDeafened, setStartDeafened] = useState(false)
+  const [uiTheme, setUiTheme] = useState(() => sanitizeFull({}))
+  const [themeReady, setThemeReady] = useState(false)
   const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
   const analyserRef = useRef(null)
@@ -86,6 +96,25 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     setStartMuted(voice.startMuted)
     setStartDeafened(voice.startDeafened)
   }, [open, user, initialSection])
+
+  useEffect(() => {
+    if (!open) {
+      setThemeReady(false)
+      return
+    }
+    setUiTheme(loadTheme(user?.id))
+    setThemeReady(true)
+  }, [open, user?.id])
+
+  useEffect(() => {
+    if (!open || !themeReady) return
+    if (activeSection === 'appearance') {
+      const t = saveTheme(user?.id, uiTheme)
+      applyTheme(t, { accentColor: accentColor || user?.accent_color })
+    } else {
+      applyTheme(loadTheme(user?.id), { accentColor: accentColor || user?.accent_color })
+    }
+  }, [open, themeReady, activeSection, uiTheme, accentColor, user?.accent_color, user?.id])
 
   useEffect(() => {
     setAvatarPreviewFailed(false)
@@ -310,6 +339,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
         <div className="settings-split-layout">
           <aside className="settings-split-nav">
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'profile' ? 'active' : ''}`} onClick={() => setActiveSection('profile')}>Profile</button>
+            <button type="button" className={`settings-split-nav-btn ${activeSection === 'appearance' ? 'active' : ''}`} onClick={() => setActiveSection('appearance')}>Appearance</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'account' ? 'active' : ''}`} onClick={() => setActiveSection('account')}>Account</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'voice' ? 'active' : ''}`} onClick={() => setActiveSection('voice')}>Voice</button>
           </aside>
@@ -355,6 +385,142 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                 <label>Streamer Scheduler username (public slug)<input id="settings-scheduler-slug" name="scheduler_streamer_username" value={schedulerStreamerUsername} onChange={(e) => setSchedulerStreamerUsername(e.target.value)} maxLength={80} placeholder="e.g. Test — must match /streamer/… on Streamer Scheduler" autoComplete="off" /><span className="muted small" style={{ display: 'block', marginTop: 4 }}>If your Twitch login differs from your Scheduler profile URL, set the Scheduler account name here so the sidebar schedule and !schedule use the correct API.</span></label>
                 <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save profile'}</button>
               </form>
+            )}
+
+            {activeSection === 'appearance' && (
+              <div className="form-stack appearance-theme-panel">
+                <p className="muted small" style={{ margin: '0 0 0.5rem' }}>
+                  Choose light or dark appearance, or match your system. Custom colors apply only when Dark or Light is selected. Accent for buttons is saved on your profile (Profile tab).
+                </p>
+                <div className="theme-mode-row" role="group" aria-label="Appearance mode">
+                  {[
+                    { id: 'system', label: 'System' },
+                    { id: 'light', label: 'Light' },
+                    { id: 'dark', label: 'Dark' },
+                  ].map(({ id, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`theme-mode-btn ${uiTheme.colorMode === id ? 'is-active' : ''}`}
+                      onClick={() => {
+                        if (id === 'system') {
+                          setUiTheme((prev) => ({ ...prev, colorMode: 'system' }))
+                          return
+                        }
+                        if (id === 'light') {
+                          setUiTheme(sanitizeFull({ colorMode: 'light', ...LIGHT_THEME }))
+                          return
+                        }
+                        setUiTheme(sanitizeFull({ colorMode: 'dark', ...DARK_THEME }))
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {uiTheme.colorMode === 'system' && (
+                  <p className="info-banner inline" style={{ marginBottom: '0.65rem' }}>
+                    Interface follows your OS light/dark setting. Pick Light or Dark above to customize colors below.
+                  </p>
+                )}
+                {[
+                  { key: 'bg', label: 'Page background' },
+                  { key: 'panel', label: 'Panels & cards' },
+                  { key: 'rail', label: 'Sidebar rail' },
+                  { key: 'text', label: 'Main text' },
+                  { key: 'muted', label: 'Muted text' },
+                  { key: 'echonet', label: 'Secondary accent (links, focus)' },
+                  { key: 'danger', label: 'Danger / errors' },
+                ].map(({ key, label }) => {
+                  const hex = uiTheme[key]
+                  const ok = /^#([0-9a-fA-F]{6})$/.test(hex || '')
+                  return (
+                    <label key={key} className="theme-color-row">
+                      <span className="theme-color-label">{label}</span>
+                      <div className="theme-color-inputs">
+                        <input
+                          type="color"
+                          aria-label={`${label} color`}
+                          value={ok ? hex : '#000000'}
+                          disabled={uiTheme.colorMode === 'system'}
+                          onChange={(e) => setUiTheme((prev) => ({ ...prev, [key]: e.target.value }))}
+                          className="theme-color-swatch"
+                        />
+                        <input
+                          type="text"
+                          value={hex}
+                          disabled={uiTheme.colorMode === 'system'}
+                          onChange={(e) => setUiTheme((prev) => ({ ...prev, [key]: e.target.value }))}
+                          maxLength={7}
+                          placeholder="#000000"
+                          className="theme-color-hex"
+                          spellCheck={false}
+                          autoComplete="off"
+                        />
+                      </div>
+                    </label>
+                  )
+                })}
+                <label className="theme-color-row">
+                  <span className="theme-color-label">Border tint</span>
+                  <div className="theme-color-inputs">
+                    <input
+                      type="color"
+                      aria-label="Border color"
+                      value={/^#([0-9a-fA-F]{6})$/.test(uiTheme.borderColor || '') ? uiTheme.borderColor : '#ffffff'}
+                      disabled={uiTheme.colorMode === 'system'}
+                      onChange={(e) => setUiTheme((prev) => ({ ...prev, borderColor: e.target.value }))}
+                      className="theme-color-swatch"
+                    />
+                    <input
+                      type="text"
+                      value={uiTheme.borderColor}
+                      disabled={uiTheme.colorMode === 'system'}
+                      onChange={(e) => setUiTheme((prev) => ({ ...prev, borderColor: e.target.value }))}
+                      maxLength={7}
+                      className="theme-color-hex"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </div>
+                </label>
+                <div className="theme-border-opacity-row">
+                  <label htmlFor="theme-border-opacity">Border visibility ({uiTheme.borderOpacity}%)</label>
+                  <input
+                    id="theme-border-opacity"
+                    type="range"
+                    min={0}
+                    max={40}
+                    value={uiTheme.borderOpacity}
+                    disabled={uiTheme.colorMode === 'system'}
+                    onChange={(e) =>
+                      setUiTheme((prev) => ({ ...prev, borderOpacity: Number(e.target.value) }))
+                    }
+                  />
+                </div>
+                <div className="appearance-theme-actions">
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={() => {
+                      let next
+                      if (uiTheme.colorMode === 'system') {
+                        next = sanitizeFull({ colorMode: 'dark', ...DARK_THEME })
+                      } else if (uiTheme.colorMode === 'light') {
+                        next = sanitizeFull({ colorMode: 'light', ...LIGHT_THEME })
+                      } else {
+                        next = sanitizeFull({ colorMode: 'dark', ...DARK_THEME })
+                      }
+                      setUiTheme(next)
+                      saveTheme(user?.id, next)
+                      applyTheme(next, { accentColor: accentColor || user?.accent_color })
+                      setInfo('Theme reset to defaults')
+                    }}
+                  >
+                    Reset to defaults
+                  </button>
+                </div>
+              </div>
             )}
 
             {activeSection === 'account' && (

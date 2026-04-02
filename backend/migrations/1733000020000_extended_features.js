@@ -86,10 +86,12 @@ exports.up = (pgm) => {
     name: "server_webhooks_server_idx",
   });
 
-  pgm.addColumn("messages", "thread_root_message_id", {
-    type: "bigint",
-    references: "messages",
-    onDelete: "set null",
+  pgm.addColumn("messages", {
+    thread_root_message_id: {
+      type: "bigint",
+      references: "messages",
+      onDelete: "set null",
+    },
   });
   pgm.createIndex("messages", ["thread_root_message_id"], {
     name: "messages_thread_root_idx",
