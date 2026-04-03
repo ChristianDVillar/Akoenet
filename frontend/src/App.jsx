@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import RegisterComplete from './pages/RegisterComplete'
 import Home from './pages/Home'
 import Messages from './pages/Messages'
 import ServerView from './pages/ServerView'
@@ -83,6 +84,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/register/complete" element={<RegisterComplete />} />
         <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
         <Route path="/legal/dmca" element={<DmcaPage />} />
         <Route path="/legal/dpo" element={<DpoPage />} />

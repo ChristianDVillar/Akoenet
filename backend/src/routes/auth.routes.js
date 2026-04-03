@@ -12,6 +12,7 @@ const { sanitizeUserMediaFields } = require("../lib/sanitize-media-url");
 const { getJwtSecret } = require("../lib/jwt-secret");
 const { assertContentAllowed, BLOCKED_MESSAGE } = require("../lib/blocked-content");
 const { sha256Hex, createStoredRefreshToken } = require("../lib/refresh-token");
+const { sendRegistrationVerificationEmail, isResendConfigured } = require("../lib/resend-mail");
 const { authenticator } = require("otplib");
 const { generateSecret, verify: verifyTotp } = require("../lib/totp");
 
@@ -66,6 +67,27 @@ function resolveFrontendBase() {
 }
 
 const frontendBase = resolveFrontendBase();
+
+const useHashRouter = String(process.env.FRONTEND_HASH_ROUTER || "").trim() === "true";
+
+function buildRegistrationCompleteUrl(rawToken) {
+  const q = `token=${encodeURIComponent(rawToken)}`;
+  if (useHashRouter) {
+    const base = stripTrailingSlash(frontendBase);
+    return `${base}/#${`/register/complete?${q}`}`;
+  }
+  const base = stripTrailingSlash(frontendBase);
+  return new URL(`register/complete?${q}`, `${base}/`).toString();
+}
+
+function maskEmailForDisplay(emailNorm) {
+  const parts = String(emailNorm || "").split("@");
+  if (parts.length < 2) return "***";
+  const local = parts[0];
+  const domain = parts.slice(1).join("@");
+  const safe = local.length <= 1 ? "*" : `${local[0]}***`;
+  return `${safe}@${domain}`;
+}
 
 /** Twitch OAuth redirect: must match Twitch Developer Console exactly (HTTPS on Render). */
 const twitchRedirectUri = (() => {
@@ -128,10 +150,15 @@ function computeAgeFromBirthDateUtc(birthDateStr) {
   return age;
 }
 
-const registerSchema = z
+const registerStartSchema = z.object({
+  email: z.string().trim().email().max(120),
+  invite: z.string().trim().min(1).max(200).optional(),
+});
+
+const registerCompleteSchema = z
   .object({
+    token: z.string().regex(/^[a-f0-9]{64}$/i),
     username: z.string().trim().min(2).max(40),
-    email: z.string().trim().email().max(120),
     password: z.string().min(6).max(200),
     birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "birth_date must be YYYY-MM-DD"),
   })
@@ -150,6 +177,10 @@ const registerSchema = z
     },
     { message: "You must be at least 13 years old to register.", path: ["birth_date"] }
   );
+
+const registerPendingQuerySchema = z.object({
+  token: z.string().regex(/^[a-f0-9]{64}$/i),
+});
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(120),
@@ -230,25 +261,113 @@ const eraseAccountSchema = z.object({
   reason: z.string().trim().max(240).optional(),
 });
 
-router.post("/register", authRateLimiter, validate({ body: registerSchema }), async (req, res) => {
+router.post("/register/start", authRateLimiter, validate({ body: registerStartSchema }), async (req, res) => {
   try {
-    const { username, email, password, birth_date: birthDate } = req.body;
+    const emailNorm = String(req.body.email).trim().toLowerCase();
+    const inviteRaw = req.body.invite != null ? String(req.body.invite).trim() : "";
+    const invite = inviteRaw.length ? inviteRaw : null;
+
+    const existing = await pool.query(
+      `SELECT 1 FROM users WHERE LOWER(TRIM(email)) = $1 AND deleted_at IS NULL LIMIT 1`,
+      [emailNorm]
+    );
+    if (existing.rows.length > 0) {
+      return res.json({ sent: true });
+    }
+
+    await pool.query(`DELETE FROM registration_tokens WHERE email_norm = $1`, [emailNorm]);
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = sha256Hex(rawToken);
+    const verifyUrl = buildRegistrationCompleteUrl(rawToken);
+
+    await pool.query(
+      `INSERT INTO registration_tokens (email_norm, token_hash, invite_token, expires_at)
+       VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours')`,
+      [emailNorm, tokenHash, invite]
+    );
+
+    if (!isResendConfigured()) {
+      logger.warn({ verifyUrl }, "RESEND_API_KEY not set; registration link logged");
+      if (process.env.NODE_ENV === "production") {
+        await pool.query(`DELETE FROM registration_tokens WHERE token_hash = $1`, [tokenHash]);
+        return res.status(503).json({ error: "email_not_configured" });
+      }
+      return res.status(200).json({ sent: true, dev_verify_url: verifyUrl });
+    }
+
+    const mailRes = await sendRegistrationVerificationEmail({ to: emailNorm, verifyUrl });
+    if (!mailRes.ok) {
+      await pool.query(`DELETE FROM registration_tokens WHERE token_hash = $1`, [tokenHash]);
+      logger.warn({ error: mailRes.error }, "Registration verification email failed");
+      if (process.env.NODE_ENV === "production") {
+        return res.status(503).json({ error: "email_send_failed" });
+      }
+      return res.status(200).json({ sent: true, dev_verify_url: verifyUrl, warning: "email_send_failed_dev" });
+    }
+
+    return res.json({ sent: true });
+  } catch (e) {
+    logger.error({ err: e }, "register/start failed");
+    res.status(500).json({ error: "Register start failed" });
+  }
+});
+
+router.get("/register/pending", authRateLimiter, validate({ query: registerPendingQuerySchema }), async (req, res) => {
+  try {
+    const raw = String(req.query.token || "").trim();
+    const tokenHash = sha256Hex(raw);
+    const row = await pool.query(
+      `SELECT email_norm, invite_token, expires_at FROM registration_tokens WHERE token_hash = $1`,
+      [tokenHash]
+    );
+    if (row.rows.length === 0) {
+      return res.status(400).json({ error: "invalid_or_expired_token" });
+    }
+    const r = row.rows[0];
+    if (new Date(r.expires_at) < new Date()) {
+      return res.status(400).json({ error: "invalid_or_expired_token" });
+    }
+    return res.json({
+      email_masked: maskEmailForDisplay(r.email_norm),
+      invite: r.invite_token || null,
+    });
+  } catch (e) {
+    logger.error({ err: e }, "register/pending failed");
+    res.status(500).json({ error: "Register pending failed" });
+  }
+});
+
+router.post("/register/complete", authRateLimiter, validate({ body: registerCompleteSchema }), async (req, res) => {
+  try {
+    const { token: rawToken, username, password, birth_date: birthDate } = req.body;
     if (!assertContentAllowed(username, { source: "register_username" }).ok) {
       return res.status(400).json({ error: "blocked_content", message: BLOCKED_MESSAGE });
     }
+    const tokenHash = sha256Hex(rawToken);
+    const tokRes = await pool.query(
+      `DELETE FROM registration_tokens
+       WHERE token_hash = $1 AND expires_at > NOW()
+       RETURNING email_norm`,
+      [tokenHash]
+    );
+    if (tokRes.rows.length === 0) {
+      return res.status(400).json({ error: "invalid_or_expired_token" });
+    }
+    const emailNorm = tokRes.rows[0].email_norm;
     const hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO users (username, email, password, birth_date, age_verified_at)
        VALUES ($1, $2, $3, $4::date, NOW())
        RETURNING id, username, email, created_at`,
-      [username, email, hash, birthDate]
+      [username, emailNorm, hash, birthDate]
     );
     res.status(201).json(result.rows[0]);
   } catch (e) {
     if (e.code === "23505") {
       return res.status(409).json({ error: "Email already registered" });
     }
-    logger.error({ err: e }, "Register failed");
+    logger.error({ err: e }, "Register complete failed");
     res.status(500).json({ error: "Register failed" });
   }
 });

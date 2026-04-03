@@ -4634,12 +4634,12 @@ input.theme-color-hex:disabled {
   .channel-column {
     min-width: 0;
     min-height: 0;
-    padding-bottom: calc(4.2rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
   }
 
   .main-panel.home-panel {
     min-height: 0;
-    padding-bottom: calc(4.2rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
   }
 
   .home-panel {
@@ -4764,7 +4764,7 @@ input.theme-color-hex:disabled {
   }
 
   .chat-panel {
-    padding-bottom: calc(4.2rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -5559,12 +5559,13 @@ input.theme-color-hex:disabled {
   position: fixed;
   left: 1rem;
   right: 1rem;
-  bottom: 1rem;
+  top: 1rem;
+  bottom: auto;
   z-index: 120;
   border: 1px solid var(--nexora-border);
   background: var(--nexora-glass-96);
   border-radius: 12px;
-  padding: 0.75rem 0.9rem;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px)) 0.9rem 0.75rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -5848,7 +5849,8 @@ input.theme-color-hex:disabled {
   position: fixed;
   inset: 0;
   z-index: 220;
-  background: var(--nexora-glass-65);
+  background: color-mix(in srgb, var(--nexora-bg) 72%, #000 28%);
+  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5858,6 +5860,9 @@ input.theme-color-hex:disabled {
 .welcome-onboarding-card {
   max-width: 520px;
   width: 100%;
+  background: var(--nexora-panel);
+  border: 1px solid var(--nexora-border);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
 }
 
 .welcome-onboarding-list {
