@@ -8,9 +8,45 @@ import {
 
 /**
  * Sección “descargar / instalar app”: copia distinta para móvil vs PC y PWA (Chrome/Edge).
+ *
+ * beforeinstallprompt: si usamos preventDefault() para ofrecer nuestro botón “Instalar”,
+ * Chrome puede registrar en consola que el banner nativo no se mostró hasta que se llame
+ * prompt() — es el patrón recomendado para instalación diferida, no un fallo de la app.
  */
 const desktopDocsUrl = import.meta.env.VITE_DESKTOP_BUILD_DOCS_URL
 const desktopInstallerUrl = import.meta.env.VITE_DESKTOP_INSTALLER_URL
+const hasHostedDesktop = Boolean(desktopInstallerUrl || desktopDocsUrl)
+
+function NativeDesktopBlock({ a }) {
+  return (
+    <div className="landing-app-card landing-app-card--muted landing-app-card--desktop-native">
+      <h3 className="landing-app-card-title">{a.desktop.nativeTitle}</h3>
+      <p className="landing-app-card-body">
+        {desktopInstallerUrl ? a.desktop.nativeBodyHosted : a.desktop.nativeBody}
+      </p>
+      {desktopInstallerUrl ? (
+        <a
+          className="btn primary landing-app-native-download"
+          href={desktopInstallerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {a.desktop.nativeDownloadCta}
+        </a>
+      ) : null}
+      {desktopDocsUrl ? (
+        <a
+          className="landing-app-native-docs"
+          href={desktopDocsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {a.desktop.nativeDocsCta}
+        </a>
+      ) : null}
+    </div>
+  )
+}
 
 export default function LandingAppSection({ t }) {
   const a = t.appSection
@@ -28,13 +64,14 @@ export default function LandingAppSection({ t }) {
   }, [])
 
   useEffect(() => {
+    if (standalone) return undefined
     const onBip = (e) => {
       e.preventDefault()
       setDeferredPrompt(e)
     }
     window.addEventListener('beforeinstallprompt', onBip)
     return () => window.removeEventListener('beforeinstallprompt', onBip)
-  }, [])
+  }, [standalone])
 
   const runInstall = useCallback(async () => {
     if (!deferredPrompt) return
@@ -49,7 +86,7 @@ export default function LandingAppSection({ t }) {
     setDeferredPrompt(null)
   }, [deferredPrompt])
 
-  if (standalone) {
+  if (standalone && !hasHostedDesktop) {
     return (
       <section id="app" className="landing-section landing-app" aria-labelledby="landing-app-title">
         <div className="landing-section-inner landing-app-inner">
@@ -68,67 +105,63 @@ export default function LandingAppSection({ t }) {
         <p className="landing-app-lead">{a.lead}</p>
 
         {isMobile ? (
-          <div className="landing-app-columns">
-            <div className="landing-app-card">
-              <h3 className="landing-app-card-title">{a.mobile.pwaTitle}</h3>
-              {mobileOs === 'ios' ? (
-                <p className="landing-app-card-body">{a.mobile.pwaBodyIOS}</p>
-              ) : mobileOs === 'android' ? (
-                <p className="landing-app-card-body">{a.mobile.pwaBodyAndroid}</p>
+          <>
+            <div className="landing-app-columns">
+              {standalone ? (
+                <div className="landing-app-card landing-app-card--muted">
+                  <h3 className="landing-app-card-title">{a.desktop.standalonePwaTitle}</h3>
+                  <p className="landing-app-card-body">{a.desktop.standalonePwaLead}</p>
+                </div>
               ) : (
-                <p className="landing-app-card-body">{a.mobile.pwaBodyOther}</p>
+                <div className="landing-app-card">
+                  <h3 className="landing-app-card-title">{a.mobile.pwaTitle}</h3>
+                  {mobileOs === 'ios' ? (
+                    <p className="landing-app-card-body">{a.mobile.pwaBodyIOS}</p>
+                  ) : mobileOs === 'android' ? (
+                    <p className="landing-app-card-body">{a.mobile.pwaBodyAndroid}</p>
+                  ) : (
+                    <p className="landing-app-card-body">{a.mobile.pwaBodyOther}</p>
+                  )}
+                </div>
               )}
+              <div className="landing-app-card landing-app-card--muted">
+                <h3 className="landing-app-card-title">{a.mobile.roadmapTitle}</h3>
+                <p className="landing-app-card-body">{a.mobile.roadmapBody}</p>
+              </div>
             </div>
-            <div className="landing-app-card landing-app-card--muted">
-              <h3 className="landing-app-card-title">{a.mobile.roadmapTitle}</h3>
-              <p className="landing-app-card-body">{a.mobile.roadmapBody}</p>
-            </div>
-          </div>
+            {hasHostedDesktop ? (
+              <div className="landing-app-columns landing-app-mobile-desktop-row">
+                <NativeDesktopBlock a={a} />
+              </div>
+            ) : null}
+          </>
         ) : (
           <div className="landing-app-columns">
-            <div className="landing-app-card">
-              <h3 className="landing-app-card-title">{a.desktop.pwaTitle}</h3>
-              <p className="landing-app-card-body">{a.desktop.pwaBody}</p>
-              {deferredPrompt ? (
-                <button type="button" className="btn primary landing-app-install-btn" onClick={() => void runInstall()}>
-                  {a.desktop.installCta}
-                </button>
-              ) : (
-                <p className="landing-app-hint">{a.desktop.installFallback}</p>
-              )}
-              {installOutcome === 'accepted' ? (
-                <p className="landing-app-toast ok">{a.desktop.installAccepted}</p>
-              ) : null}
-              {installOutcome === 'dismissed' ? (
-                <p className="landing-app-toast muted">{a.desktop.installDismissed}</p>
-              ) : null}
-            </div>
-            <div className="landing-app-card landing-app-card--muted landing-app-card--desktop-native">
-              <h3 className="landing-app-card-title">{a.desktop.nativeTitle}</h3>
-              <p className="landing-app-card-body">
-                {desktopInstallerUrl ? a.desktop.nativeBodyHosted : a.desktop.nativeBody}
-              </p>
-              {desktopInstallerUrl ? (
-                <a
-                  className="btn primary landing-app-native-download"
-                  href={desktopInstallerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {a.desktop.nativeDownloadCta}
-                </a>
-              ) : null}
-              {desktopDocsUrl ? (
-                <a
-                  className="landing-app-native-docs"
-                  href={desktopDocsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {a.desktop.nativeDocsCta}
-                </a>
-              ) : null}
-            </div>
+            {standalone ? (
+              <div className="landing-app-card landing-app-card--muted">
+                <h3 className="landing-app-card-title">{a.desktop.standalonePwaTitle}</h3>
+                <p className="landing-app-card-body">{a.desktop.standalonePwaLead}</p>
+              </div>
+            ) : (
+              <div className="landing-app-card">
+                <h3 className="landing-app-card-title">{a.desktop.pwaTitle}</h3>
+                <p className="landing-app-card-body">{a.desktop.pwaBody}</p>
+                {deferredPrompt ? (
+                  <button type="button" className="btn primary landing-app-install-btn" onClick={() => void runInstall()}>
+                    {a.desktop.installCta}
+                  </button>
+                ) : (
+                  <p className="landing-app-hint">{a.desktop.installFallback}</p>
+                )}
+                {installOutcome === 'accepted' ? (
+                  <p className="landing-app-toast ok">{a.desktop.installAccepted}</p>
+                ) : null}
+                {installOutcome === 'dismissed' ? (
+                  <p className="landing-app-toast muted">{a.desktop.installDismissed}</p>
+                ) : null}
+              </div>
+            )}
+            <NativeDesktopBlock a={a} />
           </div>
         )}
       </div>

@@ -5695,6 +5695,10 @@ input.theme-color-hex:disabled {
   color: #a7f3d0;
 }
 
+.landing-app-mobile-desktop-row {
+  margin-top: 1rem;
+}
+
 .card-join-server .join-lead {
   margin: 0 0 0.65rem;
   line-height: 1.45;
