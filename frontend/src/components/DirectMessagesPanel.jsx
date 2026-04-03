@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
 
@@ -33,6 +34,8 @@ function formatConversationPreview(message) {
 }
 
 export default function DirectMessagesPanel({ user }) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const conversationParam = searchParams.get('conversation') ?? ''
   const [conversations, setConversations] = useState([])
   const [selectedConversationId, setSelectedConversationId] = useState(null)
   const [messages, setMessages] = useState([])
@@ -73,9 +76,7 @@ export default function DirectMessagesPanel({ user }) {
   async function loadConversations() {
     const { data } = await api.get('/dm/conversations')
     setConversations(data)
-    if (!selectedConversationId && data[0]?.id) {
-      setSelectedConversationId(data[0].id)
-    }
+    setSelectedConversationId((prev) => (prev != null ? prev : data[0]?.id ?? null))
   }
 
   useEffect(() => {
@@ -112,8 +113,37 @@ export default function DirectMessagesPanel({ user }) {
   }, [composerHighlightId, composerHistorySafeIndex])
 
   useEffect(() => {
-    loadConversations().catch(() => setError('Could not load your direct messages'))
-  }, [])
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get('/dm/conversations')
+        if (cancelled) return
+        setConversations(data)
+        const prefer = conversationParam !== '' ? Number(conversationParam) : null
+        if (Number.isFinite(prefer)) {
+          setSelectedConversationId(prefer)
+          if (typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches) {
+            setMobileChatOpen(true)
+          }
+          setSearchParams(
+            (p) => {
+              const n = new URLSearchParams(p)
+              n.delete('conversation')
+              return n
+            },
+            { replace: true }
+          )
+        } else {
+          setSelectedConversationId((prev) => prev ?? (data[0]?.id ?? null))
+        }
+      } catch {
+        if (!cancelled) setError('Could not load your direct messages')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [conversationParam, setSearchParams])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
