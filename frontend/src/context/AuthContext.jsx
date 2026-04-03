@@ -141,10 +141,25 @@ export function AuthProvider({ children }) {
     return data
   }, [])
 
-  const register = useCallback(async (username, email, password, birth_date) => {
-    await api.post('/auth/register', { username, email, password, birth_date })
-    return login(email, password)
-  }, [login])
+  const registerStart = useCallback(async (email, invite) => {
+    const body = { email }
+    if (invite) body.invite = invite
+    const { data } = await api.post('/auth/register/start', body)
+    return { data }
+  }, [])
+
+  const registerComplete = useCallback(
+    async (token, username, password, birth_date) => {
+      const { data } = await api.post('/auth/register/complete', {
+        token,
+        username,
+        password,
+        birth_date,
+      })
+      return login(data.email, password)
+    },
+    [login]
+  )
 
   const updateCurrentUser = useCallback((partial) => {
     setUser((prev) => {
@@ -161,7 +176,8 @@ export function AuthProvider({ children }) {
       login,
       completeLogin2fa,
       loginWithToken,
-      register,
+      registerStart,
+      registerComplete,
       logout,
       refreshUser,
       updateCurrentUser,
@@ -173,7 +189,8 @@ export function AuthProvider({ children }) {
       login,
       completeLogin2fa,
       loginWithToken,
-      register,
+      registerStart,
+      registerComplete,
       logout,
       refreshUser,
       updateCurrentUser,

@@ -4215,8 +4215,9 @@ input.theme-color-hex:disabled {
 
 .member-item {
   display: flex;
-  gap: 0.55rem;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
   padding: 0.45rem;
   border-radius: 8px;
   background: var(--nexora-surface-c);
@@ -4228,6 +4229,76 @@ input.theme-color-hex:disabled {
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(148, 163, 184, 0.28);
   transform: translateY(-1px);
+}
+
+.member-item--selected {
+  border-color: rgba(31, 141, 131, 0.5);
+  background: rgba(31, 141, 131, 0.12);
+}
+
+.member-item-main {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.member-item-main:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.65);
+  outline-offset: 2px;
+}
+
+.member-item-actions {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.member-item-actions--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.member-dm-btn,
+.member-item-actions--stack .member-add-friend-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.member-friend-status {
+  font-size: 0.78rem;
+  color: var(--nexora-muted);
+  font-weight: 600;
+  text-align: center;
+}
+
+.members-friend-notice {
+  margin: 0 0.75rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.78rem;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.members-friend-notice--err {
+  background: rgba(127, 29, 29, 0.25);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fecaca;
 }
 
 @keyframes toastSlideIn {
@@ -4634,12 +4705,12 @@ input.theme-color-hex:disabled {
   .channel-column {
     min-width: 0;
     min-height: 0;
-    padding-bottom: calc(4.2rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
   }
 
   .main-panel.home-panel {
     min-height: 0;
-    padding-bottom: calc(4.2rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
   }
 
   .home-panel {
@@ -4764,7 +4835,7 @@ input.theme-color-hex:disabled {
   }
 
   .chat-panel {
-    padding-bottom: calc(4.2rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -5559,12 +5630,13 @@ input.theme-color-hex:disabled {
   position: fixed;
   left: 1rem;
   right: 1rem;
-  bottom: 1rem;
+  top: 1rem;
+  bottom: auto;
   z-index: 120;
   border: 1px solid var(--nexora-border);
   background: var(--nexora-glass-96);
   border-radius: 12px;
-  padding: 0.75rem 0.9rem;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px)) 0.9rem 0.75rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -5848,7 +5920,8 @@ input.theme-color-hex:disabled {
   position: fixed;
   inset: 0;
   z-index: 220;
-  background: var(--nexora-glass-65);
+  background: color-mix(in srgb, var(--nexora-bg) 72%, #000 28%);
+  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5858,6 +5931,9 @@ input.theme-color-hex:disabled {
 .welcome-onboarding-card {
   max-width: 520px;
   width: 100%;
+  background: var(--nexora-panel);
+  border: 1px solid var(--nexora-border);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
 }
 
 .welcome-onboarding-list {

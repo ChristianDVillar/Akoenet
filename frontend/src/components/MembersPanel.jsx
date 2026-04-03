@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import api from '../services/api'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 function normalizedRoles(member) {
@@ -39,14 +41,41 @@ export default function MembersPanel({
   currentUser = null,
   onClose = null,
 }) {
+  const navigate = useNavigate()
   const [avatarFailed, setAvatarFailed] = useState(() => new Set())
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [selectedMemberId, setSelectedMemberId] = useState(null)
+  const [friendships, setFriendships] = useState([])
+  const [friendRequestBusyId, setFriendRequestBusyId] = useState(null)
+  const [dmOpenBusyId, setDmOpenBusyId] = useState(null)
+  const [friendNotice, setFriendNotice] = useState(null)
   const connectedSet = useMemo(
     () => new Set((connectedUserIds || []).map((id) => Number(id))),
     [connectedUserIds]
   )
+
+  const refreshFriendships = useCallback(async () => {
+    try {
+      const { data } = await api.get('/social/friends')
+      setFriendships(Array.isArray(data) ? data : [])
+    } catch {
+      setFriendships([])
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshFriendships()
+  }, [refreshFriendships])
+
+  const friendshipByPeerId = useMemo(() => {
+    const m = new Map()
+    for (const f of friendships) {
+      m.set(Number(f.peer_id), f)
+    }
+    return m
+  }, [friendships])
 
   const roleOptions = useMemo(() => {
     const set = new Set(['member'])
@@ -105,6 +134,47 @@ export default function MembersPanel({
     return arr
   }, [filteredMembers])
 
+  async function openDirectMessage(peerId) {
+    setFriendNotice(null)
+    setDmOpenBusyId(peerId)
+    try {
+      const { data } = await api.post('/dm/conversations', { target_user_id: peerId })
+      navigate(`/messages?conversation=${encodeURIComponent(String(data.id))}`)
+      onClose?.()
+    } catch (err) {
+      const code = err.response?.data?.error
+      if (code === 'blocked' || err.response?.status === 403) {
+        setFriendNotice({ type: 'err', text: 'You cannot message this user.' })
+      } else {
+        setFriendNotice({ type: 'err', text: 'Could not open direct messages.' })
+      }
+    } finally {
+      setDmOpenBusyId(null)
+    }
+  }
+
+  async function handleAddFriend(peerId) {
+    setFriendNotice(null)
+    setFriendRequestBusyId(peerId)
+    try {
+      await api.post('/social/friends/request', { user_id: peerId })
+      await refreshFriendships()
+      setFriendNotice({ type: 'ok', text: 'Friend request sent.' })
+    } catch (err) {
+      const code = err.response?.data?.error
+      if (code === 'already_exists') {
+        await refreshFriendships()
+        setFriendNotice({ type: 'muted', text: 'Already connected or pending.' })
+      } else if (code === 'blocked') {
+        setFriendNotice({ type: 'err', text: 'You cannot add this user.' })
+      } else {
+        setFriendNotice({ type: 'err', text: 'Could not send friend request.' })
+      }
+    } finally {
+      setFriendRequestBusyId(null)
+    }
+  }
+
   return (
     <aside className="members-column">
       <header className="members-header">
@@ -157,6 +227,14 @@ export default function MembersPanel({
           </select>
         </div>
       </div>
+      {friendNotice && (
+        <p
+          className={`members-friend-notice ${friendNotice.type === 'err' ? 'members-friend-notice--err' : ''}`}
+          role="status"
+        >
+          {friendNotice.text}
+        </p>
+      )}
       <ul className="members-list">
         {groupedMembers.map((section) => (
           <li key={`section-${section.key}`} className="members-section">
@@ -167,29 +245,83 @@ export default function MembersPanel({
               {section.items.map((member) => {
                 const showImg = member.avatar_url && !avatarFailed.has(member.id)
                 const isOnline = isMemberOnline(member, connectedSet, currentUser)
+                const isSelf = currentUser && Number(member.id) === Number(currentUser.id)
+                const selected = selectedMemberId != null && Number(selectedMemberId) === Number(member.id)
+                const link = friendshipByPeerId.get(Number(member.id))
+                let friendLabel = null
+                if (!isSelf && link) {
+                  if (link.status === 'accepted') friendLabel = 'friends'
+                  else if (link.status === 'pending') friendLabel = 'pending'
+                }
                 return (
-                  <li key={member.id} className="member-item">
-                    <div className="member-avatar">
-                      {showImg ? (
-                        <img
-                          src={resolveImageUrl(member.avatar_url)}
-                          alt=""
-                          onError={() => {
-                            setAvatarFailed((prev) => new Set(prev).add(member.id))
-                          }}
-                        />
-                      ) : (
-                        member.username?.slice(0, 1).toUpperCase()
-                      )}
-                    </div>
-                    <div className="member-meta">
-                      <strong>
-                        {member.username}
-                        <span className={`member-status-dot ${isOnline ? 'online' : 'offline'}`} />
-                      </strong>
-                      <span>{member.roles?.join(', ') || 'member'}</span>
-                      <span className="member-status-text">{isOnline ? 'Connected' : 'Offline'}</span>
-                    </div>
+                  <li
+                    key={member.id}
+                    className={`member-item ${selected ? 'member-item--selected' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="member-item-main"
+                      onClick={() => {
+                        setFriendNotice(null)
+                        setSelectedMemberId((prev) =>
+                          prev != null && Number(prev) === Number(member.id) ? null : member.id
+                        )
+                      }}
+                    >
+                      <div className="member-avatar">
+                        {showImg ? (
+                          <img
+                            src={resolveImageUrl(member.avatar_url)}
+                            alt=""
+                            onError={() => {
+                              setAvatarFailed((prev) => new Set(prev).add(member.id))
+                            }}
+                          />
+                        ) : (
+                          member.username?.slice(0, 1).toUpperCase()
+                        )}
+                      </div>
+                      <div className="member-meta">
+                        <strong>
+                          {member.username}
+                          <span className={`member-status-dot ${isOnline ? 'online' : 'offline'}`} />
+                        </strong>
+                        <span>{member.roles?.join(', ') || 'member'}</span>
+                        <span className="member-status-text">{isOnline ? 'Connected' : 'Offline'}</span>
+                      </div>
+                    </button>
+                    {selected && !isSelf && (
+                      <div
+                        className="member-item-actions member-item-actions--stack"
+                        onClick={(e) => e.stopPropagation()}
+                        role="presentation"
+                      >
+                        <button
+                          type="button"
+                          className="btn secondary small member-dm-btn"
+                          disabled={dmOpenBusyId === Number(member.id)}
+                          onClick={() => openDirectMessage(Number(member.id))}
+                        >
+                          {dmOpenBusyId === Number(member.id) ? 'Opening…' : 'Message'}
+                        </button>
+                        {friendLabel === 'friends' && (
+                          <span className="member-friend-status">Friends</span>
+                        )}
+                        {friendLabel === 'pending' && (
+                          <span className="member-friend-status">Request pending</span>
+                        )}
+                        {!friendLabel && (
+                          <button
+                            type="button"
+                            className="btn primary small member-add-friend-btn"
+                            disabled={friendRequestBusyId === Number(member.id)}
+                            onClick={() => handleAddFriend(Number(member.id))}
+                          >
+                            {friendRequestBusyId === Number(member.id) ? 'Sending…' : 'Add friend'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </li>
                 )
               })}
