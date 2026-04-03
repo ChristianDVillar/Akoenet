@@ -3,6 +3,7 @@ export const landingContent = {
   en: {
     nav: {
       features: 'Features',
+      app: 'App',
       faq: 'FAQ',
       terms: 'Terms',
       privacy: 'Privacy',
@@ -49,7 +50,7 @@ export const landingContent = {
       },
       {
         q: 'Do I need to install anything?',
-        a: 'No. It runs in the browser. You only need an account and, for voice, microphone permission (and camera if you use it).',
+        a: 'No installer is required: it runs in the browser. Optionally install it as a PWA from the “App” section — that is not a browser extension. You need an account and, for voice, microphone permission (and camera if you use it).',
       },
       {
         q: 'How do voice channels work?',
@@ -76,10 +77,46 @@ export const landingContent = {
       button: 'Continue',
       error: 'Paste a link or invite code.',
     },
+    appSection: {
+      title: 'Install the app',
+      lead:
+        'The usual “install” is the PWA (left): same app in its own window. A separate native desktop build exists only if you compile it with Tauri (right). None of these is a browser extension.',
+      standaloneNote: "You're already using AkoeNet as an installed app.",
+      desktop: {
+        pwaTitle: 'From the browser (Chrome / Edge)',
+        pwaBody:
+          'Add AkoeNet as its own window with a taskbar or dock icon. This is progressive web app install — not a Chrome/Edge extension and not an add-on from a store.',
+        installCta: 'Install AkoeNet',
+        installFallback:
+          'If you don’t see a button, use the install icon in the address bar, or the browser menu → Install / Install page as app.',
+        installAccepted: 'Installation started — check your applications or taskbar.',
+        installDismissed: 'You can install anytime from the browser menu.',
+        nativeTitle: 'Native desktop (Tauri — build yourself)',
+        nativeBody:
+          'There is no pre-built installer to download from this site. To produce a .exe / .app / installer, clone the repo, install Rust, configure frontend/.env, then run npm run tauri:build in frontend/. See frontend/README.md. Still not a browser extension.',
+        nativeBodyHosted:
+          'A Windows installer is linked below (when the deployment sets it). Same web client in a native window — not a browser extension. You can also build from source.',
+        nativeDownloadCta: 'Download Windows installer (x64)',
+        nativeDocsCta: 'Open build instructions',
+      },
+      mobile: {
+        pwaTitle: 'Add to your home screen',
+        pwaBodyAndroid:
+          'Open this site in Chrome. Tap the menu (⋮) → Add to Home screen or Install app. You’ll get a full-screen shortcut like a native app.',
+        pwaBodyIOS:
+          'Open this site in Safari. Tap the Share button → Add to Home Screen. On iOS, installing from the home screen works best with Safari.',
+        pwaBodyOther:
+          'Use your browser’s menu to add this page to your home screen or install it as an app, if your browser supports it.',
+        roadmapTitle: 'App stores (roadmap)',
+        roadmapBody:
+          'A Capacitor build for Google Play and the App Store is planned for richer push and store discovery; the PWA works today without a store.',
+      },
+    },
   },
   es: {
     nav: {
       features: 'Funciones',
+      app: 'App',
       faq: 'FAQ',
       terms: 'Términos',
       privacy: 'Privacidad',
@@ -126,7 +163,7 @@ export const landingContent = {
       },
       {
         q: '¿Necesito instalar algo?',
-        a: 'No. El cliente es web (navegador). Solo necesitas una cuenta y, para voz, permitir micrófono (y cámara si la usas).',
+        a: 'No hace falta un instalador clásico: el cliente es web. Opcionalmente puedes instalarla como PWA desde la sección “App” — eso no es una extensión del navegador. Necesitas cuenta y, para voz, permiso de micrófono (y cámara si la usas).',
       },
       {
         q: '¿Cómo funcionan los canales de voz?',
@@ -152,6 +189,41 @@ export const landingContent = {
       placeholder: 'Enlace o código de invitación',
       button: 'Continuar',
       error: 'Pega un enlace o un código de invitación.',
+    },
+    appSection: {
+      title: 'Instalar la app',
+      lead:
+        'La forma habitual de “instalar” es la PWA (columna izquierda): misma app en ventana propia. El ejecutable nativo solo existe si compilas el proyecto con Tauri (columna derecha). Ninguna opción es una extensión del navegador.',
+      standaloneNote: 'Ya estás usando AkoeNet como app instalada.',
+      desktop: {
+        pwaTitle: 'Desde el navegador (Chrome / Edge)',
+        pwaBody:
+          'Añade AkoeNet como ventana propia con icono en la barra de tareas o el dock. Es instalación PWA: no es una extensión de Chrome ni de Edge ni un complemento de tienda.',
+        installCta: 'Instalar AkoeNet',
+        installFallback:
+          'Si no ves el botón, usa el icono de instalación en la barra de direcciones o el menú del navegador → Instalar página como aplicación.',
+        installAccepted: 'Instalación iniciada: revisa aplicaciones o la barra de tareas.',
+        installDismissed: 'Puedes instalar cuando quieras desde el menú del navegador.',
+        nativeTitle: 'Escritorio nativo (Tauri — hay que compilar)',
+        nativeBody:
+          'Desde esta web no se ofrece un instalador listo para descargar. Para obtener .exe / .app / instalador, clona el repositorio, instala Rust, configura frontend/.env y ejecuta npm run tauri:build en frontend/. Detalle en frontend/README.md. Tampoco es una extensión del navegador.',
+        nativeBodyHosted:
+          'Abajo hay enlace al instalador para Windows (si el despliegue lo configura). Mismo cliente web en ventana nativa — no es extensión del navegador. También puedes compilar desde el código.',
+        nativeDownloadCta: 'Descargar instalador Windows (x64)',
+        nativeDocsCta: 'Ver instrucciones de compilación',
+      },
+      mobile: {
+        pwaTitle: 'Añadir a la pantalla de inicio',
+        pwaBodyAndroid:
+          'Abre este sitio en Chrome. Menú (⋮) → Añadir a la pantalla de inicio o Instalar aplicación. Tendrás un acceso a pantalla completa parecido a una app nativa.',
+        pwaBodyIOS:
+          'Abre este sitio en Safari. Compartir → Añadir a pantalla de inicio. En iOS conviene usar Safari para la instalación.',
+        pwaBodyOther:
+          'Usa el menú del navegador para añadir esta página al inicio o instalarla como app, si tu navegador lo permite.',
+        roadmapTitle: 'Tiendas de apps (hoja de ruta)',
+        roadmapBody:
+          'Se plantea un empaquetado con Capacitor para Google Play y App Store (notificaciones y descubrimiento); la PWA ya funciona sin tienda.',
+      },
     },
   },
 }

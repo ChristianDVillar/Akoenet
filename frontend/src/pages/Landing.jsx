@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import SiteFooter from '../components/SiteFooter'
 import { useLandingLocale } from '../hooks/useLandingLocale'
 import { landingContent } from '../lib/landingContent'
+import LandingAppSection from '../components/LandingAppSection'
 import { inviteLandingPath, parseInviteTokenFromInput } from '../lib/invites'
 
 const FEATURE_ICONS = ['💬', '🎙️', '🛡️', '✉️']
@@ -97,6 +98,7 @@ export default function Landing({ apiUnreachable = false, onRetryApi }) {
               </button>
             </div>
             <a href="#features">{t.nav.features}</a>
+            <a href="#app">{t.nav.app}</a>
             <a href="#faq">{t.nav.faq}</a>
             <Link to="/legal/terminos">{t.nav.terms}</Link>
             <Link to="/legal/privacidad">{t.nav.privacy}</Link>
@@ -128,6 +130,8 @@ export default function Landing({ apiUnreachable = false, onRetryApi }) {
         </section>
 
         <LandingInviteStrip t={t} />
+
+        <LandingAppSection t={t} />
 
         <section id="features" className="landing-section landing-features">
           <div className="landing-section-inner">

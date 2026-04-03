@@ -28,6 +28,8 @@ export default defineConfig(({ mode }) => {
   },
   server: {
     port: 5173,
+    strictPort: true,
+    host: 'localhost',
     proxy: {
       '/uploads': {
         target: 'http://localhost:3000',
