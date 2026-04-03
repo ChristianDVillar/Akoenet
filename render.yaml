@@ -12,6 +12,10 @@ services:
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
+    # Vite inyecta VITE_* en build time: defínelas aquí o en Dashboard → Environment.
+    envVars:
+      - key: VITE_DESKTOP_INSTALLER_URL
+        value: /releases/akonet-desktop.exe
     routes:
       - type: redirect
         source: /favicon.ico

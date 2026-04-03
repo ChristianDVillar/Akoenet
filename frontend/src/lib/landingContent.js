@@ -91,11 +91,14 @@ export const landingContent = {
           'If you don’t see a button, use the install icon in the address bar, or the browser menu → Install / Install page as app.',
         installAccepted: 'Installation started — check your applications or taskbar.',
         installDismissed: 'You can install anytime from the browser menu.',
+        standalonePwaTitle: 'Web app (already installed)',
+        standalonePwaLead:
+          'You opened AkoeNet from the installed shortcut or home screen. The browser install banner is hidden here by design.',
         nativeTitle: 'Native desktop (Tauri — build yourself)',
         nativeBody:
           'There is no pre-built installer to download from this site. To produce a .exe / .app / installer, clone the repo, install Rust, configure frontend/.env, then run npm run tauri:build in frontend/. See frontend/README.md. Still not a browser extension.',
         nativeBodyHosted:
-          'A Windows installer is linked below (when the deployment sets it). Same web client in a native window — not a browser extension. You can also build from source.',
+          'Windows installer below. Same web client in a native window — not a browser extension. You can also build from source.',
         nativeDownloadCta: 'Download Windows installer (x64)',
         nativeDocsCta: 'Open build instructions',
       },
@@ -204,11 +207,14 @@ export const landingContent = {
           'Si no ves el botón, usa el icono de instalación en la barra de direcciones o el menú del navegador → Instalar página como aplicación.',
         installAccepted: 'Instalación iniciada: revisa aplicaciones o la barra de tareas.',
         installDismissed: 'Puedes instalar cuando quieras desde el menú del navegador.',
+        standalonePwaTitle: 'App web (ya instalada)',
+        standalonePwaLead:
+          'Abriste AkoeNet desde el acceso instalado o la pantalla de inicio. El aviso de instalación del navegador no aplica aquí.',
         nativeTitle: 'Escritorio nativo (Tauri — hay que compilar)',
         nativeBody:
           'Desde esta web no se ofrece un instalador listo para descargar. Para obtener .exe / .app / instalador, clona el repositorio, instala Rust, configura frontend/.env y ejecuta npm run tauri:build en frontend/. Detalle en frontend/README.md. Tampoco es una extensión del navegador.',
         nativeBodyHosted:
-          'Abajo hay enlace al instalador para Windows (si el despliegue lo configura). Mismo cliente web en ventana nativa — no es extensión del navegador. También puedes compilar desde el código.',
+          'Instalador para Windows más abajo. Mismo cliente web en ventana nativa — no es extensión del navegador. También puedes compilar desde el código.',
         nativeDownloadCta: 'Descargar instalador Windows (x64)',
         nativeDocsCta: 'Ver instrucciones de compilación',
       },
