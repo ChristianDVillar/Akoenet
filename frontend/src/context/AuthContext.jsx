@@ -44,6 +44,20 @@ export function AuthProvider({ children }) {
     setServerUnreachable(false)
   }, [])
 
+  /** Revokes refresh tokens on all devices; clears this session. */
+  const logoutAllDevices = useCallback(async () => {
+    try {
+      await api.post('/auth/logout-all')
+    } catch {
+      /* ignore */
+    }
+    localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
+    disconnectAkoeNet()
+    setUser(null)
+    setServerUnreachable(false)
+  }, [])
+
   const refreshUser = useCallback(async () => {
     const token = localStorage.getItem('token')
     if (!token) {
@@ -179,6 +193,7 @@ export function AuthProvider({ children }) {
       registerStart,
       registerComplete,
       logout,
+      logoutAllDevices,
       refreshUser,
       updateCurrentUser,
     }),
@@ -192,6 +207,7 @@ export function AuthProvider({ children }) {
       registerStart,
       registerComplete,
       logout,
+      logoutAllDevices,
       refreshUser,
       updateCurrentUser,
     ]

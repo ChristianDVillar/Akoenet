@@ -25,7 +25,7 @@ const auth = require("./middleware/auth");
 const requireAdmin = require("./middleware/require-admin");
 const { buildOpenApiSpec } = require("./docs/openapi");
 const { fetchSchedulerDiscovery } = require("./lib/scheduler-client");
-const { initPrometheusIfEnabled, metricsHandler } = require("./lib/prometheus-metrics");
+const { initPrometheusIfEnabled, metricsHandler, httpMetricsMiddleware } = require("./lib/prometheus-metrics");
 const linkPreviewRoutes = require("./routes/link-preview.routes");
 const socialRoutes = require("./routes/social.routes");
 
@@ -175,6 +175,7 @@ function createApp() {
   app.get("/metrics", metricsHandler);
   app.use(globalIpRateLimiter);
   app.use(express.json());
+  app.use(httpMetricsMiddleware);
   app.use("/dmca", dmcaRoutes);
   app.use("/dpo", dpoRoutes);
   app.get("/uploads/:key", async (req, res, next) => {

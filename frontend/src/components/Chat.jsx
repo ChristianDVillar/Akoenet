@@ -150,7 +150,17 @@ export default function Chat({
       if (String(msg.channel_id) !== String(channelId)) return
       const tr = threadRootIdRef.current
       if (tr == null) {
-        if (msg.thread_root_message_id) return
+        if (msg.thread_root_message_id) {
+          const rootId = Number(msg.thread_root_message_id)
+          setMessages((prev) =>
+            prev.map((m) =>
+              Number(m.id) === rootId
+                ? { ...m, thread_reply_count: (Number(m.thread_reply_count) || 0) + 1 }
+                : m
+            )
+          )
+          return
+        }
       } else if (Number(msg.id) !== Number(tr) && Number(msg.thread_root_message_id) !== Number(tr)) {
         return
       }
@@ -161,7 +171,19 @@ export default function Chat({
           return String(m.content).trim() !== String(msg.content).trim()
         })
         if (cleaned.some((m) => m.id === msg.id)) return cleaned
-        return [...cleaned, msg]
+        const next = [...cleaned, msg]
+        if (
+          tr != null &&
+          Number(msg.thread_root_message_id) === Number(tr) &&
+          Number(msg.id) !== Number(tr)
+        ) {
+          return next.map((m) =>
+            Number(m.id) === Number(tr)
+              ? { ...m, thread_reply_count: (Number(m.thread_reply_count) || 0) + 1 }
+              : m
+          )
+        }
+        return next
       })
     }
     const onDeleted = ({ id, channel_id: chId }) => {
@@ -345,6 +367,12 @@ export default function Chat({
         }
         if (ack?.error === 'blocked_content') {
           setSendError('That message contains prohibited language.')
+          setText(toSend)
+          setReplyTo(savedReply)
+          return
+        }
+        if (ack?.error === 'duplicate_message') {
+          setSendError(ack?.message || 'Duplicate message; wait a moment before sending again.')
           setText(toSend)
           setReplyTo(savedReply)
           return
@@ -750,7 +778,20 @@ export default function Chat({
           <button type="button" className="btn ghost small" onClick={() => setThreadRootId(null)}>
             ← Back to channel
           </button>
-          <span className="thread-banner-label">Thread</span>
+          <span className="thread-banner-label">
+            Thread
+            {(() => {
+              const root = messages.find((m) => Number(m.id) === Number(threadRootId))
+              const n = Number(root?.thread_reply_count)
+              if (!n || n < 1) return null
+              return (
+                <span className="thread-banner-count">
+                  {' '}
+                  · {n} {n === 1 ? 'respuesta' : 'respuestas'}
+                </span>
+              )
+            })()}
+          </span>
         </div>
       )}
 
@@ -1030,12 +1071,21 @@ export default function Chat({
                 {!m._optimistic && !threadRootId && channelType === 'text' && (
                   <button
                     type="button"
-                    className="message-action-icon"
-                    title="Open thread"
-                    aria-label="Open thread"
+                    className="message-action-icon message-thread-btn"
+                    title={
+                      Number(m.thread_reply_count) > 0
+                        ? `Abrir hilo (${m.thread_reply_count} respuestas)`
+                        : 'Abrir hilo'
+                    }
+                    aria-label="Abrir hilo"
                     onClick={() => setThreadRootId(Number(m.id))}
                   >
-                    #
+                    <span className="message-thread-btn-inner" aria-hidden>
+                      #
+                      {Number(m.thread_reply_count) > 0 ? (
+                        <span className="thread-reply-count-pill">{m.thread_reply_count}</span>
+                      ) : null}
+                    </span>
                   </button>
                 )}
                 {!m._optimistic && (

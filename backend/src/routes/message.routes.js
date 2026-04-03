@@ -22,7 +22,8 @@ router.use(auth);
 const MESSAGE_LIST_SELECT = `
   SELECT m.*, u.username, u.avatar_url,
     rp.content AS reply_preview_content,
-    ru.username AS reply_preview_username
+    ru.username AS reply_preview_username,
+    (SELECT COUNT(*)::int FROM messages trc WHERE trc.thread_root_message_id = m.id) AS thread_reply_count
   FROM messages m
   JOIN users u ON u.id = m.user_id
   LEFT JOIN messages rp ON rp.id = m.reply_to_id
@@ -72,6 +73,7 @@ const GLOBAL_MESSAGE_SELECT = `
   SELECT m.*, u.username, u.avatar_url,
     rp.content AS reply_preview_content,
     ru.username AS reply_preview_username,
+    (SELECT COUNT(*)::int FROM messages trc WHERE trc.thread_root_message_id = m.id) AS thread_reply_count,
     c.name AS channel_name,
     s.id AS server_id,
     s.name AS server_name

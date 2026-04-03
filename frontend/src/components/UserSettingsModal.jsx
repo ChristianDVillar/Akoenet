@@ -32,7 +32,7 @@ function getVoiceStorageKey(userId) {
 }
 
 export default function UserSettingsModal({ open, onClose, initialSection = 'profile' }) {
-  const { user, refreshUser, logout } = useAuth()
+  const { user, refreshUser, logout, logoutAllDevices } = useAuth()
   const [activeSection, setActiveSection] = useState('profile')
   const [username, setUsername] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
@@ -52,6 +52,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [eraseConfirm, setEraseConfirm] = useState('')
   const [exportBusy, setExportBusy] = useState(false)
   const [eraseBusy, setEraseBusy] = useState(false)
+  const [logoutAllBusy, setLogoutAllBusy] = useState(false)
   const [totpSetupSecret, setTotpSetupSecret] = useState('')
   const [totpEnableCode, setTotpEnableCode] = useState('')
   const [disable2faPassword, setDisable2faPassword] = useState('')
@@ -530,6 +531,32 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                   <label>New password<input id="settings-new-password" name="new_password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
                   <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save account settings'}</button>
                 </form>
+                <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>Sessions</h4>
+                  <p className="muted small" style={{ margin: '0 0 0.5rem' }}>
+                    Sign out everywhere. Other devices lose refresh access; this browser session ends now.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    disabled={logoutAllBusy}
+                    onClick={async () => {
+                      setError('')
+                      setInfo('')
+                      setLogoutAllBusy(true)
+                      try {
+                        await logoutAllDevices()
+                        onClose()
+                      } catch {
+                        setError('Could not sign out all devices.')
+                      } finally {
+                        setLogoutAllBusy(false)
+                      }
+                    }}
+                  >
+                    {logoutAllBusy ? 'Signing out…' : 'Sign out all devices'}
+                  </button>
+                </div>
                 <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                   <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>Two-factor authentication</h4>
                   {user?.totp_enabled ? (
