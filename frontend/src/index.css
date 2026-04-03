@@ -5574,6 +5574,127 @@ input.theme-color-hex:disabled {
   }
 }
 
+/* Landing: install PWA / device-specific copy */
+.landing-app {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.55), transparent);
+}
+
+.landing-app-inner {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.landing-app-lead {
+  margin: 0 0 1.35rem;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  color: var(--nexora-muted);
+  max-width: 52rem;
+}
+
+.landing-app-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.landing-app-card {
+  padding: 1.1rem 1.15rem;
+  border-radius: 12px;
+  border: 1px solid var(--nexora-border);
+  background: var(--nexora-glass-65);
+}
+
+.landing-app-card--muted {
+  background: rgba(15, 23, 42, 0.45);
+  border-style: dashed;
+}
+
+/* Escritorio nativo: bloque más discreto que la PWA (no compite en “versión”). */
+.landing-app-card--desktop-native {
+  padding: 0.85rem 1rem;
+}
+
+.landing-app-card--desktop-native .landing-app-card-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--nexora-muted);
+}
+
+.landing-app-card--desktop-native .landing-app-card-body {
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.landing-app-native-download {
+  margin-top: 0.75rem;
+  display: inline-block;
+  text-align: center;
+}
+
+.landing-app-native-docs {
+  display: inline-block;
+  margin-top: 0.65rem;
+  font-size: 0.82rem;
+  color: #7dd3fc;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.landing-app-card--desktop-native .landing-app-native-download + .landing-app-native-docs {
+  margin-top: 0.5rem;
+}
+
+.landing-app-native-docs:hover {
+  color: #bae6fd;
+}
+
+.landing-app-card-title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.landing-app-card-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--nexora-muted);
+}
+
+.landing-app-install-btn {
+  margin-top: 0.85rem;
+}
+
+.landing-app-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--nexora-muted);
+}
+
+.landing-app-toast {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+}
+
+.landing-app-toast.ok {
+  color: #86efac;
+}
+
+.landing-app-toast.muted {
+  color: var(--nexora-muted);
+}
+
+.landing-app-standalone {
+  margin: 0;
+  text-align: center;
+  font-size: 0.95rem;
+  color: #a7f3d0;
+}
+
 .card-join-server .join-lead {
   margin: 0 0 0.65rem;
   line-height: 1.45;

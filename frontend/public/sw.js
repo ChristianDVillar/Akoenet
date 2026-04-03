@@ -1,29 +1,8 @@
-/* AkoeNet Web Push — minimal handler */
-self.addEventListener('push', (event) => {
-  let payload = { title: 'AkoeNet', body: '', url: '/' }
-  try {
-    if (event.data) payload = { ...payload, ...JSON.parse(event.data.text()) }
-  } catch {
-    /* ignore */
-  }
-  event.waitUntil(
-    self.registration.showNotification(payload.title || 'AkoeNet', {
-      body: payload.body || '',
-      data: { url: payload.url || '/' },
-    })
-  )
+/* Minimal service worker so Chrome/Edge can offer PWA install (manifest + SW + HTTPS). */
+self.addEventListener('install', (event) => {
+  self.skipWaiting()
 })
 
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
-  const url = event.notification.data?.url || '/'
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window' }).then((clientList) => {
-      for (const c of clientList) {
-        if (c.url && 'focus' in c) return c.focus()
-      }
-      if (self.clients.openWindow) return self.clients.openWindow(url)
-      return undefined
-    })
-  )
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim())
 })

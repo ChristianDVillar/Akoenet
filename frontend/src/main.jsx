@@ -47,6 +47,15 @@ function bootstrapThemeEarly() {
 }
 bootstrapThemeEarly()
 
+/** PWA: manifest + minimal SW so Chrome/Edge can offer install (HTTPS or localhost). */
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const base = import.meta.env.BASE_URL || '/'
+    const swPath = `${base.replace(/\/?$/, '/') }sw.js`.replace(/([^:]\/)\/+/g, '$1')
+    navigator.serviceWorker.register(swPath).catch(() => {})
+  })
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <AppRouter>
