@@ -466,6 +466,23 @@ function initSocket(io) {
           }
         }
 
+        const dupWindowSec = Math.min(300, Math.max(10, parseInt(process.env.CHAT_DUPLICATE_WINDOW_SEC || "60", 10)));
+        if (userText) {
+          const dup = await pool.query(
+            `SELECT id FROM messages
+             WHERE channel_id = $1 AND user_id = $2 AND content = $3
+               AND created_at > NOW() - ($4::int * INTERVAL '1 second')
+             LIMIT 1`,
+            [channelId, socket.userId, userText, dupWindowSec]
+          );
+          if (dup.rows.length) {
+            if (typeof ack === "function") {
+              ack({ error: "duplicate_message", message: "Duplicate content; wait before sending again." });
+            }
+            return;
+          }
+        }
+
         const result = await pool.query(
           `INSERT INTO messages (channel_id, user_id, content, image_url, reply_to_id, thread_root_message_id)
            VALUES ($1, $2, $3, $4, $5, $6)

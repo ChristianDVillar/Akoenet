@@ -119,7 +119,8 @@ function twitchOAuthErrorUrl(code) {
 /** Base URL shown in /auth/twitch/status (OAuth returns ?twitch_token= or ?twitch_error= on /). */
 const frontendOAuthRedirect = new URL("/", frontendBase).href;
 
-const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "7d";
+/** Short-lived access JWT + refresh in DB (rotation on /auth/refresh). Override with JWT_EXPIRES_IN. */
+const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "30m";
 
 function signAppToken(user) {
   return jwt.sign(
@@ -541,6 +542,20 @@ router.post("/logout", authRateLimiter, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     logger.error({ err: e }, "Logout failed");
+    res.status(500).json({ error: "Logout failed" });
+  }
+});
+
+/** Revoke all refresh tokens for the current user (logout every device). Access JWT still valid until it expires. */
+router.post("/logout-all", auth, userDataRateLimiter, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+      [req.user.id]
+    );
+    res.json({ ok: true, revoked_sessions: r.rowCount ?? 0 });
+  } catch (e) {
+    logger.error({ err: e }, "Logout all failed");
     res.status(500).json({ error: "Logout failed" });
   }
 });

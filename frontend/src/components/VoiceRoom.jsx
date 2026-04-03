@@ -40,8 +40,51 @@ function isScreenVideoTrack(track) {
   return false
 }
 
+function splitScreenCameraStreams(stream) {
+  if (!stream) return { screen: null, camera: null }
+  const tracks = stream.getVideoTracks().filter((t) => t.readyState === 'live')
+  const screenT = tracks.find((t) => isScreenVideoTrack(t))
+  const cameraT = tracks.find((t) => t !== screenT) || (!screenT && tracks[0] ? tracks[0] : null)
+  return {
+    screen: screenT ? new MediaStream([screenT]) : null,
+    camera: cameraT ? new MediaStream([cameraT]) : null,
+  }
+}
+
+function streamHasScreenShare(stream) {
+  if (!stream) return false
+  return stream
+    .getVideoTracks()
+    .some((t) => t.readyState === 'live' && t.enabled && isScreenVideoTrack(t))
+}
+
+function streamHasCameraPip(stream) {
+  const { camera } = splitScreenCameraStreams(stream)
+  if (!camera) return false
+  return camera.getVideoTracks().some((t) => t.readyState === 'live' && t.enabled)
+}
+
+/** True if WebRTC stream is sending a visible video track (not audio-only / black). */
+function streamHasLiveVideo(stream) {
+  if (!stream) return false
+  return stream.getVideoTracks().some((t) => t.readyState === 'live' && t.enabled)
+}
+
+/** True if the tile should show a video element (respects omitScreen for focus layout). */
+function streamShowsVideoInTile(stream, omitScreen) {
+  if (!stream) return false
+  const { screen, camera } = splitScreenCameraStreams(stream)
+  if (omitScreen) {
+    return (
+      camera &&
+      camera.getVideoTracks().some((t) => t.readyState === 'live' && t.enabled)
+    )
+  }
+  return streamHasLiveVideo(stream)
+}
+
 /** Remote voice: play audio from full stream; split video into screen (large) + camera (pip). */
-function RemoteParticipantMedia({ stream, volume, mutedByDeafen, onAudioRef }) {
+function RemoteParticipantMedia({ stream, volume, mutedByDeafen, onAudioRef, omitScreen }) {
   const audioRef = useRef(null)
   const screenVideoRef = useRef(null)
   const cameraVideoRef = useRef(null)
@@ -61,12 +104,10 @@ function RemoteParticipantMedia({ stream, volume, mutedByDeafen, onAudioRef }) {
       return undefined
     }
     const sync = () => {
-      const tracks = stream.getVideoTracks().filter((t) => t.readyState === 'live')
-      const screenT = tracks.find((t) => isScreenVideoTrack(t))
-      const cameraT = tracks.find((t) => t !== screenT) || (!screenT && tracks[0] ? tracks[0] : null)
+      const { screen, camera } = splitScreenCameraStreams(stream)
       setVideoLayout({
-        screen: screenT ? new MediaStream([screenT]) : null,
-        camera: cameraT ? new MediaStream([cameraT]) : null,
+        screen: omitScreen ? null : screen,
+        camera,
       })
     }
     sync()
@@ -76,7 +117,7 @@ function RemoteParticipantMedia({ stream, volume, mutedByDeafen, onAudioRef }) {
       stream.removeEventListener('addtrack', sync)
       stream.removeEventListener('removetrack', sync)
     }
-  }, [stream])
+  }, [stream, omitScreen])
 
   useEffect(() => {
     if (screenVideoRef.current) screenVideoRef.current.srcObject = videoLayout.screen
@@ -126,12 +167,6 @@ function voiceCapNumber(raw) {
   const n = Number(raw)
   if (!Number.isFinite(n) || n < 1) return null
   return Math.min(99, Math.floor(n))
-}
-
-/** True if WebRTC stream is sending a visible video track (not audio-only / black). */
-function streamHasLiveVideo(stream) {
-  if (!stream) return false
-  return stream.getVideoTracks().some((t) => t.readyState === 'live' && t.enabled)
 }
 
 function PhoneHangupIcon() {
@@ -335,10 +370,15 @@ export default function VoiceRoom({
   const [cameraOn, setCameraOn] = useState(false)
   const [screenSharing, setScreenSharing] = useState(false)
   const [localScreenStream, setLocalScreenStream] = useState(null)
+  /** Which shared screen is shown large: 'local' or a remote socketId; null when none sharing. */
+  const [screenFocusId, setScreenFocusId] = useState(null)
   const localStreamRef = useRef(null)
   const localVideoRef = useRef(null)
   const localScreenVideoRef = useRef(null)
   const localPipVideoRef = useRef(null)
+  const screenFocusVideoRef = useRef(null)
+  const screenFocusShellRef = useRef(null)
+  const screenFocusPipVideoRef = useRef(null)
   const screenShareStreamRef = useRef(null)
   const screenTrackRef = useRef(null)
   const micTestStreamRef = useRef(null)
@@ -361,6 +401,147 @@ export default function VoiceRoom({
     ],
     [user?.id, channelId]
   )
+
+  const screenShareOptions = useMemo(() => {
+    const opts = []
+    if (joined && screenSharing && localScreenStream && streamHasScreenShare(localScreenStream)) {
+      opts.push({ key: 'local', label: 'Tu pantalla' })
+    }
+    const socket = getSocket()
+    const selfSid = socket?.id
+    for (const p of participants) {
+      if (p.socketId === selfSid) continue
+      const rs = remoteStreams[p.socketId]
+      if (streamHasScreenShare(rs)) {
+        opts.push({ key: p.socketId, label: p.username })
+      }
+    }
+    return opts
+  }, [joined, screenSharing, localScreenStream, participants, remoteStreams])
+
+  useEffect(() => {
+    if (screenShareOptions.length === 0) {
+      setScreenFocusId(null)
+      return
+    }
+    setScreenFocusId((prev) => {
+      if (prev && screenShareOptions.some((o) => o.key === prev)) return prev
+      return screenShareOptions[0].key
+    })
+  }, [screenShareOptions])
+
+  useEffect(() => {
+    const el = screenFocusVideoRef.current
+    if (!el) return
+    if (!screenFocusId || screenShareOptions.length === 0) {
+      el.srcObject = null
+      return
+    }
+    const screenStream =
+      screenFocusId === 'local'
+        ? splitScreenCameraStreams(localScreenStream).screen
+        : splitScreenCameraStreams(remoteStreams[screenFocusId]).screen
+    el.srcObject = screenStream
+  }, [screenFocusId, screenShareOptions, localScreenStream, remoteStreams])
+
+  /** Miniatura cámara encima de la pantalla destacada (tú o remoto con cam + pantalla). */
+  useEffect(() => {
+    const el = screenFocusPipVideoRef.current
+    if (!el) return
+    if (!screenFocusId || screenShareOptions.length === 0) {
+      el.srcObject = null
+      return
+    }
+    if (screenFocusId === 'local') {
+      if (cameraOn && localStreamRef.current) {
+        const vts = localStreamRef.current.getVideoTracks().filter((t) => t.readyState === 'live')
+        el.srcObject = vts.length ? new MediaStream(vts) : null
+      } else {
+        el.srcObject = null
+      }
+      return
+    }
+    const { camera } = splitScreenCameraStreams(remoteStreams[screenFocusId])
+    el.srcObject = camera
+  }, [
+    screenFocusId,
+    screenShareOptions.length,
+    cameraOn,
+    joined,
+    localScreenStream,
+    remoteStreams,
+  ])
+
+  /**
+   * Chrome suele recortar mal getDisplayMedia si solo usamos CSS (object-fit + %).
+   * Dimensionamos el <video> en px con el aspecto real (videoWidth/videoHeight) para que quepa en el shell.
+   */
+  useEffect(() => {
+    const video = screenFocusVideoRef.current
+    const shell = screenFocusShellRef.current
+    if (!video || !shell || !screenFocusId || screenShareOptions.length === 0) return undefined
+
+    function fit() {
+      const v = screenFocusVideoRef.current
+      const s = screenFocusShellRef.current
+      if (!v || !s) return
+      const vw = v.videoWidth
+      const vh = v.videoHeight
+      if (!vw || !vh) {
+        v.style.removeProperty('width')
+        v.style.removeProperty('height')
+        v.style.removeProperty('object-fit')
+        return
+      }
+      const cr = s.getBoundingClientRect()
+      const cw = cr.width
+      const ch = cr.height
+      if (cw < 2 || ch < 2) return
+      const scale = Math.min(cw / vw, ch / vh)
+      const w = Math.max(1, Math.round(vw * scale * 1000) / 1000)
+      const h = Math.max(1, Math.round(vh * scale * 1000) / 1000)
+      v.style.width = `${w}px`
+      v.style.height = `${h}px`
+      v.style.objectFit = 'fill'
+    }
+
+    const scheduleFit = () => {
+      requestAnimationFrame(fit)
+    }
+
+    video.addEventListener('loadedmetadata', scheduleFit)
+    video.addEventListener('loadeddata', scheduleFit)
+    video.addEventListener('canplay', scheduleFit)
+    window.addEventListener('resize', scheduleFit)
+
+    const ro = new ResizeObserver(scheduleFit)
+    ro.observe(shell)
+
+    let track
+    const { srcObject } = video
+    if (srcObject && typeof MediaStream !== 'undefined' && srcObject instanceof MediaStream) {
+      track = srcObject.getVideoTracks()[0]
+      if (track) track.addEventListener('resize', scheduleFit)
+    }
+
+    scheduleFit()
+    const t1 = setTimeout(scheduleFit, 80)
+    const t2 = setTimeout(scheduleFit, 350)
+
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      video.removeEventListener('loadedmetadata', scheduleFit)
+      video.removeEventListener('loadeddata', scheduleFit)
+      video.removeEventListener('canplay', scheduleFit)
+      window.removeEventListener('resize', scheduleFit)
+      ro.disconnect()
+      if (track) track.removeEventListener('resize', scheduleFit)
+      video.style.removeProperty('width')
+      video.style.removeProperty('height')
+      video.style.removeProperty('object-fit')
+    }
+  }, [screenFocusId, screenShareOptions.length, localScreenStream, remoteStreams])
 
   useEffect(() => {
     const s = getSavedVoiceSettings(user?.id)
@@ -397,6 +578,7 @@ export default function VoiceRoom({
       delete next[socketId]
       return next
     })
+    setScreenFocusId((prev) => (prev === socketId ? null : prev))
   }
 
   function attachRemoteStream(socketId, stream) {
@@ -920,28 +1102,37 @@ export default function VoiceRoom({
     const s = localStreamRef.current
     if (!el || !s) return
     if (screenSharing && localScreenStream) {
+      if (screenFocusId === 'local' && cameraOn) {
+        const vts = s.getVideoTracks().filter((t) => t.readyState === 'live')
+        el.srcObject = vts.length ? new MediaStream(vts) : null
+        return
+      }
       el.srcObject = null
       return
     }
     el.srcObject = s
-  }, [joined, cameraOn, testingMic, screenSharing, localScreenStream])
+  }, [joined, cameraOn, testingMic, screenSharing, localScreenStream, screenFocusId])
 
   useEffect(() => {
-    if (localScreenVideoRef.current) {
-      localScreenVideoRef.current.srcObject = localScreenStream
+    const el = localScreenVideoRef.current
+    if (!el) return
+    if (screenSharing && localScreenStream && screenFocusId !== 'local') {
+      el.srcObject = localScreenStream
+    } else {
+      el.srcObject = null
     }
-  }, [localScreenStream])
+  }, [localScreenStream, screenSharing, screenFocusId])
 
   useEffect(() => {
     const pip = localPipVideoRef.current
     if (!pip || !localStreamRef.current) return
-    if (screenSharing && cameraOn) {
+    if (screenSharing && cameraOn && screenFocusId !== 'local') {
       const vts = localStreamRef.current.getVideoTracks().filter((t) => t.readyState === 'live')
       pip.srcObject = vts.length ? new MediaStream(vts) : null
     } else {
       pip.srcObject = null
     }
-  }, [screenSharing, cameraOn, joined])
+  }, [screenSharing, cameraOn, joined, screenFocusId])
 
   useEffect(() => {
     const socket = getSocket()
@@ -1026,6 +1217,12 @@ export default function VoiceRoom({
   const showVoiceCap = voiceCap != null && typeof voiceConnectedCount === 'number'
   const displayTitle = channelLabel || 'Voice Channel'
 
+  const showScreenFocusPip =
+    Boolean(screenFocusId) &&
+    (screenFocusId === 'local'
+      ? cameraOn && screenSharing
+      : streamHasCameraPip(remoteStreams[screenFocusId]))
+
   return (
     <section
       className={`channel-mode-box voice-room-discord${compact ? ' voice-room-compact' : ''}`}
@@ -1089,28 +1286,90 @@ export default function VoiceRoom({
         </div>
       </header>
 
-      <div className="voice-stage-grid">
+      {joined && screenShareOptions.length > 0 && (
+        <div className="voice-screen-focus-block">
+          <div className="voice-screen-focus-toolbar">
+            <label htmlFor="voice-screen-focus-select" className="voice-screen-focus-label">
+              Pantalla destacada
+            </label>
+            <select
+              id="voice-screen-focus-select"
+              className="voice-screen-focus-select"
+              value={screenFocusId ?? screenShareOptions[0]?.key ?? ''}
+              onChange={(e) => setScreenFocusId(e.target.value)}
+            >
+              {screenShareOptions.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="voice-screen-focus-canvas">
+            <div className="voice-screen-focus-video-shell" ref={screenFocusShellRef}>
+              <video
+                ref={screenFocusVideoRef}
+                className="voice-screen-focus-video"
+                autoPlay
+                playsInline
+                muted
+              />
+            </div>
+            {showScreenFocusPip ? (
+              <video
+                ref={screenFocusPipVideoRef}
+                className="voice-screen-focus-pip"
+                autoPlay
+                playsInline
+                muted
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      <div
+        className={`voice-stage-grid${joined && screenShareOptions.length > 0 ? ' voice-stage-grid--with-screen-focus' : ''}`}
+      >
         {joined && (
           <article className="voice-stage-tile self">
             {screenSharing && localScreenStream ? (
-              <div className="voice-local-video-stack">
-                <video
-                  ref={localScreenVideoRef}
-                  className="voice-stage-video voice-local-screen"
-                  muted
-                  playsInline
-                  autoPlay
-                />
-                {cameraOn ? (
+              screenFocusId === 'local' ? (
+                cameraOn ? (
+                  <video ref={localVideoRef} className="voice-stage-video" muted playsInline autoPlay />
+                ) : (
+                  <div className="voice-stage-fallback">
+                    {user?.avatar_url ? (
+                      <img
+                        className="voice-stage-avatar"
+                        src={resolveImageUrl(user.avatar_url)}
+                        alt={`${user?.username || 'You'} avatar`}
+                      />
+                    ) : (
+                      <span className="voice-stage-initial">{getInitial(user?.username || 'You')}</span>
+                    )}
+                  </div>
+                )
+              ) : (
+                <div className="voice-local-video-stack">
                   <video
-                    ref={localPipVideoRef}
-                    className="voice-stage-video voice-local-camera-pip"
+                    ref={localScreenVideoRef}
+                    className="voice-stage-video voice-local-screen"
                     muted
                     playsInline
                     autoPlay
                   />
-                ) : null}
-              </div>
+                  {cameraOn ? (
+                    <video
+                      ref={localPipVideoRef}
+                      className="voice-stage-video voice-local-camera-pip"
+                      muted
+                      playsInline
+                      autoPlay
+                    />
+                  ) : null}
+                </div>
+              )
             ) : cameraOn ? (
               <video ref={localVideoRef} className="voice-stage-video" muted playsInline autoPlay />
             ) : (
@@ -1150,12 +1409,13 @@ export default function VoiceRoom({
                 stream={remoteStreams[p.socketId]}
                 volume={deafened ? 0 : remoteVolumes[p.socketId] ?? 100}
                 mutedByDeafen={deafened}
+                omitScreen={screenFocusId === p.socketId}
                 onAudioRef={(el) => {
                   if (el) remoteMediaRef.current.set(p.socketId, el)
                   else remoteMediaRef.current.delete(p.socketId)
                 }}
               />
-              {!streamHasLiveVideo(remoteStreams[p.socketId]) && (
+              {!streamShowsVideoInTile(remoteStreams[p.socketId], screenFocusId === p.socketId) && (
                 <div className="voice-stage-fallback">
                   {p.avatar_url && !remoteAvatarFailed.has(String(p.userId)) ? (
                     <img
