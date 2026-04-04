@@ -6,6 +6,8 @@ const AppRouter = __SPA_HASH_ROUTER__ ? HashRouter : BrowserRouter
 import './i18n.js'
 import './index.css'
 import { applyTheme, loadTheme } from './lib/themePreferences.js'
+import { isTauri } from './lib/isTauri.js'
+import { runDesktopUpdateCheck } from './lib/desktopUpdates.js'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { LandingLocaleProvider } from './context/LandingLocaleProvider.jsx'
@@ -29,7 +31,7 @@ function consumeTwitchOAuthFromUrl() {
     const q = params.toString()
     const path = err ? '/login' : window.location.pathname || '/'
     window.history.replaceState({}, '', path + (q ? `?${q}` : '') + (window.location.hash || ''))
-  } catch (_) {
+  } catch {
     /* ignore */
   }
 }
@@ -46,6 +48,14 @@ function bootstrapThemeEarly() {
   }
 }
 bootstrapThemeEarly()
+
+if (isTauri() && import.meta.env.DEV) {
+  import('@tauri-apps/plugin-log')
+    .then(({ attachConsole }) => attachConsole())
+    .catch(() => {})
+}
+
+void runDesktopUpdateCheck()
 
 /** PWA: manifest + minimal SW so Chrome/Edge can offer install (HTTPS or localhost). */
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {

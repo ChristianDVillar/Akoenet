@@ -17,16 +17,27 @@
         "width": 1280,
         "height": 800,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost https: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* ws://127.0.0.1 ws://localhost https://id.twitch.tv https://api.twitch.tv",
+        "img-src": "'self' asset: http://asset.localhost blob: data: https:",
+        "media-src": "'self' blob: asset: http://asset.localhost",
+        "style-src": "'unsafe-inline' 'self'",
+        "font-src": "'self' data: https://fonts.gstatic.com",
+        "frame-src": "'self' https:",
+        "worker-src": "'self' blob:"
+      }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,5 +45,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU3NzA2M0U0NzU2RjZGQUEKUldTcWIyOTE1R053VjFXMUNyRWNSeEpKdXJ5QzRHS0w1SE1PdHVkQzk1SXNxRXNURFZ5dEszYlIK",
+      "endpoints": [
+        "https://github.com/ChristianDVillar/Akoenet/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
