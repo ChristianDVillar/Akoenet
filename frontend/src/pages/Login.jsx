@@ -35,6 +35,8 @@ export default function Login() {
   const [twoFactorToken, setTwoFactorToken] = useState(null)
   const [code2fa, setCode2fa] = useState('')
   const [twitchConfigured, setTwitchConfigured] = useState(null)
+  /** Exact OAuth redirect_uri the backend sends to Twitch (from /auth/twitch/status). */
+  const [twitchOAuthRedirectUri, setTwitchOAuthRedirectUri] = useState(null)
   const apiBase = getApiBaseUrl()
 
   useEffect(() => {
@@ -77,7 +79,10 @@ export default function Login() {
         return res.json()
       })
       .then((data) => {
-        if (!cancelled) setTwitchConfigured(Boolean(data?.configured))
+        if (cancelled) return
+        setTwitchConfigured(Boolean(data?.configured))
+        const ru = data?.redirectUri != null ? String(data.redirectUri).trim() : ''
+        if (ru) setTwitchOAuthRedirectUri(ru)
       })
       .catch(() => {
         clearTimeout(timer)
@@ -259,15 +264,23 @@ export default function Login() {
           </button>
           {twitchConfigured === false && (
             <p className="muted small" style={{ marginTop: '0.5rem' }}>
-              Server admin must set <code>TWITCH_CLIENT_ID</code> and <code>TWITCH_CLIENT_SECRET</code> and register
-              this exact redirect URL in the Twitch Developer Console:{' '}
-              <code>{apiBase}/auth/twitch/callback</code>.
+              Server admin must set <code>TWITCH_CLIENT_ID</code> and <code>TWITCH_CLIENT_SECRET</code>. In the Twitch
+              Developer Console, add <strong>exactly</strong> this redirect URL (must match{' '}
+              <code>TWITCH_REDIRECT_URI</code> / your API):{' '}
+              <code>{twitchOAuthRedirectUri || `${apiBase}/auth/twitch/callback`}</code>
+              {twitchOAuthRedirectUri?.includes('/api/user/') && (
+                <>
+                  {' '}
+                  (your API mounts the same routes under <code>/auth/…</code> and <code>/api/user/auth/…</code>; the
+                  server uses the URL above for OAuth.)
+                </>
+              )}
               {isTauri() && (
                 <>
                   {' '}
-                  In the desktop app this is still the backend URL shown above (from <code>VITE_API_URL</code> or the
-                  production default)—not <code>http://localhost:5173</code> and not a custom <code>tauri://</code>{' '}
-                  scheme. Twitch only accepts https <code>http://localhost</code> redirects toward your API.
+                  Desktop uses the same callback URL the API reports (from <code>VITE_API_URL</code> / production
+                  API)—not <code>http://localhost:5173</code> or <code>tauri://</code>. Twitch only allows{' '}
+                  <code>https://</code> or <code>http://localhost</code> callbacks to your backend.
                 </>
               )}
             </p>
