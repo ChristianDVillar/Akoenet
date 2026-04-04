@@ -64,6 +64,10 @@ export const landingContent = {
         q: 'Where are the terms and privacy policy?',
         a: 'Use the footer links: Terms of Service, Privacy Policy, and Legal notice. Cookies and local storage are described in the Privacy Policy.',
       },
+      {
+        q: 'Why does Windows or Chrome warn that the desktop download is dangerous?',
+        a: 'The desktop .exe is not signed with a commercial code-signing certificate. Browsers and Windows SmartScreen commonly flag unknown publishers. If you trust this site, you can keep the file; on SmartScreen use “More info” → “Run anyway,” or use the web app / PWA instead. Signing the build with Authenticode (paid certificate) reduces those warnings.',
+      },
     ],
     apiOfflineBanner: {
       message:
@@ -179,6 +183,10 @@ export const landingContent = {
       {
         q: '¿Dónde leo términos y privacidad?',
         a: 'En el pie de página: Términos del servicio, Política de privacidad y aviso legal. Las cookies y el almacenamiento local se describen en la política de privacidad.',
+      },
+      {
+        q: '¿Por qué Windows o Chrome dicen que la descarga de escritorio es peligrosa?',
+        a: 'El .exe no está firmado con un certificado de firma de código de un editor comercial. Es normal que el navegador y Windows SmartScreen adviertan por “editor desconocido”. Si confías en este sitio, puedes conservar el archivo; en SmartScreen: “Más información” → “Ejecutar de todas formas”, o usa la web/PWA. Para repartir la app con menos avisos hay que firmar el ejecutable con Authenticode (certificado de pago).',
       },
     ],
     apiOfflineBanner: {

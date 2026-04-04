@@ -6,6 +6,7 @@ import { getApiBaseUrl } from '../lib/apiBase'
 import api from '../services/api'
 import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
 import { postAuthDestination } from '../lib/postAuthDestination'
+import { isTauri } from '../lib/isTauri'
 import AuthLegalStrip from '../components/AuthLegalStrip'
 
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
@@ -258,9 +259,17 @@ export default function Login() {
           </button>
           {twitchConfigured === false && (
             <p className="muted small" style={{ marginTop: '0.5rem' }}>
-              Server admin must set <code>TWITCH_CLIENT_ID</code> and <code>TWITCH_CLIENT_SECRET</code>{' '}
-              and add the callback URL in the Twitch Developer Console (
-              <code>{apiBase}/auth/twitch/callback</code>).
+              Server admin must set <code>TWITCH_CLIENT_ID</code> and <code>TWITCH_CLIENT_SECRET</code> and register
+              this exact redirect URL in the Twitch Developer Console:{' '}
+              <code>{apiBase}/auth/twitch/callback</code>.
+              {isTauri() && (
+                <>
+                  {' '}
+                  In the desktop app this is still the backend URL shown above (from <code>VITE_API_URL</code> or the
+                  production default)—not <code>http://localhost:5173</code> and not a custom <code>tauri://</code>{' '}
+                  scheme. Twitch only accepts https <code>http://localhost</code> redirects toward your API.
+                </>
+              )}
             </p>
           )}
             </>

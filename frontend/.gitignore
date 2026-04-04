@@ -30,3 +30,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claves Tauri si se generaron con ruta ~/.tauri bajo frontend (Windows no expande ~)
+~/.tauri/
