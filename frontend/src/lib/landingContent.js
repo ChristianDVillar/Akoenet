@@ -84,7 +84,7 @@ export const landingContent = {
     appSection: {
       title: 'Install the app',
       lead:
-        'The usual “install” is the PWA (left): same app in its own window. A separate native desktop build exists only if you compile it with Tauri (right). None of these is a browser extension.',
+        'The usual “install” is the PWA (left): same app in its own window. On the right you can download the Windows desktop installer (Tauri) when we host it, or build from source. None of these is a browser extension.',
       standaloneNote: "You're already using AkoeNet as an installed app.",
       desktop: {
         pwaTitle: 'From the browser (Chrome / Edge)',
@@ -98,7 +98,7 @@ export const landingContent = {
         standalonePwaTitle: 'Web app (already installed)',
         standalonePwaLead:
           'You opened AkoeNet from the installed shortcut or home screen. The browser install banner is hidden here by design.',
-        nativeTitle: 'Native desktop (Tauri — build yourself)',
+        nativeTitle: 'Native desktop (Windows, Tauri)',
         nativeBody:
           'There is no pre-built installer to download from this site. To produce a .exe / .app / installer, clone the repo, install Rust, configure frontend/.env, then run npm run tauri:build in frontend/. See frontend/README.md. Still not a browser extension.',
         nativeBodyHosted:
@@ -204,7 +204,7 @@ export const landingContent = {
     appSection: {
       title: 'Instalar la app',
       lead:
-        'La forma habitual de “instalar” es la PWA (columna izquierda): misma app en ventana propia. El ejecutable nativo solo existe si compilas el proyecto con Tauri (columna derecha). Ninguna opción es una extensión del navegador.',
+        'La forma habitual de “instalar” es la PWA (columna izquierda): misma app en ventana propia. A la derecha puedes descargar el instalador de escritorio para Windows (Tauri) cuando lo ofrecemos, o compilar desde el código. Ninguna opción es una extensión del navegador.',
       standaloneNote: 'Ya estás usando AkoeNet como app instalada.',
       desktop: {
         pwaTitle: 'Desde el navegador (Chrome / Edge)',
@@ -218,7 +218,7 @@ export const landingContent = {
         standalonePwaTitle: 'App web (ya instalada)',
         standalonePwaLead:
           'Abriste AkoeNet desde el acceso instalado o la pantalla de inicio. El aviso de instalación del navegador no aplica aquí.',
-        nativeTitle: 'Escritorio nativo (Tauri — hay que compilar)',
+        nativeTitle: 'Escritorio nativo (Windows, Tauri)',
         nativeBody:
           'Desde esta web no se ofrece un instalador listo para descargar. Para obtener .exe / .app / instalador, clona el repositorio, instala Rust, configura frontend/.env y ejecuta npm run tauri:build en frontend/. Detalle en frontend/README.md. Tampoco es una extensión del navegador.',
         nativeBodyHosted:
