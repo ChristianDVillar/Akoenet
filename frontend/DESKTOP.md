@@ -40,6 +40,17 @@ Registro en `src-tauri/src/lib.rs`. Permisos en `src-tauri/capabilities/desktop.
 
 ---
 
+## API en producción (Render) frente a local
+
+El instalable debe hablar con **`https://akoenet-backend.onrender.com`** (o el host que corresponda), no con `http://localhost:3000` del PC del usuario.
+
+- **`src/lib/apiBase.js`:** en builds de producción (`vite build` / `tauri:build`), si `VITE_API_URL` apunta a **localhost**, se **sustituye** por el host público por defecto, porque suele venir de un `frontend/.env` de desarrollo incrustado por error en el `.msi`. Para generar un instalador que siga usando Docker en tu máquina, usa `VITE_API_URL_STRICT=true` (caso raro).
+- **CORS en Render:** si `CORS_ORIGINS` es una lista cerrada, el backend admite también orígenes **`*.tauri.localhost`** (webview de Tauri) además de tu SPA en Render.
+
+Antes de cada **`npm run tauri:build`** que vaya a distribuirse: comenta o elimina `VITE_API_URL=http://localhost:3000` en `frontend/.env`, o fija explícitamente la URL del API en producción.
+
+---
+
 ## Pasos pendientes para cerrar el ciclo en producción
 
 Marca cada ítem cuando lo completes.

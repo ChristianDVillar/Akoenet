@@ -127,6 +127,17 @@ async function buildDepsReport(app) {
   return report;
 }
 
+/** Tauri desktop webview (fetch / CORS) — not the same origin as the public SPA. */
+function isTauriWebviewOrigin(origin) {
+  if (!origin || typeof origin !== "string") return false;
+  try {
+    const h = new URL(origin).hostname.toLowerCase();
+    return h === "tauri.localhost" || h.endsWith(".tauri.localhost");
+  } catch {
+    return false;
+  }
+}
+
 function normalizeCorsOrigins(origins) {
   if (process.env.NODE_ENV !== "production") return origins;
   return origins.map((o) => {
@@ -166,6 +177,7 @@ function createApp() {
       origin(origin, cb) {
         if (allowAllOrigins || !origin) return cb(null, true);
         if (corsOrigins.includes(origin)) return cb(null, true);
+        if (isTauriWebviewOrigin(origin)) return cb(null, true);
         return cb(null, false);
       },
       credentials: true,
