@@ -18,21 +18,44 @@ function isLocalhostApiUrl(urlStr) {
   }
 }
 
+function isTauriShell() {
+  return typeof globalThis !== 'undefined' && Object.prototype.hasOwnProperty.call(globalThis, '__TAURI_INTERNALS__')
+}
+
+function preferStrictLocalApi() {
+  return String(import.meta.env.VITE_API_URL_STRICT || '').trim() === 'true'
+}
+
 export function getApiBaseUrl() {
   const fromEnvRaw = import.meta.env.VITE_API_URL
   const fromEnv = fromEnvRaw != null ? stripTrailingSlash(fromEnvRaw) : ''
 
+  let url
   if (fromEnv) {
     if (
       import.meta.env.PROD &&
       isLocalhostApiUrl(fromEnv) &&
-      String(import.meta.env.VITE_API_URL_STRICT || '').trim() !== 'true'
+      !preferStrictLocalApi()
     ) {
-      return PRODUCTION_API_DEFAULT
+      url = PRODUCTION_API_DEFAULT
+    } else {
+      url = fromEnv
     }
-    return fromEnv
+  } else if (import.meta.env.PROD) {
+    url = PRODUCTION_API_DEFAULT
+  } else {
+    url = 'http://localhost:3000'
   }
 
-  if (import.meta.env.PROD) return PRODUCTION_API_DEFAULT
-  return 'http://localhost:3000'
+  // Instalable Tauri: nunca usar API en loopback salvo `tauri dev` o VITE_API_URL_STRICT (bundles mal generados).
+  if (
+    !import.meta.env.DEV &&
+    isTauriShell() &&
+    isLocalhostApiUrl(url) &&
+    !preferStrictLocalApi()
+  ) {
+    return PRODUCTION_API_DEFAULT
+  }
+
+  return url
 }

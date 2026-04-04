@@ -142,8 +142,18 @@ export default function Login() {
         }
       }
       navigate(postAuthDestination(loggedInUser))
-    } catch {
-      setError(twoFactorToken ? 'Invalid code' : 'Invalid credentials')
+    } catch (err) {
+      if (twoFactorToken) {
+        setError('Invalid code')
+      } else if (!err?.response) {
+        setError(
+          `Cannot reach the API at ${getApiBaseUrl()}. If you are using the desktop app, reinstall from a fresh build or ensure it was not built with a local-only API URL.`
+        )
+      } else if (err.response.status === 401) {
+        setError('Invalid credentials')
+      } else {
+        setError(String(err.response?.data?.error || err.response?.data?.message || 'Sign-in failed'))
+      }
     } finally {
       setBusy(false)
     }
