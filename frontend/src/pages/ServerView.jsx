@@ -20,6 +20,7 @@ import UserSettingsModal from '../components/UserSettingsModal'
 import ServerSettingsModal from '../components/ServerSettingsModal'
 import ChannelSettingsModal from '../components/ChannelSettingsModal'
 import AppChrome from '../components/AppChrome'
+import { useDesktopGameActivity } from '../hooks/useDesktopGameActivity'
 
 function normalizeVoicePresencePayload(presence) {
   if (!presence || typeof presence !== 'object') return {}
@@ -104,6 +105,21 @@ export default function ServerView() {
   const [emojis, setEmojis] = useState([])
   const [voicePresence, setVoicePresence] = useState({})
   const [connectedUserIds, setConnectedUserIds] = useState([])
+  const [activityRealtime, setActivityRealtime] = useState({})
+  const [gameRanking, setGameRanking] = useState([])
+
+  const activityFromMembers = useMemo(() => {
+    const o = {}
+    for (const m of members) {
+      o[m.id] = m.activity ?? null
+    }
+    return o
+  }, [members])
+
+  const activityByUserId = useMemo(
+    () => ({ ...activityFromMembers, ...activityRealtime }),
+    [activityFromMembers, activityRealtime]
+  )
   /** Voice channel id kept while user reads text channels (stay connected). Cleared on leave / server change. */
   const [voicePersistChannelId, setVoicePersistChannelId] = useState(null)
   /** Stops HTTP voice-presence polling after 404 (old API / wrong base URL) to avoid console spam */
@@ -121,6 +137,8 @@ export default function ServerView() {
     if (rtcVoiceChannelId == null) return null
     return channels.find((c) => c.id === rtcVoiceChannelId) || null
   }, [channels, rtcVoiceChannelId])
+
+  useDesktopGameActivity(user)
 
   const rtcVoiceConnectedCount = useMemo(() => {
     if (rtcVoiceChannelId == null) return undefined
@@ -227,11 +245,16 @@ export default function ServerView() {
     })()
   }, [id, navigate])
 
+  useEffect(() => {
+    setActivityRealtime({})
+  }, [id, members])
+
   useLayoutEffect(() => {
     const s = getSocket()
     if (!s || Number.isNaN(id)) return undefined
     setVoicePresence({})
     setConnectedUserIds([])
+    setGameRanking([])
 
     const onSnap = ({ serverId, presence }) => {
       if (serverId !== id) return
@@ -251,6 +274,24 @@ export default function ServerView() {
       setVoicePresence((prev) => ({ ...prev, [key]: participants || [] }))
     }
 
+    const onGameSnap = ({ serverId, entries, ranking }) => {
+      if (serverId !== id) return
+      const o = {}
+      for (const e of entries || []) {
+        o[e.userId] = e.activity ?? null
+      }
+      setActivityRealtime(o)
+      if (Array.isArray(ranking)) setGameRanking(ranking)
+    }
+    const onGame = ({ serverId, userId, activity }) => {
+      if (serverId !== id) return
+      setActivityRealtime((p) => ({ ...p, [userId]: activity ?? null }))
+    }
+    const onRanking = ({ serverId, top }) => {
+      if (serverId !== id) return
+      setGameRanking(Array.isArray(top) ? top : [])
+    }
+
     const joinSrv = () => {
       s.emit('join_server', id)
     }
@@ -259,6 +300,9 @@ export default function ServerView() {
     s.on('server:presence_snapshot', onServerPresenceSnapshot)
     s.on('server:presence_update', onServerPresenceUpdate)
     s.on('voice:presence', onPresence)
+    s.on('server:game_activity_snapshot', onGameSnap)
+    s.on('server:game_activity', onGame)
+    s.on('server:game_ranking', onRanking)
     s.on('connect', joinSrv)
     if (s.connected) joinSrv()
 
@@ -267,6 +311,9 @@ export default function ServerView() {
       s.off('server:presence_snapshot', onServerPresenceSnapshot)
       s.off('server:presence_update', onServerPresenceUpdate)
       s.off('voice:presence', onPresence)
+      s.off('server:game_activity_snapshot', onGameSnap)
+      s.off('server:game_activity', onGame)
+      s.off('server:game_ranking', onRanking)
       s.off('connect', joinSrv)
       s.emit('leave_server', id)
     }
@@ -638,7 +685,13 @@ export default function ServerView() {
           />
           {showInlineMembersPanel && (
             <div className="right-column">
-              <MembersPanel members={members} connectedUserIds={connectedUserIds} currentUser={user} />
+              <MembersPanel
+                members={members}
+                connectedUserIds={connectedUserIds}
+                currentUser={user}
+                activityByUserId={activityByUserId}
+                gameRanking={gameRanking}
+              />
             </div>
           )}
         </div>
@@ -665,6 +718,8 @@ export default function ServerView() {
                   members={members}
                   connectedUserIds={connectedUserIds}
                   currentUser={user}
+                  activityByUserId={activityByUserId}
+                  gameRanking={gameRanking}
                   onClose={closeMembersPanel}
                 />
               </div>

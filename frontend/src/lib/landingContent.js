@@ -19,6 +19,17 @@ export const landingContent = {
       ctaPrimary: 'Get started',
       ctaSecondary: 'I already have an account',
     },
+    presenceSection: {
+      eyebrow: 'Live game presence',
+      title: 'See what your server is playing — without juggling apps',
+      lead:
+        'AkoeNet shows who is in which game: connect Steam for automatic “now playing”, type a manual status for any store or console, or opt in to desktop detection in the Windows app. Sharing is off until you enable it; auto-detection stays off by default.',
+      bullets: [
+        'Per-server trending list (“who is playing what” right now)',
+        'Steam via official Web API when you link your account',
+        'Manual line for Epic, Riot, consoles, or games Steam does not surface',
+      ],
+    },
     featuresTitle: 'What you get',
     featureCards: [
       {
@@ -138,6 +149,17 @@ export const landingContent = {
         'Integración con Streamer Scheduler (`!schedule`, `!next`), servidores con texto y voz, DM, menciones y roles — una plataforma amplia, pensada para comunidades y streamers.',
       ctaPrimary: 'Empezar gratis',
       ctaSecondary: 'Ya tengo cuenta',
+    },
+    presenceSection: {
+      eyebrow: 'Presencia de juego en vivo',
+      title: 'Ve qué juega tu servidor sin abrir más apps',
+      lead:
+        'AkoeNet muestra quién está en qué juego: conecta Steam para el “jugando ahora”, escribe un estado manual para cualquier tienda o consola, o activa la detección en el escritorio (app Windows). Tú decides qué compartir; la detección automática va desactivada por defecto.',
+      bullets: [
+        'Tendencias por servidor (quién juega a qué en este momento)',
+        'Steam con la API oficial cuando enlazas la cuenta',
+        'Línea manual para Epic, Riot, consolas o juegos que Steam no publica',
+      ],
     },
     featuresTitle: 'Funciones principales',
     featureCards: [

@@ -68,7 +68,7 @@ configureRedisAdapterIfNeeded()
       process.exit(1);
     });
     server.listen(port, () => {
-      logger.info(`AkoeNet backend on port ${port} (AkoeNet socket ready, Twitch ready)`);
+      logger.info(`AkoeNet backend on port ${port} (socket ready; Twitch; Steam when STEAM_WEB_API_KEY is set)`);
     });
   })
   .catch((e) => {

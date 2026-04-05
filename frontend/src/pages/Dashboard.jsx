@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
@@ -15,8 +16,10 @@ import DashboardAdmin from './DashboardAdmin'
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
 export default function Dashboard() {
-  const { user, logout, loading: authLoading } = useAuth()
+  const { t } = useTranslation()
+  const { user, logout, loading: authLoading, refreshUser } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [servers, setServers] = useState([])
   const [newName, setNewName] = useState('')
   const [joinId, setJoinId] = useState('')
@@ -54,6 +57,20 @@ export default function Dashboard() {
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    const linked = searchParams.get('steam_linked')
+    const steamErr = searchParams.get('steam_error')
+    if (!linked && !steamErr) return
+    if (linked) {
+      setActionMessage(t('dashboard.steamLinked'))
+      refreshUser().catch(() => {})
+    }
+    if (steamErr) {
+      setActionMessage(t('dashboard.steamError', { code: steamErr }))
+    }
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams, refreshUser, t])
 
   useEffect(() => {
     if (!user || authLoading) return

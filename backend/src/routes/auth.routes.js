@@ -9,6 +9,8 @@ const validate = require("../middleware/validate");
 const { authRateLimiter, userDataRateLimiter } = require("../middleware/rate-limit");
 const logger = require("../lib/logger");
 const { sanitizeUserMediaFields } = require("../lib/sanitize-media-url");
+const { buildSteamLoginUrl, collectOpenIdParams, verifySteamOpenIdAssertion } = require("../lib/steam-openid");
+const { notifyGameActivityChange, clearSteamActivityForUser } = require("../lib/game-activity");
 const { getJwtSecret } = require("../lib/jwt-secret");
 const { assertContentAllowed, BLOCKED_MESSAGE } = require("../lib/blocked-content");
 const { sha256Hex, createStoredRefreshToken } = require("../lib/refresh-token");
@@ -21,6 +23,7 @@ const secret = getJwtSecret();
 const tokenVersion = parseInt(process.env.TOKEN_VERSION || "2", 10);
 const twitchClientId = process.env.TWITCH_CLIENT_ID || "";
 const twitchClientSecret = process.env.TWITCH_CLIENT_SECRET || "";
+const steamWebApiKey = String(process.env.STEAM_WEB_API_KEY || "").trim();
 
 function stripTrailingSlash(s) {
   return String(s || "").replace(/\/$/, "");
@@ -113,6 +116,18 @@ function twitchOAuthSuccessUrl(appToken, refreshToken) {
 function twitchOAuthErrorUrl(code) {
   const u = new URL("/", frontendBase);
   u.searchParams.set("twitch_error", code);
+  return u.toString();
+}
+
+function steamLinkSuccessUrl() {
+  const u = new URL("/", frontendBase);
+  u.searchParams.set("steam_linked", "1");
+  return u.toString();
+}
+
+function steamLinkErrorUrl(code) {
+  const u = new URL("/", frontendBase);
+  u.searchParams.set("steam_error", String(code));
   return u.toString();
 }
 
@@ -247,6 +262,18 @@ const updateSettingsSchema = z
       z.union([z.string().trim().min(1).max(80), z.null()]).optional()
     ),
     push_notifications_enabled: z.boolean().optional(),
+    /** When true, clears linked Steam ID on save. */
+    steam_unlink: z.boolean().optional(),
+    share_game_activity: z.boolean().optional(),
+    desktop_game_detect_opt_in: z.boolean().optional(),
+    manual_activity_game: z.preprocess(
+      emptyToNull,
+      z.string().trim().max(120).nullable().optional()
+    ),
+    manual_activity_platform: z.preprocess(
+      emptyToNull,
+      z.string().trim().max(40).nullable().optional()
+    ),
     current_password: z.string().min(1).max(200).optional(),
     new_password: z.string().min(6).max(200).optional(),
   })
@@ -421,6 +448,11 @@ router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (r
         twitch_username: user.twitch_username ?? null,
         totp_enabled: Boolean(user.totp_enabled),
         push_notifications_enabled: user.push_notifications_enabled !== false,
+        steam_linked: Boolean(user.steam_id),
+        share_game_activity: user.share_game_activity !== false,
+        desktop_game_detect_opt_in: Boolean(user.desktop_game_detect_opt_in),
+        manual_activity_game: user.manual_activity_game ?? null,
+        manual_activity_platform: user.manual_activity_platform ?? null,
       }),
     });
   } catch (e) {
@@ -470,6 +502,11 @@ router.post("/login/2fa", authRateLimiter, validate({ body: login2faSchema }), a
         twitch_username: user.twitch_username ?? null,
         totp_enabled: true,
         push_notifications_enabled: user.push_notifications_enabled !== false,
+        steam_linked: Boolean(user.steam_id),
+        share_game_activity: user.share_game_activity !== false,
+        desktop_game_detect_opt_in: Boolean(user.desktop_game_detect_opt_in),
+        manual_activity_game: user.manual_activity_game ?? null,
+        manual_activity_platform: user.manual_activity_platform ?? null,
       }),
     });
   } catch (e) {
@@ -522,6 +559,11 @@ router.post("/refresh", authRateLimiter, validate({ body: refreshTokenSchema }),
         twitch_username: user.twitch_username ?? null,
         totp_enabled: Boolean(user.totp_enabled),
         push_notifications_enabled: user.push_notifications_enabled !== false,
+        steam_linked: Boolean(user.steam_id),
+        share_game_activity: user.share_game_activity !== false,
+        desktop_game_detect_opt_in: Boolean(user.desktop_game_detect_opt_in),
+        manual_activity_game: user.manual_activity_game ?? null,
+        manual_activity_platform: user.manual_activity_platform ?? null,
       }),
     });
   } catch (e) {
@@ -698,6 +740,72 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
   }
 });
 
+/** Returns a Steam OpenID URL; client opens it in the same window. Requires STEAM_WEB_API_KEY for linking. */
+router.post("/steam/link/begin", auth, userDataRateLimiter, (req, res) => {
+  if (!steamWebApiKey) {
+    return res.status(503).json({
+      error: "steam_not_configured",
+      message: "Set STEAM_WEB_API_KEY in the backend environment.",
+    });
+  }
+  const state = jwt.sign({ purpose: "steam_link", uid: req.user.id }, secret, { expiresIn: "10m" });
+  const returnTo = `${publicApiBase}/auth/steam/callback?state=${encodeURIComponent(state)}`;
+  const url = buildSteamLoginUrl(returnTo, publicApiBase);
+  res.json({ url });
+});
+
+router.get("/steam/status", (_req, res) => {
+  res.json({
+    webApiConfigured: Boolean(steamWebApiKey),
+    callbackUrl: `${publicApiBase}/auth/steam/callback`,
+  });
+});
+
+router.get("/steam/callback", authRateLimiter, async (req, res) => {
+  const stateRaw = req.query.state;
+  const stateStr = typeof stateRaw === "string" ? stateRaw : Array.isArray(stateRaw) ? stateRaw[0] : "";
+  let decoded;
+  try {
+    decoded = jwt.verify(String(stateStr), secret);
+  } catch {
+    return res.redirect(steamLinkErrorUrl("invalid_state"));
+  }
+  if (decoded.purpose !== "steam_link" || decoded.uid == null) {
+    return res.redirect(steamLinkErrorUrl("invalid_state"));
+  }
+  const uid = Number(decoded.uid);
+  if (!Number.isInteger(uid) || uid <= 0) {
+    return res.redirect(steamLinkErrorUrl("invalid_state"));
+  }
+
+  const openid = collectOpenIdParams(req.query);
+  let steamId;
+  try {
+    steamId = await verifySteamOpenIdAssertion(openid);
+  } catch (e) {
+    logger.error({ err: e }, "Steam OpenID verify failed");
+    return res.redirect(steamLinkErrorUrl("verify_failed"));
+  }
+  if (!steamId) return res.redirect(steamLinkErrorUrl("not_verified"));
+
+  try {
+    const taken = await pool.query(
+      `SELECT id FROM users WHERE steam_id = $1 AND id <> $2 AND deleted_at IS NULL LIMIT 1`,
+      [steamId, uid]
+    );
+    if (taken.rows.length) {
+      return res.redirect(steamLinkErrorUrl("steam_id_taken"));
+    }
+    await pool.query(`UPDATE users SET steam_id = $1 WHERE id = $2 AND deleted_at IS NULL`, [steamId, uid]);
+    const io = req.app?.locals?.io;
+    if (io) notifyGameActivityChange(io, uid).catch(() => {});
+    return res.redirect(steamLinkSuccessUrl());
+  } catch (e) {
+    logger.error({ err: e }, "Steam link save failed");
+    return res.redirect(steamLinkErrorUrl("save_failed"));
+  }
+});
+
 router.get("/push/vapid-public-key", (_req, res) => {
   const k = String(process.env.VAPID_PUBLIC_KEY || "").trim();
   if (!k) return res.status(503).json({ error: "push_not_configured" });
@@ -778,7 +886,11 @@ router.post("/2fa/disable", auth, userDataRateLimiter, validate({ body: totpDisa
 
 router.get("/me", auth, async (req, res) => {
   const result = await pool.query(
-    `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
+   `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
+            steam_id,
+            COALESCE(share_game_activity, true) AS share_game_activity,
+            COALESCE(desktop_game_detect_opt_in, false) AS desktop_game_detect_opt_in,
+            manual_activity_game, manual_activity_platform,
             COALESCE(totp_enabled, false) AS totp_enabled,
             COALESCE(push_notifications_enabled, true) AS push_notifications_enabled
      FROM users WHERE id = $1`,
@@ -787,7 +899,15 @@ router.get("/me", auth, async (req, res) => {
   if (result.rows.length === 0) {
     return res.status(404).json({ error: "User not found" });
   }
-  res.json(sanitizeUserMediaFields(result.rows[0]));
+  const row = result.rows[0];
+  const { steam_id: steamId, ...rest } = row;
+  res.json(
+    sanitizeUserMediaFields({
+      ...rest,
+      steam_linked: Boolean(steamId),
+      steam_status: { web_api_configured: Boolean(steamWebApiKey) },
+    })
+  );
 });
 
 router.get("/me/export", auth, async (req, res) => {
@@ -795,7 +915,9 @@ router.get("/me/export", auth, async (req, res) => {
   const [profileRes, serverRes, channelMessageRes, dmMessageRes] = await Promise.all([
     pool.query(
       `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status,
-              twitch_username, scheduler_streamer_username, birth_date, created_at
+              twitch_username, scheduler_streamer_username, birth_date, created_at,
+              steam_id, share_game_activity, desktop_game_detect_opt_in,
+              manual_activity_game, manual_activity_platform
        FROM users
        WHERE id = $1`,
       [userId]
@@ -872,6 +994,11 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
     custom_status: customStatus,
     scheduler_streamer_username: schedulerStreamerUsername,
     push_notifications_enabled: pushNotificationsEnabled,
+    steam_unlink: steamUnlink,
+    share_game_activity: shareGameActivity,
+    desktop_game_detect_opt_in: desktopGameDetectOptIn,
+    manual_activity_game: manualActivityGame,
+    manual_activity_platform: manualActivityPlatform,
     current_password: currentPassword,
     new_password: newPassword,
   } = req.body;
@@ -880,6 +1007,10 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
     await client.query("BEGIN");
     const current = await client.query(
       `SELECT id, username, email, password, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
+              steam_id,
+              COALESCE(share_game_activity, true) AS share_game_activity,
+              COALESCE(desktop_game_detect_opt_in, false) AS desktop_game_detect_opt_in,
+              manual_activity_game, manual_activity_platform,
               COALESCE(push_notifications_enabled, true) AS push_notifications_enabled
        FROM users WHERE id = $1 FOR UPDATE`,
       [req.user.id]
@@ -910,10 +1041,24 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
     const nextPush =
       pushNotificationsEnabled !== undefined ? Boolean(pushNotificationsEnabled) : user.push_notifications_enabled;
     const nextPasswordHash = newPassword ? await bcrypt.hash(newPassword, 10) : user.password;
+    const nextSteamId = steamUnlink === true ? null : user.steam_id;
+    const nextShare =
+      shareGameActivity !== undefined ? Boolean(shareGameActivity) : user.share_game_activity;
+    const nextDesktop =
+      desktopGameDetectOptIn !== undefined ? Boolean(desktopGameDetectOptIn) : user.desktop_game_detect_opt_in;
+    const nextManualGame =
+      manualActivityGame !== undefined ? manualActivityGame : user.manual_activity_game;
+    const nextManualPlatform =
+      manualActivityPlatform !== undefined ? manualActivityPlatform : user.manual_activity_platform;
 
-    const profileStrings = [nextUsername, nextBio, nextCustomStatus, nextSchedulerSlug].filter(
-      (v) => v != null && String(v).trim() !== ""
-    );
+    const profileStrings = [
+      nextUsername,
+      nextBio,
+      nextCustomStatus,
+      nextSchedulerSlug,
+      nextManualGame,
+      nextManualPlatform,
+    ].filter((v) => v != null && String(v).trim() !== "");
     for (const segment of profileStrings) {
       if (!assertContentAllowed(String(segment), { source: "patch_profile", userId: req.user.id }).ok) {
         await client.query("ROLLBACK");
@@ -932,9 +1077,18 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
            presence_status = $8,
            custom_status = $9,
            scheduler_streamer_username = $10,
-           push_notifications_enabled = $11
+           push_notifications_enabled = $11,
+           steam_id = $12,
+           share_game_activity = $13,
+           desktop_game_detect_opt_in = $14,
+           manual_activity_game = $15,
+           manual_activity_platform = $16
        WHERE id = $1
        RETURNING id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
+                 steam_id,
+                 COALESCE(share_game_activity, true) AS share_game_activity,
+                 COALESCE(desktop_game_detect_opt_in, false) AS desktop_game_detect_opt_in,
+                 manual_activity_game, manual_activity_platform,
                  COALESCE(totp_enabled, false) AS totp_enabled,
                  COALESCE(push_notifications_enabled, true) AS push_notifications_enabled`,
       [
@@ -949,10 +1103,26 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
         nextCustomStatus,
         nextSchedulerSlug,
         nextPush,
+        nextSteamId,
+        nextShare,
+        nextDesktop,
+        nextManualGame,
+        nextManualPlatform,
       ]
     );
     await client.query("COMMIT");
-    return res.json(sanitizeUserMediaFields(updated.rows[0]));
+    const row = updated.rows[0];
+    const { steam_id: stId, ...restOut } = row;
+    if (steamUnlink === true) clearSteamActivityForUser(req.user.id);
+    const io = req.app?.locals?.io;
+    if (io) notifyGameActivityChange(io, req.user.id).catch(() => {});
+    return res.json(
+      sanitizeUserMediaFields({
+        ...restOut,
+        steam_linked: Boolean(stId),
+        steam_status: { web_api_configured: Boolean(steamWebApiKey) },
+      })
+    );
   } catch (e) {
     await client.query("ROLLBACK");
     if (e.code === "23505") {
@@ -998,6 +1168,11 @@ router.delete(
              custom_status = NULL,
              presence_status = 'invisible',
              twitch_username = NULL,
+             steam_id = NULL,
+             share_game_activity = true,
+             desktop_game_detect_opt_in = false,
+             manual_activity_game = NULL,
+             manual_activity_platform = NULL,
              scheduler_streamer_username = NULL,
              deleted_at = NOW(),
              erased_at = NOW(),

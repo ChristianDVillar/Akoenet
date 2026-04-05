@@ -23,6 +23,15 @@ const { textContainsBlockedLanguage } = require("../lib/blocked-content");
 const { notifyChannelMentions } = require("../lib/mentions");
 const { areUsersBlocked } = require("../lib/social-guard");
 const { recordDmMessage } = require("../lib/runtime-metrics");
+const logger = require("../lib/logger");
+const {
+  setAutoActivity,
+  clearEphemeralForUser,
+  setSteamActivity,
+  notifyGameActivityChange,
+  fetchGameActivitySnapshotForServer,
+  rankingSnapshotForServer,
+} = require("../lib/game-activity");
 
 /** Set on first initSocket(io) — used by GET /servers/:id/voice-presence */
 let getVoicePresenceSnapshotForServerImpl = null;
@@ -39,6 +48,7 @@ function initSocket(io) {
   const messageLimitPerWindow = Number(process.env.SOCKET_MESSAGE_RATE_LIMIT_MAX || 40);
   const directMessageLimitPerWindow = Number(process.env.SOCKET_DM_RATE_LIMIT_MAX || 30);
   const schedulerCommandLimitPerWindow = Number(process.env.SCHEDULER_SOCKET_RATE_LIMIT_MAX || 15);
+  const gameActivityAutoLimitPerWindow = Number(process.env.GAME_ACTIVITY_SOCKET_RATE_LIMIT_MAX || 24);
   const socketRateState = new Map();
   const typingLastEmit = new Map();
   /** serverId -> Map<userId, socketCount> */
@@ -184,6 +194,50 @@ function initSocket(io) {
   getConnectedUserIdsForServerImpl = (serverId) => buildConnectedUserIds(serverId);
   getConnectedUserIdsGlobalImpl = () => buildConnectedUserIdsGlobal();
 
+  const steamWebApiKey = String(process.env.STEAM_WEB_API_KEY || "").trim();
+  let steamPollBusy = false;
+  setInterval(() => {
+    if (!steamWebApiKey || steamPollBusy) return;
+    const userIds = buildConnectedUserIdsGlobal();
+    if (!userIds.length) return;
+    steamPollBusy = true;
+    (async () => {
+      try {
+        const r = await pool.query(
+          `SELECT id, steam_id FROM users
+           WHERE id = ANY($1::int[])
+             AND deleted_at IS NULL
+             AND steam_id IS NOT NULL
+             AND COALESCE(share_game_activity, true) = true`,
+          [userIds]
+        );
+        const rows = r.rows;
+        for (let i = 0; i < rows.length; i += 80) {
+          const chunk = rows.slice(i, i + 80);
+          const ids = chunk.map((c) => c.steam_id).join(",");
+          const url = new URL("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/");
+          url.searchParams.set("key", steamWebApiKey);
+          url.searchParams.set("steamids", ids);
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const data = await res.json();
+          const players = data?.response?.players || [];
+          const bySteam = new Map(players.map((p) => [String(p.steamid), p]));
+          for (const row of chunk) {
+            const steamPlayer = bySteam.get(String(row.steam_id));
+            const game = steamPlayer?.gameextrainfo ? String(steamPlayer.gameextrainfo).trim() : "";
+            setSteamActivity(row.id, game, "Steam");
+            await notifyGameActivityChange(io, row.id);
+          }
+        }
+      } catch (e) {
+        logger.warn({ err: e }, "Steam presence poll failed");
+      } finally {
+        steamPollBusy = false;
+      }
+    })();
+  }, 45000);
+
   function removeFromVoiceRooms(socketId) {
     const affected = [];
     for (const [channelId, room] of voiceRooms.entries()) {
@@ -248,10 +302,34 @@ function initSocket(io) {
             serverId: id,
             connectedUserIds: buildConnectedUserIds(id),
           });
+          const entries = await fetchGameActivitySnapshotForServer(id);
+          const ranking = rankingSnapshotForServer(id);
+          socket.emit("server:game_activity_snapshot", { serverId: id, entries, ranking });
         } catch {
           /* ignore snapshot errors */
         }
       }
+    });
+
+    socket.on("game_activity:auto", async (payload) => {
+      if (!canPassRateLimit(socket.userId, "game_activity_auto", gameActivityAutoLimitPerWindow)) {
+        return;
+      }
+      const pref = await pool.query(
+        `SELECT desktop_game_detect_opt_in, share_game_activity FROM users WHERE id = $1 AND deleted_at IS NULL`,
+        [socket.userId]
+      );
+      if (!pref.rows.length) return;
+      const row = pref.rows[0];
+      if (!row.desktop_game_detect_opt_in || row.share_game_activity === false) return;
+      const game = typeof payload?.game === "string" ? payload.game.trim().slice(0, 120) : "";
+      const platformRaw = typeof payload?.platform === "string" ? payload.platform.trim().slice(0, 40) : "";
+      if (!game) {
+        setAutoActivity(socket.userId, "", "");
+      } else {
+        setAutoActivity(socket.userId, game, platformRaw || "PC");
+      }
+      await notifyGameActivityChange(io, socket.userId);
     });
 
     socket.on("leave_server", (serverId) => {
@@ -1031,6 +1109,8 @@ function initSocket(io) {
 
     socket.on("disconnect", () => {
       removeFromVoiceRooms(socket.id);
+      clearEphemeralForUser(socket.userId);
+      notifyGameActivityChange(io, socket.userId).catch(() => {});
       removeUserFromGlobalPresence(socket.userId);
       if (socket.data.joinedServers && socket.data.joinedServers.size > 0) {
         for (const sid of socket.data.joinedServers) {

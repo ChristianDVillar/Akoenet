@@ -40,6 +40,8 @@ export default function MembersPanel({
   connectedUserIds = [],
   currentUser = null,
   onClose = null,
+  activityByUserId = {},
+  gameRanking = [],
 }) {
   const navigate = useNavigate()
   const [avatarFailed, setAvatarFailed] = useState(() => new Set())
@@ -192,6 +194,20 @@ export default function MembersPanel({
           </button>
         )}
       </header>
+      {Array.isArray(gameRanking) && gameRanking.length > 0 && (
+        <div className="members-trending" aria-label="Trending games in this server">
+          <div className="members-trending-title">Trending now</div>
+          <ol className="members-trending-list">
+            {gameRanking.slice(0, 5).map((row, idx) => (
+              <li key={`${row.game}-${idx}`}>
+                <span className="members-trending-rank">#{idx + 1}</span>
+                <span className="members-trending-game">{row.game}</span>
+                <span className="members-trending-count">{row.players} playing</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <div className="members-filters">
         <input
           id="members-filter-query"
@@ -245,6 +261,7 @@ export default function MembersPanel({
               {section.items.map((member) => {
                 const showImg = member.avatar_url && !avatarFailed.has(member.id)
                 const isOnline = isMemberOnline(member, connectedSet, currentUser)
+                const act = activityByUserId[member.id] ?? member.activity ?? null
                 const isSelf = currentUser && Number(member.id) === Number(currentUser.id)
                 const selected = selectedMemberId != null && Number(selectedMemberId) === Number(member.id)
                 const link = friendshipByPeerId.get(Number(member.id))
@@ -287,6 +304,12 @@ export default function MembersPanel({
                           <span className={`member-status-dot ${isOnline ? 'online' : 'offline'}`} />
                         </strong>
                         <span>{member.roles?.join(', ') || 'member'}</span>
+                        {act?.game ? (
+                          <span className="member-game-activity">
+                            Playing {act.game}
+                            {act.platform ? ` · ${act.platform}` : ''}
+                          </span>
+                        ) : null}
                         <span className="member-status-text">{isOnline ? 'Connected' : 'Offline'}</span>
                       </div>
                     </button>
