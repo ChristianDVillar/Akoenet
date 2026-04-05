@@ -18,6 +18,7 @@ const {
 const { postJoinWelcomeMessage } = require("../lib/join-welcome-message");
 
 const { sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
+const { shapeMemberRowForPublicApi } = require("../lib/game-activity");
 const { cacheGet, cacheSet } = require("../lib/redis-cache");
 
 const router = express.Router();
@@ -609,6 +610,8 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
   }
   const result = await pool.query(
     `SELECT u.id, u.username, u.avatar_url, u.presence_status,
+            u.steam_id, u.share_game_activity, u.desktop_game_detect_opt_in,
+            u.manual_activity_game, u.manual_activity_platform,
             ARRAY_REMOVE(ARRAY_AGG(r.name), NULL) AS roles
      FROM server_members m
      JOIN users u ON u.id = m.user_id
@@ -620,16 +623,7 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
     [serverId]
   );
   const connectedSet = new Set(getConnectedUserIdsGlobal().map((id) => Number(id)));
-  const withEffectivePresence = result.rows.map((row) => {
-    const normalized = String(row?.presence_status || "").toLowerCase();
-    const isConnected = connectedSet.has(Number(row?.id));
-    return {
-      ...row,
-      // If the user has no active app/web session, expose offline to clients.
-      presence_status: isConnected ? (normalized || "online") : "offline",
-    };
-  });
-  res.json(withEffectivePresence.map((row) => sanitizeUserMediaFields(row)));
+  res.json(result.rows.map((row) => shapeMemberRowForPublicApi(row, connectedSet)));
 });
 
 /** Outgoing webhooks (manage channels permission) */

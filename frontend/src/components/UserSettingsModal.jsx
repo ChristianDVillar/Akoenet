@@ -21,6 +21,7 @@ import {
   sanitizeFull,
   saveTheme,
 } from '../lib/themePreferences'
+import { isTauri } from '../lib/isTauri'
 
 function toNullable(value) {
   const trimmed = value.trim()
@@ -63,6 +64,12 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [startWithCamera, setStartWithCamera] = useState(false)
   const [startMuted, setStartMuted] = useState(false)
   const [startDeafened, setStartDeafened] = useState(false)
+  const [shareGameActivity, setShareGameActivity] = useState(true)
+  const [desktopGameDetect, setDesktopGameDetect] = useState(false)
+  const [manualGame, setManualGame] = useState('')
+  const [manualPlatform, setManualPlatform] = useState('')
+  const [activitySaving, setActivitySaving] = useState(false)
+  const [steamBusy, setSteamBusy] = useState(false)
   const [uiTheme, setUiTheme] = useState(() => sanitizeFull({}))
   const [themeReady, setThemeReady] = useState(false)
   const streamRef = useRef(null)
@@ -195,6 +202,63 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       setError('Could not erase account. Try again or contact support.')
     } finally {
       setEraseBusy(false)
+    }
+  }
+
+  async function saveActivitySettings() {
+    setActivitySaving(true)
+    setError('')
+    setInfo('')
+    try {
+      await api.patch('/auth/me', {
+        share_game_activity: shareGameActivity,
+        desktop_game_detect_opt_in: desktopGameDetect,
+        manual_activity_game: toNullable(manualGame),
+        manual_activity_platform: toNullable(manualPlatform),
+      })
+      await refreshUser()
+      setInfo('Game activity settings saved.')
+    } catch (err) {
+      const code = err.response?.data?.error
+      setError(
+        code === 'blocked_content'
+          ? err.response?.data?.message || 'That text is not allowed.'
+          : err.response?.data?.error || 'Could not save game activity settings'
+      )
+    } finally {
+      setActivitySaving(false)
+    }
+  }
+
+  async function connectSteam() {
+    if (!user?.steam_status?.web_api_configured) {
+      setError('That option isn’t available right now.')
+      return
+    }
+    setSteamBusy(true)
+    setError('')
+    try {
+      const { data } = await api.post('/auth/steam/link/begin')
+      if (data?.url) window.location.href = data.url
+    } catch {
+      setError('Could not start Steam linking.')
+    } finally {
+      setSteamBusy(false)
+    }
+  }
+
+  async function unlinkSteam() {
+    setActivitySaving(true)
+    setError('')
+    setInfo('')
+    try {
+      await api.patch('/auth/me', { steam_unlink: true })
+      await refreshUser()
+      setInfo('Steam account unlinked.')
+    } catch {
+      setError('Could not unlink Steam.')
+    } finally {
+      setActivitySaving(false)
     }
   }
 
@@ -341,6 +405,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
           <aside className="settings-split-nav">
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'profile' ? 'active' : ''}`} onClick={() => setActiveSection('profile')}>Profile</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'appearance' ? 'active' : ''}`} onClick={() => setActiveSection('appearance')}>Appearance</button>
+            <button type="button" className={`settings-split-nav-btn ${activeSection === 'activity' ? 'active' : ''}`} onClick={() => setActiveSection('activity')}>Game activity</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'account' ? 'active' : ''}`} onClick={() => setActiveSection('account')}>Account</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'voice' ? 'active' : ''}`} onClick={() => setActiveSection('voice')}>Voice</button>
           </aside>
@@ -708,6 +773,102 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                     {eraseBusy ? 'Erasing…' : 'Erase my account'}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {activeSection === 'activity' && (
+              <div className="form-stack">
+                <p className="muted small" style={{ margin: '0 0 0.75rem' }}>
+                  Let people in your servers see what you&apos;re playing. You can turn this off anytime.
+                </p>
+                <label className="voice-setting-toggle-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    id="settings-share-game-activity"
+                    name="share_game_activity"
+                    type="checkbox"
+                    checked={shareGameActivity}
+                    onChange={(e) => setShareGameActivity(e.target.checked)}
+                  />
+                  <span>Share game activity with my servers</span>
+                </label>
+                {user?.steam_status?.web_api_configured ? (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <strong className="muted small" style={{ display: 'block', marginBottom: 6 }}>
+                      Steam
+                    </strong>
+                    <p className="muted small" style={{ margin: '0 0 0.5rem' }}>
+                      {user?.steam_linked ? 'Linked' : 'Not linked'}
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        disabled={steamBusy || !shareGameActivity}
+                        onClick={() => connectSteam()}
+                      >
+                        {steamBusy ? 'Redirecting…' : user?.steam_linked ? 'Reconnect Steam' : 'Connect Steam'}
+                      </button>
+                      {user?.steam_linked ? (
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          disabled={activitySaving}
+                          onClick={() => unlinkSteam()}
+                        >
+                          Unlink Steam
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+                <label style={{ marginTop: '0.85rem', display: 'block' }}>
+                  Manual game
+                  <input
+                    id="settings-manual-game"
+                    name="manual_activity_game"
+                    value={manualGame}
+                    onChange={(e) => setManualGame(e.target.value)}
+                    maxLength={120}
+                    placeholder="e.g. Fortnite"
+                    disabled={!shareGameActivity}
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  Platform / store (optional)
+                  <input
+                    id="settings-manual-platform"
+                    name="manual_activity_platform"
+                    value={manualPlatform}
+                    onChange={(e) => setManualPlatform(e.target.value)}
+                    maxLength={40}
+                    placeholder="Epic, Xbox, Switch…"
+                    disabled={!shareGameActivity}
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="voice-setting-toggle-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    id="settings-desktop-detect"
+                    name="desktop_game_detect_opt_in"
+                    type="checkbox"
+                    checked={desktopGameDetect}
+                    disabled={!shareGameActivity || !isTauri()}
+                    onChange={(e) => setDesktopGameDetect(e.target.checked)}
+                  />
+                  <span>
+                    Update my game automatically on Windows{' '}
+                    {!isTauri() ? <em className="muted small">(desktop app)</em> : null}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={activitySaving || !shareGameActivity}
+                  onClick={() => saveActivitySettings()}
+                >
+                  {activitySaving ? 'Saving…' : 'Save game activity'}
+                </button>
               </div>
             )}
 

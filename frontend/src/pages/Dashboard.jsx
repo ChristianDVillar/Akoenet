@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
@@ -15,8 +15,9 @@ import DashboardAdmin from './DashboardAdmin'
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
 export default function Dashboard() {
-  const { user, logout, loading: authLoading } = useAuth()
+  const { user, logout, loading: authLoading, refreshUser } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [servers, setServers] = useState([])
   const [newName, setNewName] = useState('')
   const [joinId, setJoinId] = useState('')
@@ -54,6 +55,20 @@ export default function Dashboard() {
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    const linked = searchParams.get('steam_linked')
+    const steamErr = searchParams.get('steam_error')
+    if (!linked && !steamErr) return
+    if (linked) {
+      setActionMessage('Steam account linked. Your “now playing” can appear when your Steam profile is public.')
+      refreshUser().catch(() => {})
+    }
+    if (steamErr) {
+      setActionMessage(`Steam link did not complete (${steamErr}). Try again from User settings → Game activity.`)
+    }
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams, refreshUser])
 
   useEffect(() => {
     if (!user || authLoading) return

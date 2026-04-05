@@ -3057,6 +3057,67 @@ textarea {
   padding: 0.25rem 0.45rem;
 }
 
+.members-trending {
+  padding: 0.65rem 0.9rem 0.5rem;
+  border-bottom: 1px solid var(--nexora-border);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.members-trending-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--nexora-muted);
+  margin-bottom: 0.35rem;
+}
+
+.members-trending-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.78rem;
+}
+
+.members-trending-list li {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto;
+  gap: 0.35rem;
+  align-items: baseline;
+  color: var(--nexora-strong);
+}
+
+.members-trending-rank {
+  color: var(--nexora-muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.members-trending-game {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.members-trending-count {
+  color: #a78bfa;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.member-game-activity {
+  font-size: 0.72rem;
+  color: #c4b5fd;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Overlay + slide-in panel when the inline right column is hidden (<1201px). Above app chrome; below cookie/toasts if any. */
 .members-drawer {
   position: fixed;
@@ -5502,6 +5563,87 @@ input.theme-color-hex:disabled {
 
 .landing-hero-primary {
   min-width: 160px;
+}
+
+.landing-presence {
+  padding: 2.25rem 1.25rem 2.75rem;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(124, 58, 237, 0.22), transparent 55%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.98));
+  border-bottom: 1px solid var(--nexora-border);
+  animation: landingPresenceFade 700ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-presence {
+    animation: none;
+  }
+}
+
+@keyframes landingPresenceFade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing-presence-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.landing-presence-title {
+  margin: 0 0 0.85rem;
+  font-size: clamp(1.35rem, 3.2vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1.2;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+}
+
+.landing-presence-lead {
+  margin: 0 0 1.25rem;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  color: var(--nexora-muted);
+  text-align: center;
+}
+
+.landing-presence-bullets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  max-width: 520px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.landing-presence-bullets li {
+  position: relative;
+  padding-left: 1.35rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: #e2e8f0;
+}
+
+.landing-presence-bullets li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #7c3aed, #38bdf8);
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.45);
 }
 
 .landing-invite-join {

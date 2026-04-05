@@ -129,6 +129,21 @@ export default function Landing({ apiUnreachable = false, onRetryApi }) {
           </div>
         </section>
 
+        <section className="landing-presence" aria-labelledby="landing-presence-title">
+          <div className="landing-section-inner landing-presence-inner">
+            <p className="landing-eyebrow landing-presence-eyebrow">{t.presenceSection.eyebrow}</p>
+            <h2 id="landing-presence-title" className="landing-presence-title">
+              {t.presenceSection.title}
+            </h2>
+            <p className="landing-lead landing-presence-lead">{t.presenceSection.lead}</p>
+            <ul className="landing-presence-bullets">
+              {t.presenceSection.bullets.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
         <LandingInviteStrip t={t} />
 
         <LandingAppSection t={t} />
