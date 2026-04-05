@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -33,6 +34,7 @@ function getVoiceStorageKey(userId) {
 }
 
 export default function UserSettingsModal({ open, onClose, initialSection = 'profile' }) {
+  const { t } = useTranslation()
   const { user, refreshUser, logout, logoutAllDevices } = useAuth()
   const [activeSection, setActiveSection] = useState('profile')
   const [username, setUsername] = useState('')
@@ -217,13 +219,13 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
         manual_activity_platform: toNullable(manualPlatform),
       })
       await refreshUser()
-      setInfo('Game activity settings saved.')
+      setInfo(t('userSettings.activity.savedInfo'))
     } catch (err) {
       const code = err.response?.data?.error
       setError(
         code === 'blocked_content'
-          ? err.response?.data?.message || 'That text is not allowed.'
-          : err.response?.data?.error || 'Could not save game activity settings'
+          ? err.response?.data?.message || t('userSettings.activity.errorBlocked')
+          : err.response?.data?.error || t('userSettings.activity.errorSave')
       )
     } finally {
       setActivitySaving(false)
@@ -232,7 +234,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
 
   async function connectSteam() {
     if (!user?.steam_status?.web_api_configured) {
-      setError('That option isn’t available right now.')
+      setError(t('userSettings.activity.errorUnavailable'))
       return
     }
     setSteamBusy(true)
@@ -241,7 +243,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       const { data } = await api.post('/auth/steam/link/begin')
       if (data?.url) window.location.href = data.url
     } catch {
-      setError('Could not start Steam linking.')
+      setError(t('userSettings.activity.errorSteamStart'))
     } finally {
       setSteamBusy(false)
     }
@@ -254,9 +256,9 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     try {
       await api.patch('/auth/me', { steam_unlink: true })
       await refreshUser()
-      setInfo('Steam account unlinked.')
+      setInfo(t('userSettings.activity.unlinkedInfo'))
     } catch {
-      setError('Could not unlink Steam.')
+      setError(t('userSettings.activity.errorUnlink'))
     } finally {
       setActivitySaving(false)
     }
@@ -405,7 +407,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
           <aside className="settings-split-nav">
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'profile' ? 'active' : ''}`} onClick={() => setActiveSection('profile')}>Profile</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'appearance' ? 'active' : ''}`} onClick={() => setActiveSection('appearance')}>Appearance</button>
-            <button type="button" className={`settings-split-nav-btn ${activeSection === 'activity' ? 'active' : ''}`} onClick={() => setActiveSection('activity')}>Game activity</button>
+            <button type="button" className={`settings-split-nav-btn ${activeSection === 'activity' ? 'active' : ''}`} onClick={() => setActiveSection('activity')}>{t('userSettings.activity.navTab')}</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'account' ? 'active' : ''}`} onClick={() => setActiveSection('account')}>Account</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'voice' ? 'active' : ''}`} onClick={() => setActiveSection('voice')}>Voice</button>
           </aside>
@@ -779,7 +781,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
             {activeSection === 'activity' && (
               <div className="form-stack">
                 <p className="muted small" style={{ margin: '0 0 0.75rem' }}>
-                  Let people in your servers see what you&apos;re playing. You can turn this off anytime.
+                  {t('userSettings.activity.intro')}
                 </p>
                 <label className="voice-setting-toggle-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
@@ -789,15 +791,17 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                     checked={shareGameActivity}
                     onChange={(e) => setShareGameActivity(e.target.checked)}
                   />
-                  <span>Share game activity with my servers</span>
+                  <span>{t('userSettings.activity.shareLabel')}</span>
                 </label>
                 {user?.steam_status?.web_api_configured ? (
                   <div style={{ marginTop: '0.75rem' }}>
                     <strong className="muted small" style={{ display: 'block', marginBottom: 6 }}>
-                      Steam
+                      {t('userSettings.activity.steamHeading')}
                     </strong>
                     <p className="muted small" style={{ margin: '0 0 0.5rem' }}>
-                      {user?.steam_linked ? 'Linked' : 'Not linked'}
+                      {user?.steam_linked
+                        ? t('userSettings.activity.steamLinked')
+                        : t('userSettings.activity.steamNotLinked')}
                     </p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       <button
@@ -806,7 +810,11 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                         disabled={steamBusy || !shareGameActivity}
                         onClick={() => connectSteam()}
                       >
-                        {steamBusy ? 'Redirecting…' : user?.steam_linked ? 'Reconnect Steam' : 'Connect Steam'}
+                        {steamBusy
+                          ? t('userSettings.activity.redirecting')
+                          : user?.steam_linked
+                            ? t('userSettings.activity.reconnectSteam')
+                            : t('userSettings.activity.connectSteam')}
                       </button>
                       {user?.steam_linked ? (
                         <button
@@ -815,34 +823,34 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                           disabled={activitySaving}
                           onClick={() => unlinkSteam()}
                         >
-                          Unlink Steam
+                          {t('userSettings.activity.unlinkSteam')}
                         </button>
                       ) : null}
                     </div>
                   </div>
                 ) : null}
                 <label style={{ marginTop: '0.85rem', display: 'block' }}>
-                  Manual game
+                  {t('userSettings.activity.manualGame')}
                   <input
                     id="settings-manual-game"
                     name="manual_activity_game"
                     value={manualGame}
                     onChange={(e) => setManualGame(e.target.value)}
                     maxLength={120}
-                    placeholder="e.g. Fortnite"
+                    placeholder={t('userSettings.activity.manualGamePh')}
                     disabled={!shareGameActivity}
                     autoComplete="off"
                   />
                 </label>
                 <label>
-                  Platform / store (optional)
+                  {t('userSettings.activity.manualPlatform')}
                   <input
                     id="settings-manual-platform"
                     name="manual_activity_platform"
                     value={manualPlatform}
                     onChange={(e) => setManualPlatform(e.target.value)}
                     maxLength={40}
-                    placeholder="Epic, Xbox, Switch…"
+                    placeholder={t('userSettings.activity.manualPlatformPh')}
                     disabled={!shareGameActivity}
                     autoComplete="off"
                   />
@@ -857,8 +865,10 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                     onChange={(e) => setDesktopGameDetect(e.target.checked)}
                   />
                   <span>
-                    Update my game automatically on Windows{' '}
-                    {!isTauri() ? <em className="muted small">(desktop app)</em> : null}
+                    {t('userSettings.activity.desktopAuto')}{' '}
+                    {!isTauri() ? (
+                      <em className="muted small">{t('userSettings.activity.desktopAppHint')}</em>
+                    ) : null}
                   </span>
                 </label>
                 <button
@@ -867,7 +877,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                   disabled={activitySaving || !shareGameActivity}
                   onClick={() => saveActivitySettings()}
                 >
-                  {activitySaving ? 'Saving…' : 'Save game activity'}
+                  {activitySaving ? t('userSettings.activity.saving') : t('userSettings.activity.save')}
                 </button>
               </div>
             )}

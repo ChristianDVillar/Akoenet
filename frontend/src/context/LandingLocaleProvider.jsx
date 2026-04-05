@@ -1,33 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import i18n from '../i18n.js'
+import { getLandingLocaleOrDefault, LANDING_LOCALE_STORAGE_KEY } from '../lib/landingLocale.js'
 import { LandingLocaleContext } from './landingLocaleContext'
 
-const STORAGE_KEY = 'akoenet_landing_locale'
-
 /** Default UI language is English; Spanish is opt-in via landing toggle or localStorage. */
-function readStoredLocale() {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY)
-    if (v === 'es' || v === 'en') return v
-  } catch {
-    /* ignore */
-  }
-  return 'en'
-}
-
 export function LandingLocaleProvider({ children }) {
   const [locale, setLocaleState] = useState(() =>
-    typeof window !== 'undefined' ? readStoredLocale() : 'en',
+    typeof window !== 'undefined' ? getLandingLocaleOrDefault() : 'en',
   )
 
   const setLocale = useCallback((next) => {
     const v = next === 'es' ? 'es' : 'en'
     setLocaleState(v)
     try {
-      localStorage.setItem(STORAGE_KEY, v)
+      localStorage.setItem(LANDING_LOCALE_STORAGE_KEY, v)
     } catch {
       /* ignore */
     }
+    void i18n.changeLanguage(v)
   }, [])
+
+  useLayoutEffect(() => {
+    const short = String(i18n.language || '').split('-')[0]
+    if (short !== locale) void i18n.changeLanguage(locale)
+  }, [locale])
 
   useEffect(() => {
     if (typeof document === 'undefined') return

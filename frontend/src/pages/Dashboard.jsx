@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -15,6 +16,7 @@ import DashboardAdmin from './DashboardAdmin'
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
 export default function Dashboard() {
+  const { t } = useTranslation()
   const { user, logout, loading: authLoading, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -61,14 +63,14 @@ export default function Dashboard() {
     const steamErr = searchParams.get('steam_error')
     if (!linked && !steamErr) return
     if (linked) {
-      setActionMessage('Steam account linked. Your “now playing” can appear when your Steam profile is public.')
+      setActionMessage(t('dashboard.steamLinked'))
       refreshUser().catch(() => {})
     }
     if (steamErr) {
-      setActionMessage(`Steam link did not complete (${steamErr}). Try again from User settings → Game activity.`)
+      setActionMessage(t('dashboard.steamError', { code: steamErr }))
     }
     setSearchParams({}, { replace: true })
-  }, [searchParams, setSearchParams, refreshUser])
+  }, [searchParams, setSearchParams, refreshUser, t])
 
   useEffect(() => {
     if (!user || authLoading) return
