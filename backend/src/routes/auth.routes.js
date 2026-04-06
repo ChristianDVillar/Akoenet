@@ -127,6 +127,13 @@ function steamLinkSuccessUrl() {
   return u.toString();
 }
 
+/** After linking Twitch from User settings (session stays the same; no new JWT in URL). */
+function twitchLinkSuccessUrl() {
+  const u = new URL("/", frontendBase);
+  u.searchParams.set("twitch_linked", "1");
+  return u.toString();
+}
+
 function steamLinkErrorUrl(code) {
   const u = new URL("/", frontendBase);
   u.searchParams.set("steam_error", String(code));
@@ -308,6 +315,8 @@ const updateSettingsSchema = z
     push_notifications_enabled: z.boolean().optional(),
     /** When true, clears linked Steam ID on save. */
     steam_unlink: z.boolean().optional(),
+    /** When true, clears linked Twitch username on save. */
+    twitch_unlink: z.boolean().optional(),
     share_game_activity: z.boolean().optional(),
     desktop_game_detect_opt_in: z.boolean().optional(),
     manual_activity_game: z.preprocess(
@@ -694,13 +703,33 @@ router.get("/twitch/status", (_req, res) => {
   });
 });
 
+/** Start OAuth in the browser; state ties the callback to the logged-in user (email/password accounts). */
+router.post("/twitch/link/begin", auth, requireTermsAccepted, userDataRateLimiter, (req, res) => {
+  if (!twitchClientId || !twitchClientSecret) {
+    return res.status(503).json({
+      error: "twitch_not_configured",
+      message: "Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in the backend environment.",
+    });
+  }
+  const state = jwt.sign({ purpose: "twitch_link", uid: req.user.id }, secret, { expiresIn: "10m" });
+  const qs = new URLSearchParams({
+    client_id: twitchClientId,
+    redirect_uri: twitchRedirectUri,
+    response_type: "code",
+    scope: "",
+    state,
+  });
+  res.json({ url: `https://id.twitch.tv/oauth2/authorize?${qs.toString()}` });
+});
+
 router.get("/twitch/callback", authRateLimiter, async (req, res) => {
   const { code, state } = req.query;
   if (!code || !state) {
     return res.redirect(twitchOAuthErrorUrl("missing_code_or_state"));
   }
+  let decoded;
   try {
-    jwt.verify(String(state), secret);
+    decoded = jwt.verify(String(state), secret);
   } catch {
     return res.redirect(twitchOAuthErrorUrl("invalid_state"));
   }
@@ -742,13 +771,45 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
       return res.redirect(twitchOAuthErrorUrl("twitch_invalid_user"));
     }
 
+    const login = String(twitchUser.login || "").trim().toLowerCase();
+
+    if (decoded.purpose === "twitch_link") {
+      const uid = Number(decoded.uid);
+      if (!Number.isInteger(uid) || uid <= 0) {
+        return res.redirect(twitchOAuthErrorUrl("invalid_state"));
+      }
+      const selfRow = await pool.query(`SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL`, [uid]);
+      if (!selfRow.rows.length) {
+        return res.redirect(twitchOAuthErrorUrl("user_not_found"));
+      }
+      const twitchEmail = getTwitchEmail(twitchUser.id);
+      const otherByEmail = await pool.query(
+        `SELECT id FROM users WHERE email = $1 AND id <> $2 AND deleted_at IS NULL LIMIT 1`,
+        [twitchEmail, uid]
+      );
+      if (otherByEmail.rows.length) {
+        return res.redirect(twitchOAuthErrorUrl("twitch_account_in_use"));
+      }
+      const otherByLogin = await pool.query(
+        `SELECT id FROM users WHERE twitch_username IS NOT NULL AND LOWER(TRIM(twitch_username)) = $1 AND id <> $2 AND deleted_at IS NULL LIMIT 1`,
+        [login, uid]
+      );
+      if (otherByLogin.rows.length) {
+        return res.redirect(twitchOAuthErrorUrl("twitch_username_taken"));
+      }
+      await pool.query(
+        `UPDATE users SET twitch_username = $1, avatar_url = COALESCE($2, avatar_url) WHERE id = $3 AND deleted_at IS NULL`,
+        [login, twitchUser.profile_image_url || null, uid]
+      );
+      return res.redirect(twitchLinkSuccessUrl());
+    }
+
     const email = getTwitchEmail(twitchUser.id);
     let userRes = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
 
     if (!userRes.rows.length) {
       const randomPass = crypto.randomBytes(24).toString("hex");
       const passHash = await bcrypt.hash(randomPass, 10);
-      const login = String(twitchUser.login || "").trim().toLowerCase();
       const created = await pool.query(
         `INSERT INTO users (username, email, password, avatar_url, twitch_username)
          VALUES ($1, $2, $3, $4, $5)
@@ -763,7 +824,6 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
       );
       userRes = created;
     } else {
-      const login = String(twitchUser.login || "").trim().toLowerCase();
       await pool.query(
         `UPDATE users SET username = $1, avatar_url = $2, twitch_username = $3 WHERE id = $4`,
         [
@@ -1045,6 +1105,7 @@ router.patch("/me", auth, requireTermsAccepted, userDataRateLimiter, validate({ 
     scheduler_streamer_username: schedulerStreamerUsername,
     push_notifications_enabled: pushNotificationsEnabled,
     steam_unlink: steamUnlink,
+    twitch_unlink: twitchUnlink,
     share_game_activity: shareGameActivity,
     desktop_game_detect_opt_in: desktopGameDetectOptIn,
     manual_activity_game: manualActivityGame,
@@ -1092,6 +1153,7 @@ router.patch("/me", auth, requireTermsAccepted, userDataRateLimiter, validate({ 
       pushNotificationsEnabled !== undefined ? Boolean(pushNotificationsEnabled) : user.push_notifications_enabled;
     const nextPasswordHash = newPassword ? await bcrypt.hash(newPassword, 10) : user.password;
     const nextSteamId = steamUnlink === true ? null : user.steam_id;
+    const nextTwitchUsername = twitchUnlink === true ? null : user.twitch_username;
     const nextShare =
       shareGameActivity !== undefined ? Boolean(shareGameActivity) : user.share_game_activity;
     const nextDesktop =
@@ -1129,10 +1191,11 @@ router.patch("/me", auth, requireTermsAccepted, userDataRateLimiter, validate({ 
            scheduler_streamer_username = $10,
            push_notifications_enabled = $11,
            steam_id = $12,
-           share_game_activity = $13,
-           desktop_game_detect_opt_in = $14,
-           manual_activity_game = $15,
-           manual_activity_platform = $16
+           twitch_username = $13,
+           share_game_activity = $14,
+           desktop_game_detect_opt_in = $15,
+           manual_activity_game = $16,
+           manual_activity_platform = $17
        WHERE id = $1
        RETURNING id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
                  steam_id,
@@ -1155,6 +1218,7 @@ router.patch("/me", auth, requireTermsAccepted, userDataRateLimiter, validate({ 
         nextSchedulerSlug,
         nextPush,
         nextSteamId,
+        nextTwitchUsername,
         nextShare,
         nextDesktop,
         nextManualGame,
@@ -1180,6 +1244,10 @@ router.patch("/me", auth, requireTermsAccepted, userDataRateLimiter, validate({ 
   } catch (e) {
     await client.query("ROLLBACK");
     if (e.code === "23505") {
+      const detail = String(e.detail || "");
+      if (detail.includes("twitch_username")) {
+        return res.status(409).json({ error: "That Twitch username is already linked to another account." });
+      }
       return res.status(409).json({ error: "Username already exists" });
     }
     logger.error({ err: e }, "Update user settings failed");

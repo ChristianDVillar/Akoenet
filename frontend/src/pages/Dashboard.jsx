@@ -59,15 +59,24 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    const linked = searchParams.get('steam_linked')
+    const steamLinked = searchParams.get('steam_linked')
     const steamErr = searchParams.get('steam_error')
-    if (!linked && !steamErr) return
-    if (linked) {
+    const twitchLinked = searchParams.get('twitch_linked')
+    const twitchErr = searchParams.get('twitch_error')
+    if (!steamLinked && !steamErr && !twitchLinked && !twitchErr) return
+    if (steamLinked) {
       setActionMessage(t('dashboard.steamLinked'))
       refreshUser().catch(() => {})
     }
     if (steamErr) {
       setActionMessage(t('dashboard.steamError', { code: steamErr }))
+    }
+    if (twitchLinked) {
+      setActionMessage(t('dashboard.twitchLinked'))
+      refreshUser().catch(() => {})
+    }
+    if (twitchErr) {
+      setActionMessage(t('dashboard.twitchError', { code: twitchErr }))
     }
     setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams, refreshUser, t])
