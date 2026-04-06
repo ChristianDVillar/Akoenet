@@ -1,0 +1,56 @@
+# Build firma (updater) y subida a GitHub Releases: genera latest.json para el endpoint
+# configurado en frontend/src-tauri/tauri.conf.json (plugins.updater.endpoints).
+#
+# Requisitos en el repo de GitHub: Settings → Secrets → Actions
+#   TAURI_SIGNING_PRIVATE_KEY        — contenido completo de la clave minisign (.key), una línea base64
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — opcional, si la clave tiene contraseña
+#
+# Uso: git tag v0.3.1 && git push origin v0.3.1
+# (el tag debe coincidir con la versión en tauri.conf.json, Cargo.toml y package.json)
+
+name: Publish desktop (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Tauri and upload release + latest.json
+        uses: tauri-apps/tauri-action@v0.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: frontend
+          tauriScript: npm run tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: AkoeNet ${{ github.ref_name }}
+          releaseBody: 'Instalador NSIS y latest.json para actualizaciones automáticas.'
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true

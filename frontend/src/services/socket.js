@@ -9,10 +9,19 @@ export function connectAkoeNet(token) {
   if (socket?.connected) {
     socket.disconnect()
   }
+  if (typeof token === 'string' && token) {
+    localStorage.setItem('token', token)
+  }
   socket = io(baseURL, {
-    auth: { token },
+    auth: (cb) => {
+      cb({ token: localStorage.getItem('token') || '' })
+    },
     autoConnect: true,
     transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 10_000,
   })
   return socket
 }

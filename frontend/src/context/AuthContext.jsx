@@ -6,7 +6,11 @@ import {
   useMemo,
   useState,
 } from 'react'
-import api from '../services/api'
+import api, {
+  refreshSessionAfterForeground,
+  startSessionKeepAlive,
+  stopSessionKeepAlive,
+} from '../services/api'
 import { connectAkoeNet, disconnectAkoeNet } from '../services/socket'
 
 const AuthContext = createContext(null)
@@ -39,6 +43,7 @@ export function AuthProvider({ children }) {
     }
     localStorage.removeItem('token')
     localStorage.removeItem('refresh_token')
+    stopSessionKeepAlive()
     disconnectAkoeNet()
     setUser(null)
     setServerUnreachable(false)
@@ -53,6 +58,7 @@ export function AuthProvider({ children }) {
     }
     localStorage.removeItem('token')
     localStorage.removeItem('refresh_token')
+    stopSessionKeepAlive()
     disconnectAkoeNet()
     setUser(null)
     setServerUnreachable(false)
@@ -80,6 +86,7 @@ export function AuthProvider({ children }) {
         const { data } = await api.get('/auth/me')
         setUser(data)
         connectAkoeNet(localStorage.getItem('token') || token)
+        startSessionKeepAlive()
         setServerUnreachable(false)
         setLoading(false)
         return
@@ -89,6 +96,7 @@ export function AuthProvider({ children }) {
           continue
         }
         if (isUnreachableApiError(err)) {
+          stopSessionKeepAlive()
           disconnectAkoeNet()
           setUser(null)
           setServerUnreachable(true)
@@ -111,6 +119,7 @@ export function AuthProvider({ children }) {
     }
     localStorage.removeItem('token')
     localStorage.removeItem('refresh_token')
+    stopSessionKeepAlive()
     disconnectAkoeNet()
     setUser(null)
     setServerUnreachable(false)
@@ -120,6 +129,28 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     refreshUser()
   }, [refreshUser])
+
+  useEffect(() => {
+    const onSessionLost = () => {
+      disconnectAkoeNet()
+      setUser(null)
+      setServerUnreachable(false)
+      setLoading(false)
+    }
+    window.addEventListener('akoenet:session-lost', onSessionLost)
+    return () => window.removeEventListener('akoenet:session-lost', onSessionLost)
+  }, [])
+
+  useEffect(() => {
+    if (!user) return undefined
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSessionAfterForeground()
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [user])
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password })
@@ -131,6 +162,7 @@ export function AuthProvider({ children }) {
     setUser(data.user)
     setServerUnreachable(false)
     connectAkoeNet(data.token)
+    startSessionKeepAlive()
     return { user: data.user, requires2fa: false }
   }, [])
 
@@ -144,6 +176,7 @@ export function AuthProvider({ children }) {
     setUser(data.user)
     setServerUnreachable(false)
     connectAkoeNet(data.token)
+    startSessionKeepAlive()
     return data.user
   }, [])
 
@@ -152,6 +185,7 @@ export function AuthProvider({ children }) {
     connectAkoeNet(token)
     const { data } = await api.get('/auth/me')
     setUser(data)
+    startSessionKeepAlive()
     return data
   }, [])
 
