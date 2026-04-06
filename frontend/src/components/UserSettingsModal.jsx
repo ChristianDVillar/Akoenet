@@ -72,6 +72,8 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [manualPlatform, setManualPlatform] = useState('')
   const [activitySaving, setActivitySaving] = useState(false)
   const [steamBusy, setSteamBusy] = useState(false)
+  const [twitchBusy, setTwitchBusy] = useState(false)
+  const [twitchConfigured, setTwitchConfigured] = useState(null)
   const [uiTheme, setUiTheme] = useState(() => sanitizeFull({}))
   const [themeReady, setThemeReady] = useState(false)
   const streamRef = useRef(null)
@@ -133,6 +135,24 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   useEffect(() => {
     if (!open) stopMicTest()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    const ac = new AbortController()
+    api
+      .get('/auth/twitch/status', { signal: ac.signal })
+      .then((r) => {
+        if (!cancelled) setTwitchConfigured(Boolean(r.data?.configured))
+      })
+      .catch(() => {
+        if (!cancelled) setTwitchConfigured(false)
+      })
+    return () => {
+      cancelled = true
+      ac.abort()
+    }
   }, [open])
 
   useEffect(() => {
@@ -227,6 +247,38 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
           ? err.response?.data?.message || t('userSettings.activity.errorBlocked')
           : err.response?.data?.error || t('userSettings.activity.errorSave')
       )
+    } finally {
+      setActivitySaving(false)
+    }
+  }
+
+  async function connectTwitch() {
+    if (twitchConfigured !== true) {
+      setError(t('userSettings.activity.errorTwitchUnavailable'))
+      return
+    }
+    setTwitchBusy(true)
+    setError('')
+    try {
+      const { data } = await api.post('/auth/twitch/link/begin')
+      if (data?.url) window.location.href = data.url
+    } catch {
+      setError(t('userSettings.activity.errorTwitchStart'))
+    } finally {
+      setTwitchBusy(false)
+    }
+  }
+
+  async function unlinkTwitch() {
+    setActivitySaving(true)
+    setError('')
+    setInfo('')
+    try {
+      await api.patch('/auth/me', { twitch_unlink: true })
+      await refreshUser()
+      setInfo(t('userSettings.activity.twitchUnlinkedInfo'))
+    } catch {
+      setError(t('userSettings.activity.errorTwitchUnlink'))
     } finally {
       setActivitySaving(false)
     }
@@ -793,6 +845,46 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                   />
                   <span>{t('userSettings.activity.shareLabel')}</span>
                 </label>
+                {twitchConfigured === true ? (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <strong className="muted small" style={{ display: 'block', marginBottom: 6 }}>
+                      {t('userSettings.activity.twitchHeading')}
+                    </strong>
+                    <p className="muted small" style={{ margin: '0 0 0.5rem' }}>
+                      {user?.twitch_username
+                        ? t('userSettings.activity.twitchLinkedAs', { username: user.twitch_username })
+                        : t('userSettings.activity.twitchNotLinked')}
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn twitch small"
+                        disabled={twitchBusy || !shareGameActivity}
+                        onClick={() => connectTwitch()}
+                      >
+                        {twitchBusy
+                          ? t('userSettings.activity.redirecting')
+                          : user?.twitch_username
+                            ? t('userSettings.activity.reconnectTwitch')
+                            : t('userSettings.activity.connectTwitch')}
+                      </button>
+                      {user?.twitch_username ? (
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          disabled={activitySaving}
+                          onClick={() => unlinkTwitch()}
+                        >
+                          {t('userSettings.activity.unlinkTwitch')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : twitchConfigured === false ? (
+                  <p className="muted small" style={{ marginTop: '0.75rem' }}>
+                    {t('userSettings.activity.twitchUnavailableHint')}
+                  </p>
+                ) : null}
                 {user?.steam_status?.web_api_configured ? (
                   <div style={{ marginTop: '0.75rem' }}>
                     <strong className="muted small" style={{ display: 'block', marginBottom: 6 }}>
