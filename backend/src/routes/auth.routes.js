@@ -14,6 +14,8 @@ const { notifyGameActivityChange, clearSteamActivityForUser } = require("../lib/
 const { getJwtSecret } = require("../lib/jwt-secret");
 const { assertContentAllowed, BLOCKED_MESSAGE } = require("../lib/blocked-content");
 const { sha256Hex, createStoredRefreshToken } = require("../lib/refresh-token");
+const { getCurrentTermsVersion, mergeTermsFieldsIntoUserPayload } = require("../lib/legal-terms");
+const requireTermsAccepted = require("../middleware/require-terms");
 const { sendRegistrationVerificationEmail, isResendConfigured } = require("../lib/resend-mail");
 const { authenticator } = require("otplib");
 const { generateSecret, verify: verifyTotp } = require("../lib/totp");
@@ -152,6 +154,34 @@ function signAppToken(user) {
   );
 }
 
+/** User object for login/refresh responses; includes terms / GDPR gate fields. */
+function buildAuthUserPayload(user, overrides = {}) {
+  return mergeTermsFieldsIntoUserPayload(
+    user,
+    sanitizeUserMediaFields({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      avatar_url: user.avatar_url,
+      banner_url: user.banner_url,
+      accent_color: user.accent_color,
+      bio: user.bio,
+      presence_status: user.presence_status,
+      custom_status: user.custom_status,
+      is_admin: Boolean(user.is_admin),
+      twitch_username: user.twitch_username ?? null,
+      totp_enabled: Boolean(user.totp_enabled),
+      push_notifications_enabled: user.push_notifications_enabled !== false,
+      steam_linked: Boolean(user.steam_id),
+      share_game_activity: user.share_game_activity !== false,
+      desktop_game_detect_opt_in: Boolean(user.desktop_game_detect_opt_in),
+      manual_activity_game: user.manual_activity_game ?? null,
+      manual_activity_platform: user.manual_activity_platform ?? null,
+      ...overrides,
+    })
+  );
+}
+
 function getTwitchEmail(twitchId) {
   return `twitch_${twitchId}@twitch.local`;
 }
@@ -177,6 +207,7 @@ const registerCompleteSchema = z
     username: z.string().trim().min(2).max(40),
     password: z.string().min(6).max(200),
     birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "birth_date must be YYYY-MM-DD"),
+    accept_terms_version: z.string().trim().min(1).max(32),
   })
   .refine(
     (data) => {
@@ -192,7 +223,11 @@ const registerCompleteSchema = z
       return age != null && age >= 13;
     },
     { message: "You must be at least 13 years old to register.", path: ["birth_date"] }
-  );
+  )
+  .refine((data) => data.accept_terms_version === getCurrentTermsVersion(), {
+    message: "You must accept the current Terms and Privacy Policy.",
+    path: ["accept_terms_version"],
+  });
 
 const registerPendingQuerySchema = z.object({
   token: z.string().regex(/^[a-f0-9]{64}$/i),
@@ -202,6 +237,15 @@ const loginSchema = z.object({
   email: z.string().trim().email().max(120),
   password: z.string().min(1).max(200),
 });
+
+const termsAcceptSchema = z
+  .object({
+    version: z.string().trim().min(1).max(32),
+  })
+  .refine((data) => data.version === getCurrentTermsVersion(), {
+    message: "You must accept the current published Terms and Privacy Policy version.",
+    path: ["version"],
+  });
 
 const refreshTokenSchema = z.object({
   refresh_token: z.string().min(20).max(512),
@@ -289,6 +333,47 @@ const eraseAccountSchema = z.object({
   reason: z.string().trim().max(240).optional(),
 });
 
+router.get("/terms/version", (_req, res) => {
+  res.json({ current_terms_version: getCurrentTermsVersion() });
+});
+
+router.post(
+  "/terms/accept",
+  auth,
+  userDataRateLimiter,
+  validate({ body: termsAcceptSchema }),
+  async (req, res) => {
+    const cur = getCurrentTermsVersion();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const upd = await client.query(
+        `UPDATE users
+         SET terms_version = $1, terms_accepted_at = NOW()
+         WHERE id = $2 AND deleted_at IS NULL
+         RETURNING *`,
+        [cur, req.user.id]
+      );
+      if (!upd.rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "User not found" });
+      }
+      await client.query(
+        `INSERT INTO legal_terms_acceptances (user_id, terms_version, accepted_at) VALUES ($1, $2, NOW())`,
+        [req.user.id, cur]
+      );
+      await client.query("COMMIT");
+      res.json({ ok: true, user: buildAuthUserPayload(upd.rows[0]) });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      logger.error({ err: e }, "terms/accept failed");
+      res.status(500).json({ error: "Could not record terms acceptance" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
 router.post("/register/start", authRateLimiter, validate({ body: registerStartSchema }), async (req, res) => {
   try {
     const emailNorm = String(req.body.email).trim().toLowerCase();
@@ -367,36 +452,54 @@ router.get("/register/pending", authRateLimiter, validate({ query: registerPendi
 });
 
 router.post("/register/complete", authRateLimiter, validate({ body: registerCompleteSchema }), async (req, res) => {
+  const {
+    token: rawToken,
+    username,
+    password,
+    birth_date: birthDate,
+    accept_terms_version: acceptedTermsVersion,
+  } = req.body;
+  if (!assertContentAllowed(username, { source: "register_username" }).ok) {
+    return res.status(400).json({ error: "blocked_content", message: BLOCKED_MESSAGE });
+  }
+  const client = await pool.connect();
   try {
-    const { token: rawToken, username, password, birth_date: birthDate } = req.body;
-    if (!assertContentAllowed(username, { source: "register_username" }).ok) {
-      return res.status(400).json({ error: "blocked_content", message: BLOCKED_MESSAGE });
-    }
     const tokenHash = sha256Hex(rawToken);
-    const tokRes = await pool.query(
+    await client.query("BEGIN");
+    const tokRes = await client.query(
       `DELETE FROM registration_tokens
        WHERE token_hash = $1 AND expires_at > NOW()
        RETURNING email_norm`,
       [tokenHash]
     );
     if (tokRes.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(400).json({ error: "invalid_or_expired_token" });
     }
     const emailNorm = tokRes.rows[0].email_norm;
     const hash = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      `INSERT INTO users (username, email, password, birth_date, age_verified_at)
-       VALUES ($1, $2, $3, $4::date, NOW())
-       RETURNING id, username, email, created_at`,
-      [username, emailNorm, hash, birthDate]
+    const result = await client.query(
+      `INSERT INTO users (username, email, password, birth_date, age_verified_at, terms_version, terms_accepted_at)
+       VALUES ($1, $2, $3, $4::date, NOW(), $5, NOW())
+       RETURNING id, username, email, created_at, terms_version, terms_accepted_at`,
+      [username, emailNorm, hash, birthDate, acceptedTermsVersion]
     );
+    const uid = result.rows[0].id;
+    await client.query(
+      `INSERT INTO legal_terms_acceptances (user_id, terms_version, accepted_at) VALUES ($1, $2, NOW())`,
+      [uid, acceptedTermsVersion]
+    );
+    await client.query("COMMIT");
     res.status(201).json(result.rows[0]);
   } catch (e) {
+    await client.query("ROLLBACK");
     if (e.code === "23505") {
       return res.status(409).json({ error: "Email already registered" });
     }
     logger.error({ err: e }, "Register complete failed");
     res.status(500).json({ error: "Register failed" });
+  } finally {
+    client.release();
   }
 });
 
@@ -434,26 +537,7 @@ router.post("/login", authRateLimiter, validate({ body: loginSchema }), async (r
     res.json({
       token,
       refresh_token,
-      user: sanitizeUserMediaFields({
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        avatar_url: user.avatar_url,
-        banner_url: user.banner_url,
-        accent_color: user.accent_color,
-        bio: user.bio,
-        presence_status: user.presence_status,
-        custom_status: user.custom_status,
-        is_admin: Boolean(user.is_admin),
-        twitch_username: user.twitch_username ?? null,
-        totp_enabled: Boolean(user.totp_enabled),
-        push_notifications_enabled: user.push_notifications_enabled !== false,
-        steam_linked: Boolean(user.steam_id),
-        share_game_activity: user.share_game_activity !== false,
-        desktop_game_detect_opt_in: Boolean(user.desktop_game_detect_opt_in),
-        manual_activity_game: user.manual_activity_game ?? null,
-        manual_activity_platform: user.manual_activity_platform ?? null,
-      }),
+      user: buildAuthUserPayload(user),
     });
   } catch (e) {
     logger.error({ err: e }, "Login failed");
@@ -488,26 +572,7 @@ router.post("/login/2fa", authRateLimiter, validate({ body: login2faSchema }), a
     res.json({
       token,
       refresh_token,
-      user: sanitizeUserMediaFields({
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        avatar_url: user.avatar_url,
-        banner_url: user.banner_url,
-        accent_color: user.accent_color,
-        bio: user.bio,
-        presence_status: user.presence_status,
-        custom_status: user.custom_status,
-        is_admin: Boolean(user.is_admin),
-        twitch_username: user.twitch_username ?? null,
-        totp_enabled: true,
-        push_notifications_enabled: user.push_notifications_enabled !== false,
-        steam_linked: Boolean(user.steam_id),
-        share_game_activity: user.share_game_activity !== false,
-        desktop_game_detect_opt_in: Boolean(user.desktop_game_detect_opt_in),
-        manual_activity_game: user.manual_activity_game ?? null,
-        manual_activity_platform: user.manual_activity_platform ?? null,
-      }),
+      user: buildAuthUserPayload(user, { totp_enabled: true }),
     });
   } catch (e) {
     logger.error({ err: e }, "Login 2FA failed");
@@ -545,26 +610,7 @@ router.post("/refresh", authRateLimiter, validate({ body: refreshTokenSchema }),
     res.json({
       token,
       refresh_token,
-      user: sanitizeUserMediaFields({
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        avatar_url: user.avatar_url,
-        banner_url: user.banner_url,
-        accent_color: user.accent_color,
-        bio: user.bio,
-        presence_status: user.presence_status,
-        custom_status: user.custom_status,
-        is_admin: Boolean(user.is_admin),
-        twitch_username: user.twitch_username ?? null,
-        totp_enabled: Boolean(user.totp_enabled),
-        push_notifications_enabled: user.push_notifications_enabled !== false,
-        steam_linked: Boolean(user.steam_id),
-        share_game_activity: user.share_game_activity !== false,
-        desktop_game_detect_opt_in: Boolean(user.desktop_game_detect_opt_in),
-        manual_activity_game: user.manual_activity_game ?? null,
-        manual_activity_platform: user.manual_activity_platform ?? null,
-      }),
+      user: buildAuthUserPayload(user),
     });
   } catch (e) {
     logger.error({ err: e }, "Refresh token failed");
@@ -589,7 +635,7 @@ router.post("/logout", authRateLimiter, async (req, res) => {
 });
 
 /** Revoke all refresh tokens for the current user (logout every device). Access JWT still valid until it expires. */
-router.post("/logout-all", auth, userDataRateLimiter, async (req, res) => {
+router.post("/logout-all", auth, requireTermsAccepted, userDataRateLimiter, async (req, res) => {
   try {
     const r = await pool.query(
       `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
@@ -741,7 +787,7 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
 });
 
 /** Returns a Steam OpenID URL; client opens it in the same window. Requires STEAM_WEB_API_KEY for linking. */
-router.post("/steam/link/begin", auth, userDataRateLimiter, (req, res) => {
+router.post("/steam/link/begin", auth, requireTermsAccepted, userDataRateLimiter, (req, res) => {
   if (!steamWebApiKey) {
     return res.status(503).json({
       error: "steam_not_configured",
@@ -812,7 +858,7 @@ router.get("/push/vapid-public-key", (_req, res) => {
   res.json({ publicKey: k });
 });
 
-router.post("/push/subscribe", auth, validate({ body: pushSubscribeSchema }), async (req, res) => {
+router.post("/push/subscribe", auth, requireTermsAccepted, validate({ body: pushSubscribeSchema }), async (req, res) => {
   try {
     const { endpoint, keys } = req.body;
     await pool.query(
@@ -828,7 +874,7 @@ router.post("/push/subscribe", auth, validate({ body: pushSubscribeSchema }), as
   }
 });
 
-router.delete("/push/subscribe", auth, async (req, res) => {
+router.delete("/push/subscribe", auth, requireTermsAccepted, async (req, res) => {
   const endpoint = String(req.query.endpoint || "").trim();
   if (!endpoint) {
     await pool.query(`DELETE FROM push_subscriptions WHERE user_id = $1`, [req.user.id]);
@@ -841,7 +887,7 @@ router.delete("/push/subscribe", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/2fa/setup", auth, userDataRateLimiter, async (req, res) => {
+router.post("/2fa/setup", auth, requireTermsAccepted, userDataRateLimiter, async (req, res) => {
   try {
     const row = await pool.query(`SELECT totp_enabled FROM users WHERE id = $1`, [req.user.id]);
     if (row.rows[0]?.totp_enabled) {
@@ -858,7 +904,7 @@ router.post("/2fa/setup", auth, userDataRateLimiter, async (req, res) => {
   }
 });
 
-router.post("/2fa/enable", auth, userDataRateLimiter, validate({ body: totpEnableSchema }), async (req, res) => {
+router.post("/2fa/enable", auth, requireTermsAccepted, userDataRateLimiter, validate({ body: totpEnableSchema }), async (req, res) => {
   const row = await pool.query(`SELECT totp_pending_secret FROM users WHERE id = $1`, [req.user.id]);
   const pending = row.rows[0]?.totp_pending_secret;
   if (!pending) return res.status(400).json({ error: "no_pending_setup" });
@@ -870,7 +916,7 @@ router.post("/2fa/enable", auth, userDataRateLimiter, validate({ body: totpEnabl
   res.json({ ok: true });
 });
 
-router.post("/2fa/disable", auth, userDataRateLimiter, validate({ body: totpDisableSchema }), async (req, res) => {
+router.post("/2fa/disable", auth, requireTermsAccepted, userDataRateLimiter, validate({ body: totpDisableSchema }), async (req, res) => {
   const userRes = await pool.query(`SELECT * FROM users WHERE id = $1`, [req.user.id]);
   const user = userRes.rows[0];
   if (!user?.totp_enabled) return res.status(400).json({ error: "not_enabled" });
@@ -888,6 +934,7 @@ router.get("/me", auth, async (req, res) => {
   const result = await pool.query(
    `SELECT id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
             steam_id,
+            terms_version, terms_accepted_at,
             COALESCE(share_game_activity, true) AS share_game_activity,
             COALESCE(desktop_game_detect_opt_in, false) AS desktop_game_detect_opt_in,
             manual_activity_game, manual_activity_platform,
@@ -900,13 +947,16 @@ router.get("/me", auth, async (req, res) => {
     return res.status(404).json({ error: "User not found" });
   }
   const row = result.rows[0];
-  const { steam_id: steamId, ...rest } = row;
+  const { steam_id: steamId, terms_version: _tv, terms_accepted_at: _tmt, ...rest } = row;
   res.json(
-    sanitizeUserMediaFields({
-      ...rest,
-      steam_linked: Boolean(steamId),
-      steam_status: { web_api_configured: Boolean(steamWebApiKey) },
-    })
+    mergeTermsFieldsIntoUserPayload(
+      row,
+      sanitizeUserMediaFields({
+        ...rest,
+        steam_linked: Boolean(steamId),
+        steam_status: { web_api_configured: Boolean(steamWebApiKey) },
+      })
+    )
   );
 });
 
@@ -959,7 +1009,7 @@ router.get("/me/export", auth, async (req, res) => {
   return res.json(payload);
 });
 
-router.get("/me/reports", auth, async (req, res) => {
+router.get("/me/reports", auth, requireTermsAccepted, async (req, res) => {
   const result = await pool.query(
     `SELECT
        a.id,
@@ -983,7 +1033,7 @@ router.get("/me/reports", auth, async (req, res) => {
   res.json(result.rows);
 });
 
-router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSchema }), async (req, res) => {
+router.patch("/me", auth, requireTermsAccepted, userDataRateLimiter, validate({ body: updateSettingsSchema }), async (req, res) => {
   const {
     username,
     avatar_url,
@@ -1086,6 +1136,7 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
        WHERE id = $1
        RETURNING id, username, email, avatar_url, banner_url, accent_color, bio, presence_status, custom_status, is_admin, twitch_username, scheduler_streamer_username, created_at,
                  steam_id,
+                 terms_version, terms_accepted_at,
                  COALESCE(share_game_activity, true) AS share_game_activity,
                  COALESCE(desktop_game_detect_opt_in, false) AS desktop_game_detect_opt_in,
                  manual_activity_game, manual_activity_platform,
@@ -1112,16 +1163,19 @@ router.patch("/me", auth, userDataRateLimiter, validate({ body: updateSettingsSc
     );
     await client.query("COMMIT");
     const row = updated.rows[0];
-    const { steam_id: stId, ...restOut } = row;
+    const { steam_id: stId, terms_version: _tv, terms_accepted_at: _tmt, ...restOut } = row;
     if (steamUnlink === true) clearSteamActivityForUser(req.user.id);
     const io = req.app?.locals?.io;
     if (io) notifyGameActivityChange(io, req.user.id).catch(() => {});
     return res.json(
-      sanitizeUserMediaFields({
-        ...restOut,
-        steam_linked: Boolean(stId),
-        steam_status: { web_api_configured: Boolean(steamWebApiKey) },
-      })
+      mergeTermsFieldsIntoUserPayload(
+        row,
+        sanitizeUserMediaFields({
+          ...restOut,
+          steam_linked: Boolean(stId),
+          steam_status: { web_api_configured: Boolean(steamWebApiKey) },
+        })
+      )
     );
   } catch (e) {
     await client.query("ROLLBACK");

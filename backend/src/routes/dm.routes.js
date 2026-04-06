@@ -2,6 +2,7 @@ const express = require("express");
 const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const requireTermsAccepted = require("../middleware/require-terms");
 const validate = require("../middleware/validate");
 const { reportRateLimiter, userDataRateLimiter } = require("../middleware/rate-limit");
 const { logAdminAction } = require("../lib/audit-log");
@@ -12,6 +13,7 @@ const { areUsersBlocked } = require("../lib/social-guard");
 
 const router = express.Router();
 router.use(auth);
+router.use(requireTermsAccepted);
 
 const usersQuerySchema = z.object({
   q: z.string().trim().max(60).optional().default(""),

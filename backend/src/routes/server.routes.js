@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const requireTermsAccepted = require("../middleware/require-terms");
 const validate = require("../middleware/validate");
 const logger = require("../lib/logger");
 const {
@@ -97,6 +98,7 @@ router.get("/invite/:token/preview", async (req, res) => {
 });
 
 router.use(auth);
+router.use(requireTermsAccepted);
 
 router.get("/:serverId/ban-status", validate({ params: serverIdParamSchema }), async (req, res) => {
   const serverId = req.params.serverId;

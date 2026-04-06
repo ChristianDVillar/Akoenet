@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import LegalTermsGate from '../components/LegalTermsGate'
 import Dashboard from './Dashboard'
 import Landing from './Landing'
 import InvitePage from './InvitePage'
@@ -16,6 +17,10 @@ export default function Home() {
         <p className="muted">Loading AkoeNet…</p>
       </div>
     )
+  }
+
+  if (user?.needs_terms_acceptance) {
+    return <LegalTermsGate />
   }
 
   if (inviteFromQuery) {

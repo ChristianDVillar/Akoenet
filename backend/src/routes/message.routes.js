@@ -2,6 +2,7 @@ const express = require("express");
 const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const requireTermsAccepted = require("../middleware/require-terms");
 const validate = require("../middleware/validate");
 const { reactionRateLimiter, reportRateLimiter, userDataRateLimiter } = require("../middleware/rate-limit");
 const { canReadChannel, canManageChannels, getChannelServerId, listReadableChannelIds } = require("../lib/membership");
@@ -17,6 +18,7 @@ const { searchGlobalElastic } = require("../lib/elastic-index");
 
 const router = express.Router();
 router.use(auth);
+router.use(requireTermsAccepted);
 
 /** List rows with optional reply preview (parent message snippet). */
 const MESSAGE_LIST_SELECT = `

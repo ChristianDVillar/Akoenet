@@ -3,6 +3,7 @@ import { useLandingLocale } from '../hooks/useLandingLocale'
 import { footerContent } from '../lib/landingContent'
 
 const author = import.meta.env.VITE_APP_AUTHOR || 'Christian'
+const legalContactEmail = String(import.meta.env.VITE_LEGAL_CONTACT_EMAIL || '').trim()
 
 export default function SiteFooter({ className = '' }) {
   const { locale } = useLandingLocale()
@@ -41,8 +42,26 @@ export default function SiteFooter({ className = '' }) {
           <span className="site-footer-dot" aria-hidden>
             ·
           </span>
+          <Link to="/legal/cookies">{f.cookies}</Link>
+          <span className="site-footer-dot" aria-hidden>
+            ·
+          </span>
+          <Link to="/legal/moderacion">{f.moderation}</Link>
+          <span className="site-footer-dot" aria-hidden>
+            ·
+          </span>
           <Link to="/status">{f.status}</Link>
         </nav>
+        {legalContactEmail ? (
+          <p className="site-footer-legal-contact muted small">
+            <span className="site-footer-legal-contact-label">{f.legalContact}: </span>
+            <a href={`mailto:${legalContactEmail}`}>{legalContactEmail}</a>
+            <span className="site-footer-legal-contact-hint">
+              {' '}
+              ({locale === 'es' ? 'autoridades, contenido ilegal (DSA), consultas legales' : 'authorities, illegal content (DSA), legal notices'})
+            </span>
+          </p>
+        ) : null}
         <p className="site-footer-copyright muted small">
           © {year} <strong>{author}</strong>. {f.copyrightReserved} {f.copyrightSubject}{' '}
           <Link to="/legal/terminos">{f.terms}</Link> {f.copyrightBetweenLinks}{' '}

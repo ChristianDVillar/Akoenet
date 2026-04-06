@@ -2,11 +2,13 @@ const express = require("express");
 const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const requireTermsAccepted = require("../middleware/require-terms");
 const validate = require("../middleware/validate");
 const { canManageChannels, isServerMember, getChannelPermissionsForUser } = require("../lib/membership");
 
 const router = express.Router();
 router.use(auth);
+router.use(requireTermsAccepted);
 const channelTypeSchema = z.enum(["text", "voice", "forum"]);
 const boolSchema = z.boolean().optional();
 const serverIdParamSchema = z.object({

@@ -112,6 +112,9 @@ api.interceptors.response.use(
   (r) => r,
   async (err) => {
     const status = err.response?.status
+    if (status === 403 && err.response?.data?.error === 'terms_acceptance_required') {
+      window.dispatchEvent(new CustomEvent('akoenet:terms-required'))
+    }
     const cfg = err.config
     if (
       status !== 401 ||

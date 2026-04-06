@@ -2,11 +2,13 @@ const express = require("express");
 const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const requireTermsAccepted = require("../middleware/require-terms");
 const validate = require("../middleware/validate");
 const { sanitizeUserMediaFields } = require("../lib/sanitize-media-url");
 
 const router = express.Router();
 router.use(auth);
+router.use(requireTermsAccepted);
 
 const userIdBody = z.object({ user_id: z.coerce.number().int().positive() });
 const friendshipIdParams = z.object({ id: z.coerce.number().int().positive() });

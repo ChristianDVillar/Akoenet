@@ -15,6 +15,7 @@ import InvitePage from './pages/InvitePage'
 import SystemStatus from './pages/SystemStatus'
 import CookieConsentBanner from './components/CookieConsentBanner'
 import ThemeSync from './components/ThemeSync'
+import LegalTermsGate from './components/LegalTermsGate'
 
 function PrivateRoute({ children }) {
   const { user, loading, serverUnreachable, refreshUser } = useAuth()
@@ -45,6 +46,7 @@ function PrivateRoute({ children }) {
     )
   }
   if (!user) return <Navigate to="/login" replace />
+  if (user.needs_terms_acceptance) return <LegalTermsGate />
   return children
 }
 
@@ -73,6 +75,7 @@ function AdminRoute({ children }) {
     )
   }
   if (!user) return <Navigate to="/login" replace />
+  if (user.needs_terms_acceptance) return <LegalTermsGate />
   if (!user.is_admin) return <Navigate to="/" replace />
   return children
 }

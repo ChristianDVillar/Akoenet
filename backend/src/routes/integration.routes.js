@@ -3,6 +3,7 @@ const { z } = require("zod");
 const pool = require("../config/db");
 const validate = require("../middleware/validate");
 const auth = require("../middleware/auth");
+const requireTermsAccepted = require("../middleware/require-terms");
 const { broadcastChannelMessage } = require("../lib/channel-message-broadcast");
 const {
   fetchUpcomingEvents,
@@ -134,6 +135,7 @@ router.get("/scheduler/discovery", async (_req, res) => {
 router.get(
   "/scheduler/upcoming",
   auth,
+  requireTermsAccepted,
   validate({ query: upcomingQuerySchema }),
   async (req, res) => {
     let username = String(req.query.username || "").trim();
