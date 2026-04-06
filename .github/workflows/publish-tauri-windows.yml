@@ -5,6 +5,11 @@
 #   TAURI_SIGNING_PRIVATE_KEY        — contenido completo de la clave minisign (.key), una línea base64
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — opcional, si la clave tiene contraseña
 #
+# Si el job falla al subir el release con:
+#   Error: Resource not accessible by integration (create-a-release)
+# entonces en Settings → Actions → General → Workflow permissions elige
+# "Read and write permissions" (no solo lectura). Sin eso, GITHUB_TOKEN no puede crear Releases.
+#
 # Uso: git tag v0.4.0 && git push origin v0.4.0
 # (el tag debe coincidir con la versión en tauri.conf.json, Cargo.toml y package.json)
 
@@ -15,10 +20,12 @@ on:
     tags:
       - 'v*'
 
+# Necesario para que GITHUB_TOKEN pueda crear el Release y subir assets (evita 403 "not accessible by integration").
+permissions:
+  contents: write
+
 jobs:
   publish-tauri:
-    permissions:
-      contents: write
     runs-on: windows-latest
 
     steps:
