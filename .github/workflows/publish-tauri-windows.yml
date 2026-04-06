@@ -5,7 +5,7 @@
 #   TAURI_SIGNING_PRIVATE_KEY        — contenido completo de la clave minisign (.key), una línea base64
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — opcional, si la clave tiene contraseña
 #
-# Uso: git tag v0.3.1 && git push origin v0.3.1
+# Uso: git tag v0.4.0 && git push origin v0.4.0
 # (el tag debe coincidir con la versión en tauri.conf.json, Cargo.toml y package.json)
 
 name: Publish desktop (Windows)
