@@ -3,6 +3,7 @@ const multer = require("multer");
 const { z } = require("zod");
 const pool = require("../config/db");
 const auth = require("../middleware/auth");
+const requireTermsAccepted = require("../middleware/require-terms");
 const validate = require("../middleware/validate");
 const { uploadRateLimiter } = require("../middleware/rate-limit");
 const { canSendToChannel, canManageChannels } = require("../lib/membership");
@@ -92,6 +93,7 @@ router.post("/channel/:channelId", auth, uploadRateLimiter, validate({ params: c
 router.post(
   "/direct/:conversationId",
   auth,
+  requireTermsAccepted,
   uploadRateLimiter,
   validate({ params: conversationIdParamSchema }),
   upload.single("file"),
@@ -124,6 +126,7 @@ router.post(
 router.post(
   "/server/:serverId/emoji",
   auth,
+  requireTermsAccepted,
   uploadRateLimiter,
   validate({ params: serverIdParamSchema }),
   upload.single("file"),

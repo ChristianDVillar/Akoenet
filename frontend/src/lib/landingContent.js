@@ -73,7 +73,7 @@ export const landingContent = {
       },
       {
         q: 'Where are the terms and privacy policy?',
-        a: 'Use the footer links: Terms of Service, Privacy Policy, and Legal notice. Cookies and local storage are described in the Privacy Policy.',
+        a: 'Use the footer links: Terms of Service, Privacy Policy, Cookie policy, and Legal notice. You can accept or reject non-essential storage in the cookie banner.',
       },
       {
         q: 'Why does Windows or Chrome warn that the desktop download is dangerous?',
@@ -204,7 +204,7 @@ export const landingContent = {
       },
       {
         q: '¿Dónde leo términos y privacidad?',
-        a: 'En el pie de página: Términos del servicio, Política de privacidad y aviso legal. Las cookies y el almacenamiento local se describen en la política de privacidad.',
+        a: 'En el pie de página: Términos, Privacidad, Política de cookies, Moderación de contenidos y aviso legal. Puedes aceptar o rechazar lo no esencial en el banner de cookies.',
       },
       {
         q: '¿Por qué Windows o Chrome dicen que la descarga de escritorio es peligrosa?',
@@ -273,6 +273,9 @@ export const footerContent = {
     legal: 'Legal notice',
     dmca: 'DMCA',
     dpo: 'Data protection',
+    cookies: 'Cookie policy',
+    moderation: 'Content moderation',
+    legalContact: 'Legal & DSA contact',
     status: 'System status',
     copyrightReserved: 'All rights reserved.',
     copyrightSubject: 'Use is subject to',
@@ -289,6 +292,9 @@ export const footerContent = {
     legal: 'Aviso legal',
     dmca: 'DMCA',
     dpo: 'Protección de datos',
+    cookies: 'Política de cookies',
+    moderation: 'Moderación de contenidos',
+    legalContact: 'Contacto legal y DSA',
     status: 'Estado del sistema',
     copyrightReserved: 'Todos los derechos reservados.',
     copyrightSubject: 'El uso está sujeto a',

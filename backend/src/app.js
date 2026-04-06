@@ -22,6 +22,7 @@ const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 const pool = require("./config/db");
 const { getStorageStatus, resolveDownloadUrl } = require("./services/storage");
 const auth = require("./middleware/auth");
+const requireTermsAccepted = require("./middleware/require-terms");
 const requireAdmin = require("./middleware/require-admin");
 const { buildOpenApiSpec } = require("./docs/openapi");
 const { fetchSchedulerDiscovery } = require("./lib/scheduler-client");
@@ -217,11 +218,11 @@ function createApp() {
     res.status(report.ok ? 200 : 503).json(report);
   });
 
-  app.get("/admin/health/deps", auth, requireAdmin, async (_req, res) => {
+  app.get("/admin/health/deps", auth, requireTermsAccepted, requireAdmin, async (_req, res) => {
     const report = await buildDepsReport(app);
     res.status(report.ok ? 200 : 503).json(report);
   });
-  app.use("/admin", auth, requireAdmin, adminRoutes);
+  app.use("/admin", auth, requireTermsAccepted, requireAdmin, adminRoutes);
 
   app.use("/auth", authRoutes);
   // Alias for Twitch OAuth URLs already registered as /api/user/auth/... (must match TWITCH_REDIRECT_URI exactly).

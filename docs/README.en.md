@@ -19,8 +19,7 @@ AkoeNet is a community-focused real-time communication platform with servers, te
 
 ## Legal
 
-- Index: [`legal/README.md`](./legal/README.md).
-- Source Markdown under `docs/legal/`: `PRIVACIDAD.md`, `TERMINOS_Y_CONDICIONES.md`, `PROTECCION_LEGAL.md` (also exposed in the Vite client at `/legal/privacidad`, `/legal/terminos`, `/legal/proteccion`).
+- Index and files live under `docs/legal/` (not linked from this documentation README). The Vite client exposes routes such as `/legal/privacidad`, `/legal/terminos`, `/legal/proteccion`, etc.
 
 ## Tech Stack
 

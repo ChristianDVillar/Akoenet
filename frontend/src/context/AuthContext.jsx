@@ -85,8 +85,13 @@ export function AuthProvider({ children }) {
       try {
         const { data } = await api.get('/auth/me')
         setUser(data)
-        connectAkoeNet(localStorage.getItem('token') || token)
-        startSessionKeepAlive()
+        if (data.needs_terms_acceptance) {
+          stopSessionKeepAlive()
+          disconnectAkoeNet()
+        } else {
+          connectAkoeNet(localStorage.getItem('token') || token)
+          startSessionKeepAlive()
+        }
         setServerUnreachable(false)
         setLoading(false)
         return
@@ -142,6 +147,14 @@ export function AuthProvider({ children }) {
   }, [])
 
   useEffect(() => {
+    const onTerms = () => {
+      refreshUser()
+    }
+    window.addEventListener('akoenet:terms-required', onTerms)
+    return () => window.removeEventListener('akoenet:terms-required', onTerms)
+  }, [refreshUser])
+
+  useEffect(() => {
     if (!user) return undefined
     const onVis = () => {
       if (document.visibilityState === 'visible') {
@@ -161,8 +174,13 @@ export function AuthProvider({ children }) {
     if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
     setUser(data.user)
     setServerUnreachable(false)
-    connectAkoeNet(data.token)
-    startSessionKeepAlive()
+    if (!data.user.needs_terms_acceptance) {
+      connectAkoeNet(data.token)
+      startSessionKeepAlive()
+    } else {
+      stopSessionKeepAlive()
+      disconnectAkoeNet()
+    }
     return { user: data.user, requires2fa: false }
   }, [])
 
@@ -175,18 +193,40 @@ export function AuthProvider({ children }) {
     if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
     setUser(data.user)
     setServerUnreachable(false)
-    connectAkoeNet(data.token)
-    startSessionKeepAlive()
+    if (!data.user.needs_terms_acceptance) {
+      connectAkoeNet(data.token)
+      startSessionKeepAlive()
+    } else {
+      stopSessionKeepAlive()
+      disconnectAkoeNet()
+    }
     return data.user
   }, [])
 
   const loginWithToken = useCallback(async (token) => {
     localStorage.setItem('token', token)
-    connectAkoeNet(token)
     const { data } = await api.get('/auth/me')
     setUser(data)
-    startSessionKeepAlive()
+    if (!data.needs_terms_acceptance) {
+      connectAkoeNet(token)
+      startSessionKeepAlive()
+    } else {
+      stopSessionKeepAlive()
+      disconnectAkoeNet()
+    }
     return data
+  }, [])
+
+  const acceptTerms = useCallback(async () => {
+    const { data: ver } = await api.get('/auth/terms/version')
+    const { data } = await api.post('/auth/terms/accept', { version: ver.current_terms_version })
+    setUser(data.user)
+    const t = localStorage.getItem('token')
+    if (t && data.user && !data.user.needs_terms_acceptance) {
+      connectAkoeNet(t)
+      startSessionKeepAlive()
+    }
+    return data.user
   }, [])
 
   const registerStart = useCallback(async (email, invite) => {
@@ -198,11 +238,13 @@ export function AuthProvider({ children }) {
 
   const registerComplete = useCallback(
     async (token, username, password, birth_date) => {
+      const { data: ver } = await api.get('/auth/terms/version')
       const { data } = await api.post('/auth/register/complete', {
         token,
         username,
         password,
         birth_date,
+        accept_terms_version: ver.current_terms_version,
       })
       return login(data.email, password)
     },
@@ -230,6 +272,7 @@ export function AuthProvider({ children }) {
       logoutAllDevices,
       refreshUser,
       updateCurrentUser,
+      acceptTerms,
     }),
     [
       user,
@@ -244,6 +287,7 @@ export function AuthProvider({ children }) {
       logoutAllDevices,
       refreshUser,
       updateCurrentUser,
+      acceptTerms,
     ]
   )
 

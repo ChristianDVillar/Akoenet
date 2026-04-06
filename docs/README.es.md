@@ -19,9 +19,7 @@ AkoeNet es una plataforma de comunicacion en tiempo real para comunidades, con s
 
 ## Documentacion legal
 
-- Indice: [`legal/README.md`](./legal/README.md).
-- Textos en `docs/legal/`: `PRIVACIDAD.md`, `TERMINOS_Y_CONDICIONES.md`, `PROTECCION_LEGAL.md`.
-- En el cliente (Vite), rutas publicas: `/legal/privacidad`, `/legal/terminos`, `/legal/proteccion`. La portada publica (`/` sin sesion) enlaza al pie y al FAQ.
+- Indice y ficheros: `docs/legal/` (sin enlazar desde el README de documentación; el cliente Vite expone rutas como `/legal/privacidad`, `/legal/terminos`, `/legal/proteccion`, etc.). La portada publica (`/` sin sesion) enlaza al pie y al FAQ.
 
 ## Stack tecnico
 

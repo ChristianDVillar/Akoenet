@@ -6071,20 +6071,72 @@ input.theme-color-hex:disabled {
   background: var(--nexora-glass-96);
   border-radius: 12px;
   padding: max(0.75rem, env(safe-area-inset-top, 0px)) 0.9rem 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  max-width: min(52rem, calc(100vw - 2rem));
+  margin-inline: auto;
 }
 
-.cookie-banner p {
+.cookie-banner-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cookie-banner-text {
   margin: 0;
   font-size: 0.84rem;
   color: var(--nexora-text);
+  line-height: 1.45;
+}
+
+.cookie-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.cookie-banner-actions--config {
+  justify-content: flex-end;
+  margin-top: 0.35rem;
+}
+
+.cookie-banner-config {
+  border-top: 1px solid var(--nexora-border);
+  padding-top: 0.65rem;
+}
+
+.cookie-banner-config-intro {
+  margin: 0 0 0.4rem;
+}
+
+.cookie-banner-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.8rem;
+  color: var(--nexora-text);
+  margin: 0.35rem 0;
+  cursor: pointer;
+}
+
+.cookie-banner-row input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
 }
 
 .cookie-banner a {
   color: #c4b5fd;
+}
+
+.site-footer-legal-contact {
+  margin: 0.5rem 0 0;
+  max-width: 42rem;
+  line-height: 1.45;
+}
+
+.site-footer-legal-contact-hint {
+  opacity: 0.88;
 }
 
 .legal-doc-page {
@@ -6103,9 +6155,44 @@ input.theme-color-hex:disabled {
 
 .legal-doc-back {
   display: inline-block;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.35rem;
   font-size: 0.88rem;
   color: var(--echonet);
+}
+
+.legal-doc-lang-toggle {
+  margin: 0 0 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.legal-doc-lang-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--nexora-text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal-doc-lang-btn:hover {
+  color: var(--nexora-text);
+}
+
+.legal-doc-lang-btn--active {
+  color: var(--echonet);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.legal-doc-lang-sep {
+  opacity: 0.6;
+  user-select: none;
 }
 
 .legal-doc-header h1 {
