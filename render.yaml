@@ -15,7 +15,7 @@ services:
     # Vite inyecta VITE_* en build time: defínelas aquí o en Dashboard → Environment.
     envVars:
       - key: VITE_DESKTOP_INSTALLER_URL
-        value: /releases/AkoeNet_0.4.0_x64-setup.exe
+        value: /releases/AkoeNet_0.4.1_x64-setup.exe
     routes:
       - type: redirect
         source: /favicon.ico

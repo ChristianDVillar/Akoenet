@@ -26,6 +26,7 @@ export default function ChannelList({
   onSetAppearOnline,
   schedulerStreamerUsername,
   voicePresence = {},
+  voiceScreenSharingUserIds = [],
 }) {
   function voiceUsersForChannel(channelId) {
     const k = String(channelId)
@@ -41,6 +42,13 @@ export default function ChannelList({
       return na.localeCompare(nb, undefined, { numeric: true, sensitivity: 'base' })
     })
     return list
+  }
+
+  function isVoiceScreenSharingUser(userId) {
+    if (userId == null || !Array.isArray(voiceScreenSharingUserIds) || voiceScreenSharingUserIds.length === 0)
+      return false
+    const idStr = String(userId)
+    return voiceScreenSharingUserIds.some((x) => String(x) === idStr)
   }
 
   /** Positive integer cap from API, or null if unlimited / invalid */
@@ -214,6 +222,7 @@ export default function ChannelList({
               {vSorted.map((p) => {
                 const uidKey = p.userId != null ? String(p.userId) : ''
                 const showImg = p.avatar_url && !voiceAvatarFailed.has(uidKey)
+                const liveSharing = isVoiceScreenSharingUser(p.userId)
                 return (
                   <li key={`${c.id}-${p.userId}`} className="voice-channel-connected-user">
                     {showImg ? (
@@ -231,6 +240,11 @@ export default function ChannelList({
                       </span>
                     )}
                     <span className="voice-channel-connected-name">{p.username || `User ${p.userId}`}</span>
+                    {liveSharing ? (
+                      <span className="voice-channel-live-badge" title="Compartiendo pantalla">
+                        EN VIVO
+                      </span>
+                    ) : null}
                   </li>
                 )
               })}

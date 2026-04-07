@@ -335,6 +335,25 @@ function IconVolume({ className = '' }) {
   )
 }
 
+function IconInviteOverlay() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden>
+      <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+    </svg>
+  )
+}
+
+function IconActivityOverlay() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 10H3V8h18v8zM9 10.5c0 .83-.67 1.5-1.5 1.5S6 11.33 6 10.5 6.67 9 7.5 9s1.5.67 1.5 1.5zm6 0c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5S12.67 9 13.5 9s1.5.67 1.5 1.5zM12 17c-2.61 0-4.83-1.67-5.65-4h11.3c-.82 2.33-3.04 4-5.65 4z"
+      />
+    </svg>
+  )
+}
+
 function VoiceToolbarBtn({ onClick, title, ariaLabel, pressed, active, danger, children }) {
   const cls = ['voice-icon-btn', active && 'is-active', danger && 'is-danger', pressed && 'is-pressed']
     .filter(Boolean)
@@ -392,6 +411,7 @@ export default function VoiceRoom({
   const micGainRef = useRef(100)
   const voiceJoinedChannelRef = useRef(null)
   const joinInProgressRef = useRef(false)
+  const lastScreenShareIdsKeyRef = useRef('')
   const volumeStorageKey = `akoenet_voice_volumes_${user?.id || 'anon'}_${channelId || 'none'}`
   const legacyVolumeStorageKeys = useMemo(
     () => [
@@ -429,6 +449,38 @@ export default function VoiceRoom({
       return screenShareOptions[0].key
     })
   }, [screenShareOptions])
+
+  useEffect(() => {
+    if (!joined || !onVoiceSessionChange) {
+      if (!joined) lastScreenShareIdsKeyRef.current = ''
+      return
+    }
+    const socket = getSocket()
+    const selfSid = socket?.id
+    const ids = []
+    if (screenSharing && localScreenStream && streamHasScreenShare(localScreenStream) && user?.id != null) {
+      ids.push(Number(user.id))
+    }
+    for (const p of participants) {
+      if (p.socketId === selfSid) continue
+      if (streamHasScreenShare(remoteStreams[p.socketId]) && p.userId != null) {
+        ids.push(Number(p.userId))
+      }
+    }
+    const key = ids.map(String).sort().join(',')
+    if (key === lastScreenShareIdsKeyRef.current) return
+    lastScreenShareIdsKeyRef.current = key
+    onVoiceSessionChange({ screenSharingUserIds: ids })
+  }, [
+    joined,
+    channelId,
+    screenSharing,
+    localScreenStream,
+    user?.id,
+    participants,
+    remoteStreams,
+    onVoiceSessionChange,
+  ])
 
   useEffect(() => {
     const el = screenFocusVideoRef.current
@@ -1223,9 +1275,11 @@ export default function VoiceRoom({
       ? cameraOn && screenSharing
       : streamHasCameraPip(remoteStreams[screenFocusId]))
 
+  const hasScreenShareStage = joined && screenShareOptions.length > 0
+
   return (
     <section
-      className={`channel-mode-box voice-room-discord${compact ? ' voice-room-compact' : ''}`}
+      className={`channel-mode-box voice-room-discord${compact ? ' voice-room-compact' : ''}${hasScreenShareStage ? ' voice-room-has-screen-share' : ''}`}
     >
       <header className="voice-room-top">
         <div>
@@ -1286,26 +1340,29 @@ export default function VoiceRoom({
         </div>
       </header>
 
-      {joined && screenShareOptions.length > 0 && (
+      {hasScreenShareStage && (
         <div className="voice-screen-focus-block">
-          <div className="voice-screen-focus-toolbar">
-            <label htmlFor="voice-screen-focus-select" className="voice-screen-focus-label">
-              Pantalla destacada
-            </label>
-            <select
-              id="voice-screen-focus-select"
-              className="voice-screen-focus-select"
-              value={screenFocusId ?? screenShareOptions[0]?.key ?? ''}
-              onChange={(e) => setScreenFocusId(e.target.value)}
-            >
-              {screenShareOptions.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
           <div className="voice-screen-focus-canvas">
+            <span className="voice-screen-focus-live-badge" aria-hidden>
+              EN VIVO
+            </span>
+            <div className="voice-screen-focus-toolbar voice-screen-focus-toolbar--overlay">
+              <label htmlFor="voice-screen-focus-select" className="voice-screen-focus-label">
+                Pantalla destacada
+              </label>
+              <select
+                id="voice-screen-focus-select"
+                className="voice-screen-focus-select"
+                value={screenFocusId ?? screenShareOptions[0]?.key ?? ''}
+                onChange={(e) => setScreenFocusId(e.target.value)}
+              >
+                {screenShareOptions.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="voice-screen-focus-video-shell" ref={screenFocusShellRef}>
               <video
                 ref={screenFocusVideoRef}
@@ -1324,15 +1381,42 @@ export default function VoiceRoom({
                 muted
               />
             ) : null}
+            <div className="voice-screen-focus-overlay-actions">
+              <button
+                type="button"
+                className="voice-screen-overlay-btn"
+                onClick={() => {
+                  const url = window.location.href
+                  void navigator.clipboard?.writeText(url)
+                }}
+                title="Copiar enlace de esta página"
+              >
+                <span className="voice-screen-overlay-btn-icon" aria-hidden>
+                  <IconInviteOverlay />
+                </span>
+                Invitar al chat de voz
+              </button>
+              <button type="button" className="voice-screen-overlay-btn voice-screen-overlay-btn--muted" disabled title="Próximamente">
+                <span className="voice-screen-overlay-btn-icon" aria-hidden>
+                  <IconActivityOverlay />
+                </span>
+                Elegir actividad
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       <div
-        className={`voice-stage-grid${joined && screenShareOptions.length > 0 ? ' voice-stage-grid--with-screen-focus' : ''}`}
+        className={`voice-stage-grid${hasScreenShareStage ? ' voice-stage-grid--with-screen-focus' : ''}`}
       >
         {joined && (
-          <article className="voice-stage-tile self">
+          <article
+            className={`voice-stage-tile self${hasScreenShareStage && screenFocusId === 'local' ? ' voice-stage-tile--focus' : ''}`}
+          >
+            {screenSharing && localScreenStream && streamHasScreenShare(localScreenStream) && (
+              <span className="voice-tile-live-badge">EN VIVO</span>
+            )}
             {screenSharing && localScreenStream ? (
               screenFocusId === 'local' ? (
                 cameraOn ? (
@@ -1404,7 +1488,13 @@ export default function VoiceRoom({
         {participants
           .filter((p) => p.socketId !== getSocket()?.id)
           .map((p) => (
-            <article key={p.socketId} className={`voice-stage-tile ${speakingMap[p.socketId] ? 'speaking' : ''}`}>
+            <article
+              key={p.socketId}
+              className={`voice-stage-tile ${speakingMap[p.socketId] ? 'speaking' : ''}${hasScreenShareStage && screenFocusId === p.socketId ? ' voice-stage-tile--focus' : ''}`}
+            >
+              {streamHasScreenShare(remoteStreams[p.socketId]) && (
+                <span className="voice-tile-live-badge">EN VIVO</span>
+              )}
               <RemoteParticipantMedia
                 stream={remoteStreams[p.socketId]}
                 volume={deafened ? 0 : remoteVolumes[p.socketId] ?? 100}
@@ -1433,12 +1523,19 @@ export default function VoiceRoom({
               )}
               <footer className="voice-stage-meta">
                 <span className="voice-stage-name">{p.username}</span>
-                <span
-                  className={`voice-indicator ${speakingMap[p.socketId] ? 'active' : ''}`}
-                  title={speakingMap[p.socketId] ? 'Hablando' : 'Escuchando'}
-                >
-                  <IconWaveSpeaking />
-                  <span className="voice-indicator-label">{speakingMap[p.socketId] ? 'Habla' : 'Escucha'}</span>
+                <span className="voice-stage-meta-badges">
+                  {streamHasScreenShare(remoteStreams[p.socketId]) && (
+                    <span className="voice-badge screen" title="Compartiendo pantalla">
+                      <IconScreenShare /> <span className="voice-badge-text">Pantalla</span>
+                    </span>
+                  )}
+                  <span
+                    className={`voice-indicator ${speakingMap[p.socketId] ? 'active' : ''}`}
+                    title={speakingMap[p.socketId] ? 'Hablando' : 'Escuchando'}
+                  >
+                    <IconWaveSpeaking />
+                    <span className="voice-indicator-label">{speakingMap[p.socketId] ? 'Habla' : 'Escucha'}</span>
+                  </span>
                 </span>
               </footer>
               <label className="voice-volume">

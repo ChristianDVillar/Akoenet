@@ -10,7 +10,7 @@
 # entonces en Settings → Actions → General → Workflow permissions elige
 # "Read and write permissions" (no solo lectura). Sin eso, GITHUB_TOKEN no puede crear Releases.
 #
-# Uso: git tag v0.4.0 && git push origin v0.4.0
+# Uso: git tag v0.4.1 && git push origin v0.4.1
 # (el tag debe coincidir con la versión en tauri.conf.json, Cargo.toml y package.json)
 
 name: Publish desktop (Windows)
