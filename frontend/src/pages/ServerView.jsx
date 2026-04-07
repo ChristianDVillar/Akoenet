@@ -104,6 +104,8 @@ export default function ServerView() {
   }, [clearMembersAutoCloseTimer])
   const [emojis, setEmojis] = useState([])
   const [voicePresence, setVoicePresence] = useState({})
+  /** User ids currently sharing screen in the active voice session (local client view). */
+  const [voiceScreenSharingUserIds, setVoiceScreenSharingUserIds] = useState([])
   const [connectedUserIds, setConnectedUserIds] = useState([])
   const [activityRealtime, setActivityRealtime] = useState({})
   const [gameRanking, setGameRanking] = useState([])
@@ -146,12 +148,20 @@ export default function ServerView() {
     return Array.isArray(raw) ? raw.length : undefined
   }, [voicePresence, rtcVoiceChannelId])
 
-  const handleVoiceSessionChange = useCallback(({ joined, channelId: cid }) => {
-    setVoicePersistChannelId(joined && cid != null ? Number(cid) : null)
+  const handleVoiceSessionChange = useCallback((payload) => {
+    if (!payload || typeof payload !== 'object') return
+    if ('joined' in payload) {
+      setVoicePersistChannelId(payload.joined && payload.channelId != null ? Number(payload.channelId) : null)
+      if (!payload.joined) setVoiceScreenSharingUserIds([])
+    }
+    if (Array.isArray(payload.screenSharingUserIds)) {
+      setVoiceScreenSharingUserIds(payload.screenSharingUserIds)
+    }
   }, [])
 
   useEffect(() => {
     setVoicePersistChannelId(null)
+    setVoiceScreenSharingUserIds([])
   }, [id])
 
   useEffect(() => {
@@ -666,6 +676,7 @@ export default function ServerView() {
             onSetAppearOnline={setAppearOnline}
             schedulerStreamerUsername={import.meta.env.VITE_SCHEDULER_STREAMER_USERNAME}
             voicePresence={voicePresence}
+            voiceScreenSharingUserIds={voiceScreenSharingUserIds}
           />
           <Chat
             channelId={activeChannelId}
