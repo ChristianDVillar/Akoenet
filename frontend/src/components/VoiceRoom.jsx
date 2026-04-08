@@ -647,6 +647,33 @@ export default function VoiceRoom({
     return audioContextRef.current
   }
 
+  /** Short chime for other participants when someone joins the voice channel (not played to the joiner). */
+  function playVoiceJoinChime() {
+    const ctx = ensureAudioContext()
+    if (!ctx) return
+    const run = () => {
+      const t0 = ctx.currentTime
+      const dur = 0.22
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(880, t0)
+      osc.frequency.exponentialRampToValueAtTime(1320, t0 + 0.07)
+      gain.gain.setValueAtTime(0.0001, t0)
+      gain.gain.exponentialRampToValueAtTime(0.1, t0 + 0.015)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(t0)
+      osc.stop(t0 + dur)
+    }
+    if (ctx.state === 'suspended') {
+      void ctx.resume().then(run).catch(() => {})
+    } else {
+      run()
+    }
+  }
+
   function computeLevel(analyser, dataArray) {
     analyser.getByteTimeDomainData(dataArray)
     let sum = 0
@@ -1190,6 +1217,9 @@ export default function VoiceRoom({
     const socket = getSocket()
     if (!socket || !channelId) return
     const onJoined = (participant) => {
+      if (participant.socketId !== socket.id && joined) {
+        playVoiceJoinChime()
+      }
       upsertParticipant(participant)
       if (participant.socketId !== socket.id && joined) createPeer(participant.socketId, true)
     }
