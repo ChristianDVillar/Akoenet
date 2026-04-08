@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "tauri": "node scripts/tauri-with-cargo-path.mjs",
     "tauri:dev": "node scripts/tauri-with-cargo-path.mjs dev",
-    "tauri:build": "node scripts/tauri-with-cargo-path.mjs build"
+    "tauri:build": "node scripts/tauri-with-cargo-path.mjs build",
+    "release:desktop": "node scripts/release-desktop-to-public.mjs"
   },
   "dependencies": {
     "@tauri-apps/plugin-log": "^2.8.0",

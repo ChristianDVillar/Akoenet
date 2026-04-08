@@ -40,6 +40,15 @@ cd frontend
 npm run tauri:build
 ```
 
+**Build + copia a `public/releases/`** (para servir el `.exe` bajo `/releases/…` en el sitio estático, p. ej. `render.yaml`):
+
+```bash
+cd frontend
+npm run release:desktop
+```
+
+Equivale a `tauri:build` y luego copia el contenido de `src-tauri/target/…/bundle/nsis/` a `frontend/public/releases/`. Opciones: `--skip-build` (solo copia si ya compilaste), `--clean` (borra `AkoeNet_*.exe`, `*.sig` y `latest.json` previos en destino). Destino alternativo: variable de entorno `RELEASE_OUT`.
+
 En Windows verás típicamente `.msi` o instalador NSIS; en macOS `.dmg`/`.app`; según targets en `src-tauri/tauri.conf.json`.
 
 ### Avisos de “archivo peligroso” / SmartScreen (Windows)
