@@ -6163,6 +6163,14 @@ input.theme-color-hex:disabled {
   flex-wrap: wrap;
 }
 
+.brand-site-link {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
 .site-footer-name {
   font-weight: 700;
   color: var(--nexora-text);

@@ -1,4 +1,8 @@
 /** Copy for the public landing page (EN default, ES alternate). */
+
+/** Public marketing / company site (Dakinis Systems). */
+export const DAKINIS_SYSTEMS_URL = 'https://dakinissystems.onrender.com/'
+
 export const landingContent = {
   en: {
     nav: {
