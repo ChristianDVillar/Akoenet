@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useLandingLocale } from '../hooks/useLandingLocale'
-import { footerContent } from '../lib/landingContent'
+import { DAKINIS_SYSTEMS_URL, footerContent } from '../lib/landingContent'
 
 const legalContactEmail = String(import.meta.env.VITE_LEGAL_CONTACT_EMAIL || '').trim()
 
@@ -9,16 +9,23 @@ export default function SiteFooter({ className = '' }) {
   const f = footerContent[locale]
   const v = __APP_VERSION__
   const rootClass = ['site-footer', className].filter(Boolean).join(' ')
-  const copyrightLine =
+  const copyrightRest =
     locale === 'es'
-      ? '© 2026 Dakinis Systems (marca comercial de Christian Villar). Todos los derechos reservados.'
-      : '© 2026 Dakinis Systems (trading name of Christian Villar). All rights reserved.'
+      ? '(marca comercial de Christian Villar). Todos los derechos reservados.'
+      : '(trading name of Christian Villar). All rights reserved.'
 
   return (
     <footer className={rootClass}>
       <div className="site-footer-inner">
         <div className="site-footer-brand">
-          <img className="site-footer-brand-logo" src="/Logo Grande.jpeg" alt="Dakinis Systems" loading="lazy" />
+          <a
+            className="brand-site-link"
+            href={DAKINIS_SYSTEMS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img className="site-footer-brand-logo" src="/Logo Grande.jpeg" alt="Dakinis Systems" loading="lazy" />
+          </a>
           <span className="site-footer-version" title={f.versionTitle}>
             v{v}
           </span>
@@ -64,7 +71,13 @@ export default function SiteFooter({ className = '' }) {
             </span>
           </p>
         ) : null}
-        <p className="site-footer-copyright muted small">{copyrightLine}</p>
+        <p className="site-footer-copyright muted small">
+          © 2026{' '}
+          <a href={DAKINIS_SYSTEMS_URL} target="_blank" rel="noopener noreferrer">
+            Dakinis Systems
+          </a>{' '}
+          {copyrightRest}
+        </p>
         <p className="site-footer-disclaimer">{f.independentNotice}</p>
         <p className="site-footer-disclaimer site-footer-trademark">{f.twitchDisclaimer}</p>
       </div>
