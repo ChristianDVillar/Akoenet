@@ -6170,9 +6170,11 @@ input.theme-color-hex:disabled {
 
 .site-footer-brand-logo {
   display: block;
-  width: min(100%, 360px);
-  max-width: 90vw;
+  width: auto;
+  max-width: min(220px, 85vw);
+  max-height: 52px;
   height: auto;
+  object-fit: contain;
   border-radius: 10px;
 }
 
@@ -6220,9 +6222,11 @@ input.theme-color-hex:disabled {
 
 .auth-legal-logo {
   display: block;
-  width: min(100%, 280px);
-  max-width: 80vw;
+  width: auto;
+  max-width: min(220px, 85vw);
+  max-height: 52px;
   height: auto;
+  object-fit: contain;
   border-radius: 10px;
 }
 
