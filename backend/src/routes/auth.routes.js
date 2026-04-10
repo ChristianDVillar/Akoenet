@@ -73,7 +73,17 @@ function resolveFrontendBase() {
 
 const frontendBase = resolveFrontendBase();
 
-const useHashRouter = String(process.env.FRONTEND_HASH_ROUTER || "").trim() === "true";
+/**
+ * Must match frontend routing: Vite defaults to HashRouter when RENDER=true at build
+ * (see frontend/vite.config.js). Links without # break on static hosts and HashRouter
+ * ignores pathname-only URLs even if /* → index.html is configured.
+ */
+const useHashRouter = (() => {
+  const explicit = String(process.env.FRONTEND_HASH_ROUTER || "").trim().toLowerCase();
+  if (explicit === "true") return true;
+  if (explicit === "false") return false;
+  return process.env.RENDER === "true";
+})();
 
 function buildRegistrationCompleteUrl(rawToken) {
   const q = `token=${encodeURIComponent(rawToken)}`;
