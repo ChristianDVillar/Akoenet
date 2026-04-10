@@ -1,21 +1,19 @@
-import { Link } from 'react-router-dom'
-import { authFooter, resolveAuthFooterLocale } from '../lib/landingContent'
-
-const author = import.meta.env.VITE_APP_AUTHOR || 'Christian'
+import { resolveAuthFooterLocale } from '../lib/landingContent'
 
 /**
  * Short © + terms/privacy line for auth pages (locale from browser language).
  */
 export default function AuthLegalStrip() {
   const loc = resolveAuthFooterLocale()
-  const t = authFooter[loc]
-  const year = new Date().getFullYear()
+  const copyrightLine =
+    loc === 'es'
+      ? '© 2026 Dakinis Systems (marca comercial de Christian Villar). Todos los derechos reservados.'
+      : '© 2026 Dakinis Systems (trading name of Christian Villar). All rights reserved.'
 
   return (
-    <p className="auth-legal-strip muted small">
-      © {year} <strong>{author}</strong>. {t.copyrightReserved} {t.copyrightSubject}{' '}
-      <Link to="/legal/terminos">{t.terms}</Link> {t.copyrightBetweenLinks}{' '}
-      <Link to="/legal/privacidad">{t.privacy}</Link>.
-    </p>
+    <div className="auth-legal-block">
+      <img className="auth-legal-logo" src="/Logo Grande.jpeg" alt="Dakinis Systems" loading="lazy" />
+      <p className="auth-legal-strip muted small">{copyrightLine}</p>
+    </div>
   )
 }

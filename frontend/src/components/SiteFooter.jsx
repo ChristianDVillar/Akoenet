@@ -2,21 +2,23 @@ import { Link } from 'react-router-dom'
 import { useLandingLocale } from '../hooks/useLandingLocale'
 import { footerContent } from '../lib/landingContent'
 
-const author = import.meta.env.VITE_APP_AUTHOR || 'Christian'
 const legalContactEmail = String(import.meta.env.VITE_LEGAL_CONTACT_EMAIL || '').trim()
 
 export default function SiteFooter({ className = '' }) {
   const { locale } = useLandingLocale()
   const f = footerContent[locale]
   const v = __APP_VERSION__
-  const year = new Date().getFullYear()
   const rootClass = ['site-footer', className].filter(Boolean).join(' ')
+  const copyrightLine =
+    locale === 'es'
+      ? '© 2026 Dakinis Systems (marca comercial de Christian Villar). Todos los derechos reservados.'
+      : '© 2026 Dakinis Systems (trading name of Christian Villar). All rights reserved.'
 
   return (
     <footer className={rootClass}>
       <div className="site-footer-inner">
         <div className="site-footer-brand">
-          <span className="site-footer-name">AkoeNet</span>
+          <img className="site-footer-brand-logo" src="/Logo Grande.jpeg" alt="Dakinis Systems" loading="lazy" />
           <span className="site-footer-version" title={f.versionTitle}>
             v{v}
           </span>
@@ -62,11 +64,7 @@ export default function SiteFooter({ className = '' }) {
             </span>
           </p>
         ) : null}
-        <p className="site-footer-copyright muted small">
-          © {year} <strong>{author}</strong>. {f.copyrightReserved} {f.copyrightSubject}{' '}
-          <Link to="/legal/terminos">{f.terms}</Link> {f.copyrightBetweenLinks}{' '}
-          <Link to="/legal/privacidad">{f.privacy}</Link>.
-        </p>
+        <p className="site-footer-copyright muted small">{copyrightLine}</p>
         <p className="site-footer-disclaimer">{f.independentNotice}</p>
         <p className="site-footer-disclaimer site-footer-trademark">{f.twitchDisclaimer}</p>
       </div>

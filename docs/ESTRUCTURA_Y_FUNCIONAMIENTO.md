@@ -12,13 +12,13 @@ Este documento resume la arquitectura actual del proyecto, los flujos principale
 - Se corrigió el inventario de migraciones con `1733000019000_refresh_tokens` y `1733000020000_extended_features`.
 - Se actualizó el mapa de rutas backend para incluir `\`/link-preview\`` y `\`/social\``.
 - Se depuró la sección de roadmap para quitar como “pendiente” funcionalidades que ya están implementadas.
-- **Registro por email verificado:** flujo `POST /auth/register/start` → correo con enlace → `GET /auth/register/pending?token=` → `POST /auth/register/complete`; tabla `registration_tokens` (migración `1733000023000_registration_email_tokens`). Correo transaccional vía **Resend** (`backend/src/lib/resend-mail.js`): logo **Akoenet.png** incrustado por **CID** (no usar `localhost` en `src` de imágenes); variables `FRONTEND_URL`, `FRONTEND_HASH_ROUTER`, `EMAIL_LOGO_URL`, `MAIL_LOGO_PATH` opcionales.
+- **Registro por email verificado:** flujo `POST /auth/register/start` → correo con enlace → `GET /auth/register/pending?token=` → `POST /auth/register/complete`; tabla `registration_tokens` (migración `1733000023000_registration_email_tokens`). Correo transaccional vía **Resend** (`backend/src/lib/resend-mail.js`): logo **Akoenet.png** incrustado por **CID** (no usar `localhost` en `src` de imágenes); variables `FRONTEND_URL`, `FRONTEND_HASH_ROUTER`, `EMAIL_LOGO_URL`, `MAIL_LOGO_PATH` opcionales. En Render, si el frontend usa HashRouter, el enlace del correo debe salir como `/#/register/complete?token=...`.
 - **Frontend:** rutas `/register` (solo email) y `/register/complete?token=`; `AuthContext` expone `registerStart` / `registerComplete`. Banner de cookies (`CookieConsentBanner`) fijo **arriba**; modal de onboarding (`WelcomeOnboardingModal`) con overlay más legible. Vista servidor: **sin barra inferior móvil** duplicada (solo rail izquierdo).
 - **Miembros del servidor (`MembersPanel`):** al seleccionar un miembro, acciones **Add friend** (`POST /social/friends/request`) y **Message** (crea o reutiliza DM con `POST /dm/conversations` y navega a `/messages?conversation=<id>`). `DirectMessagesPanel` lee el query `conversation` y abre la conversación (móvil: chat a pantalla completa).
 
 ## 1) Stack y arquitectura
 
-- **Despliegue público (Render):** SPA en **https://akoenet-frontend.onrender.com**; API en **https://akoenet-backend.onrender.com**. El cliente Vite en producción usa ese API por defecto si no defines `VITE_API_URL` (`frontend/src/lib/apiBase.js`). CORS en backend: `CORS_ORIGINS` debe incluir el origen del frontend; OAuth/correos: `FRONTEND_URL` / `PUBLIC_API_URL` con HTTPS reales (ver `backend/.env.example`).
+- **Despliegue público (Render):** SPA en **https://akoenet-frontend.onrender.com**; API en **https://akoenet-backend.onrender.com**. El cliente Vite en producción usa ese API por defecto si no defines `VITE_API_URL` (`frontend/src/lib/apiBase.js`). CORS en backend: `CORS_ORIGINS` debe incluir el origen del frontend; OAuth/correos: `FRONTEND_URL` / `PUBLIC_API_URL` con HTTPS reales (ver `backend/.env.example`). Para enlaces de registro por correo: en backend definir `FRONTEND_URL=https://<tu-frontend>` y alinear `FRONTEND_HASH_ROUTER` con el build del frontend (`true` si usa HashRouter, `false` si usa BrowserRouter con rewrite `/* -> /index.html`).
 - **Frontend:** React + Vite + React Router + Socket.IO Client.
 - **Backend:** Node.js + Express + Socket.IO + JWT; arranque vía `backend/src/index.js` tras `require("./load-env")` para cargar siempre `backend/.env` con ruta absoluta (`backend/src/load-env.js`).
 - **Base de datos:** PostgreSQL (local, Docker Compose o gestionado; p. ej. **Supabase**). El pool en `backend/src/config/db.js` activa **TLS** automáticamente cuando la URL o el host indican conexión remota (`sslmode=require`, `*.supabase.co`, etc.); opcional `PGSSL_REJECT_UNAUTHORIZED=false` si un proveedor exige relajar verificación de certificado.
@@ -73,6 +73,7 @@ Arquitectura general:
   - `src/hooks/useDismissiblePopover.js`: cierre de menús de usuario (click fuera / Escape).
 - `docker-compose.yml` (raíz del repo): define los **servicios** `postgres`, `backend`, `redis`, `minio`. Los **nombres de contenedor** (`container_name`) son `akonet-db`, `akonet-backend`, `akonet-redis`, `akonet-minio` (en red interna el backend resuelve Redis como `redis`, MinIO como `minio`; el hostname de Postgres es `postgres` **solo** si usas la base del compose, vía `DATABASE_URL` en `backend/.env`).
 - `render.yaml` (raíz): blueprint del **static site** en Render (`akoenet-frontend`): `rootDir: frontend`, build Vite, `VITE_DESKTOP_INSTALLER_URL` y rewrite `/*` → `/index.html` para SPA.
+- En Render, el frontend suele compilarse con HashRouter (`RENDER=true` en build de Vite). Si mantienes ese modo, los enlaces transaccionales deben usar `/#/` (backend `FRONTEND_HASH_ROUTER=true`).
 - `.github/workflows/publish-tauri-windows.yml`: al pushear un **tag** `v*`, compila Tauri en Windows y publica release + `latest.json` para el updater (requiere secretos de firma).
 - `scripts/rename-project-folder-AkoeNet.ps1` (raíz): renombra la carpeta del clon `AkoNet` → `AkoeNet` (con el IDE cerrado).
 - Documentacion en `docs/`:
@@ -139,6 +140,9 @@ Notas:
 
 - **Registro en dos pasos (verificación de email):**
   - `POST /auth/register/start` — cuerpo `{ email, invite? }` (invitación opcional a servidor). Genera token en `registration_tokens`, envía correo con enlace (Resend). Si el email ya está registrado, responde `200` con `{ sent: true }` sin filtrar existencia. Sin `RESEND_API_KEY` en producción: **503**; en desarrollo puede devolver `dev_verify_url` para pruebas.
+  - En despliegue Render, validar que el enlace generado coincida con el router del SPA:
+    - HashRouter: `https://<frontend>/#/register/complete?token=...`
+    - BrowserRouter: `https://<frontend>/register/complete?token=...` + rewrite `/* -> /index.html`
   - `GET /auth/register/pending?token=` — valida token (64 hex); devuelve `email_masked` e `invite` si aplica.
   - `POST /auth/register/complete` — cuerpo `{ token, username, password, birth_date }` con **`birth_date`** obligatorio (`YYYY-MM-DD`) y edad mínima (13 años). Crea el usuario y elimina el token. El **username** se valida contra lenguaje prohibido (`400` / `blocked_content` si incumple).
 - Tras completar, el cliente inicia sesión con `POST /auth/login` como antes.
