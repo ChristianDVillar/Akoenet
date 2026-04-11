@@ -6,6 +6,38 @@ import { useAuth } from '../context/AuthContext'
  * Maps backend /integrations/scheduler/upcoming errors to UI hints.
  * 502 = proxy OK but Scheduler unreachable or returned an error (see response body `error`, `httpStatus`).
  */
+function schedulerEventTitle(e) {
+  if (!e || typeof e !== 'object') return 'Stream'
+  return String(e.title || e.name || e.summary || 'Stream').trim()
+}
+
+function schedulerEventLink(ev) {
+  if (!ev || typeof ev !== 'object') return ''
+  const u =
+    ev.url ||
+    ev.link ||
+    ev.href ||
+    ev.vod_url ||
+    ev.clip_url ||
+    ev.stream_url ||
+    ev.twitch_url ||
+    ev.youtube_url
+  return u ? String(u).trim() : ''
+}
+
+function schedulerEventStart(ev) {
+  if (!ev || typeof ev !== 'object') return null
+  return (
+    ev.starts_at ||
+    ev.start_at ||
+    ev.startTime ||
+    ev.scheduled_at ||
+    ev.scheduledFor ||
+    ev.start ||
+    null
+  )
+}
+
 function describeSchedulerError(data) {
   const err = data?.error
   const http = data?.httpStatus
@@ -58,6 +90,8 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
   const { loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   const [formatted, setFormatted] = useState('')
+  /** @type {unknown[]} */
+  const [events, setEvents] = useState([])
   const [error, setError] = useState(null)
   /** @type {{ title: string, body: string } | null} */
   const [schedulerErrorDetail, setSchedulerErrorDetail] = useState(null)
@@ -74,15 +108,18 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
       const { data } = await api.get('/integrations/scheduler/upcoming', { params })
       if (data?.scheduler_configured === false) {
         setFormatted('')
+        setEvents([])
         setError('scheduler_api_not_configured')
         return
       }
       setFormatted(data?.formatted || '')
+      setEvents(Array.isArray(data?.events) ? data.events : [])
     } catch (e) {
       const status = e.response?.status
       const resData = e.response?.data
       const code = resData?.code
       setFormatted('')
+      setEvents([])
       if (status === 400 && code === 'MISSING_STREAMER_USERNAME') {
         setError('missing_streamer')
       } else if (status === 503) {
@@ -148,10 +185,43 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
       {error === 'fetch_failed' && !loading && (
         <p className="scheduler-widget-hint">Could not load the schedule.</p>
       )}
-      {!error && !loading && formatted && (
+      {!error && !loading && events.length > 0 && (
+        <ul className="scheduler-widget-events">
+          {events.slice(0, 10).map((ev, i) => {
+            const title = schedulerEventTitle(ev)
+            const link = schedulerEventLink(ev)
+            const start = schedulerEventStart(ev)
+            const when = start
+              ? new Date(start).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+              : ''
+            return (
+              <li key={`sched-ev-${i}`} className="scheduler-widget-event">
+                <div className="scheduler-widget-event-title">{title}</div>
+                {when ? <div className="scheduler-widget-event-when muted small">{when}</div> : null}
+                {link ? (
+                  <div className="scheduler-widget-event-actions">
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent('akoenet-composer-insert', { detail: { text: link } })
+                        )
+                      }}
+                    >
+                      Insert link in chat
+                    </button>
+                  </div>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {!error && !loading && events.length === 0 && formatted && (
         <pre className="scheduler-widget-body">{formatted}</pre>
       )}
-      {!error && !loading && !formatted && (
+      {!error && !loading && events.length === 0 && !formatted && (
         <p className="scheduler-widget-hint muted">No upcoming events.</p>
       )}
     </section>

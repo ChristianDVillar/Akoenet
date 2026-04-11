@@ -8,6 +8,7 @@ import { resolveImageUrl } from '../lib/resolveImageUrl'
 import StandardEmojiPicker from './StandardEmojiPicker'
 import RichMessageText from './RichMessageText'
 import MessageLinkPreview from './MessageLinkPreview'
+import MessageVideoEmbeds from './MessageVideoEmbeds'
 import EditHistoryModal from './EditHistoryModal'
 
 const baseURL = getApiBaseUrl()
@@ -1078,6 +1079,9 @@ export default function DirectMessagesPanel({ user }) {
                     <p className="message-body">
                       <RichMessageText text={m.content} emojis={{}} />
                     </p>
+                  )}
+                  {m.content && m.content !== '(imagen)' && (
+                    <MessageVideoEmbeds content={m.content} />
                   )}
                   {m.content && m.content !== '(imagen)' && (
                     <MessageLinkPreview content={m.content} />

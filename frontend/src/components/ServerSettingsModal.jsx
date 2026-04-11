@@ -10,6 +10,7 @@ import {
   summarizeInvitePolicy,
 } from '../lib/invites'
 import ServerEmojiManager from './ServerEmojiManager'
+import ServerCustomContentSettings from './ServerCustomContentSettings'
 
 export default function ServerSettingsModal({ open, onClose, serverId, serverName }) {
   const [inviteType, setInviteType] = useState('temporary')
@@ -24,6 +25,7 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
   const [info, setInfo] = useState('')
   const [copyNotice, setCopyNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [canManageServer, setCanManageServer] = useState(false)
   const copyTimerRef = useRef(null)
 
   const shareOrigin = getInviteShareOrigin()
@@ -44,6 +46,10 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
     if (!open || !serverId) return
     loadInvites()
     loadEmojis()
+    api
+      .get(`/servers/${serverId}/my-permissions`)
+      .then((r) => setCanManageServer(Boolean(r.data?.can_manage_channels)))
+      .catch(() => setCanManageServer(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serverId])
 
@@ -264,6 +270,13 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
           </p>
           {serverId ? (
             <ServerEmojiManager serverId={Number(serverId)} emojis={emojiList} onReload={loadEmojis} />
+          ) : null}
+        </div>
+
+        <div className="invite-list" style={{ marginTop: '1rem' }}>
+          <h3>Events, announcements &amp; commands</h3>
+          {serverId ? (
+            <ServerCustomContentSettings serverId={Number(serverId)} canManage={canManageServer} />
           ) : null}
         </div>
       </div>

@@ -8,10 +8,14 @@ const validate = require("../middleware/validate");
 const logger = require("../lib/logger");
 const {
   canManageChannels,
+  canSendToChannel,
   isServerMember,
   getActiveServerBan,
   isUserBannedInServer,
 } = require("../lib/membership");
+const { broadcastChannelMessage } = require("../lib/channel-message-broadcast");
+const { textContainsBlockedLanguage } = require("../lib/blocked-content");
+const { isReservedServerCommandName } = require("../lib/custom-server-command");
 const {
   getVoicePresenceSnapshotForServer,
   getConnectedUserIdsGlobal,
@@ -21,6 +25,7 @@ const { postJoinWelcomeMessage } = require("../lib/join-welcome-message");
 const { sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 const { shapeMemberRowForPublicApi } = require("../lib/game-activity");
 const { cacheGet, cacheSet } = require("../lib/redis-cache");
+const { appEvents } = require("../lib/app-events");
 
 const router = express.Router();
 const hiddenServerName = (process.env.HIDDEN_SYSTEM_SERVER_NAME || "AkoeNet").trim().toLowerCase();
@@ -65,6 +70,42 @@ const banUserSchema = z.object({
 const banUserParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
   userId: z.coerce.number().int().positive(),
+});
+const customCommandIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  commandId: z.coerce.number().int().positive(),
+});
+const createCustomCommandSchema = z.object({
+  command_name: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{2,32}$/),
+  response: z.string().trim().min(1).max(4000),
+});
+const patchCustomCommandSchema = z
+  .object({
+    command_name: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{2,32}$/).optional(),
+    response: z.string().trim().min(1).max(4000).optional(),
+  })
+  .refine((d) => d.command_name != null || d.response != null, { message: "empty_patch" });
+const serverEventIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  eventId: z.coerce.number().int().positive(),
+});
+const createServerEventSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(8000).optional().nullable(),
+  starts_at: z.string().datetime({ offset: true }),
+  ends_at: z.string().datetime({ offset: true }).optional().nullable(),
+});
+const patchServerEventSchema = createServerEventSchema.partial();
+const announcementIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  announcementId: z.coerce.number().int().positive(),
+});
+const createAnnouncementSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(8000),
+});
+const publishAnnouncementSchema = z.object({
+  channel_id: z.coerce.number().int().positive(),
 });
 
 /** Public: invite landing page (no auth). */
@@ -627,6 +668,362 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
   const connectedSet = new Set(getConnectedUserIdsGlobal().map((id) => Number(id)));
   res.json(result.rows.map((row) => shapeMemberRowForPublicApi(row, connectedSet)));
 });
+
+router.get("/:serverId/my-permissions", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  if (!(await isServerMember(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Not a member" });
+  }
+  const can = await canManageChannels(req.user.id, serverId);
+  res.json({ can_manage_channels: can });
+});
+
+router.get("/:serverId/custom-commands", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  if (!(await isServerMember(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Not a member" });
+  }
+  const r = await pool.query(
+    `SELECT id, server_id, command_name, response, created_by, created_at, updated_at
+     FROM server_custom_commands WHERE server_id = $1 ORDER BY command_name ASC`,
+    [serverId]
+  );
+  res.json(r.rows);
+});
+
+router.post(
+  "/:serverId/custom-commands",
+  validate({ params: serverIdParamSchema, body: createCustomCommandSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    const name = req.body.command_name;
+    if (isReservedServerCommandName(name)) {
+      return res.status(400).json({ error: "reserved_command_name" });
+    }
+    if (
+      textContainsBlockedLanguage(req.body.response, {
+        source: "server_custom_command_create",
+        userId: req.user.id,
+      })
+    ) {
+      return res.status(400).json({ error: "blocked_content" });
+    }
+    try {
+      const ins = await pool.query(
+        `INSERT INTO server_custom_commands (server_id, command_name, response, created_by)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, server_id, command_name, response, created_by, created_at, updated_at`,
+        [serverId, name, req.body.response, req.user.id]
+      );
+      res.status(201).json(ins.rows[0]);
+    } catch (e) {
+      if (e.code === "23505") {
+        return res.status(409).json({ error: "command_name_taken" });
+      }
+      logger.error({ err: e }, "Create custom command failed");
+      res.status(500).json({ error: "Could not create command" });
+    }
+  }
+);
+
+router.patch(
+  "/:serverId/custom-commands/:commandId",
+  validate({ params: customCommandIdParamSchema, body: patchCustomCommandSchema }),
+  async (req, res) => {
+    const { serverId, commandId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    const nextName = req.body.command_name;
+    if (nextName != null && isReservedServerCommandName(nextName)) {
+      return res.status(400).json({ error: "reserved_command_name" });
+    }
+    if (
+      req.body.response != null &&
+      textContainsBlockedLanguage(req.body.response, {
+        source: "server_custom_command_patch",
+        userId: req.user.id,
+      })
+    ) {
+      return res.status(400).json({ error: "blocked_content" });
+    }
+    const sets = [];
+    const vals = [];
+    if (nextName != null) {
+      sets.push(`command_name = $${vals.length + 1}`);
+      vals.push(nextName);
+    }
+    if (req.body.response != null) {
+      sets.push(`response = $${vals.length + 1}`);
+      vals.push(req.body.response);
+    }
+    sets.push(`updated_at = NOW()`);
+    const idPos = vals.length + 1;
+    const sidPos = vals.length + 2;
+    vals.push(commandId, serverId);
+    try {
+      const upd = await pool.query(
+        `UPDATE server_custom_commands SET ${sets.join(", ")}
+         WHERE id = $${idPos} AND server_id = $${sidPos}
+         RETURNING id, server_id, command_name, response, created_by, created_at, updated_at`,
+        vals
+      );
+      if (!upd.rows.length) return res.status(404).json({ error: "Not found" });
+      res.json(upd.rows[0]);
+    } catch (e) {
+      if (e.code === "23505") {
+        return res.status(409).json({ error: "command_name_taken" });
+      }
+      logger.error({ err: e }, "Patch custom command failed");
+      res.status(500).json({ error: "Could not update command" });
+    }
+  }
+);
+
+router.delete(
+  "/:serverId/custom-commands/:commandId",
+  validate({ params: customCommandIdParamSchema }),
+  async (req, res) => {
+    const { serverId, commandId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    const del = await pool.query(
+      `DELETE FROM server_custom_commands WHERE id = $1 AND server_id = $2 RETURNING id`,
+      [commandId, serverId]
+    );
+    if (!del.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json({ deleted: true });
+  }
+);
+
+router.get("/:serverId/events", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  if (!(await isServerMember(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Not a member" });
+  }
+  const r = await pool.query(
+    `SELECT id, server_id, title, description, starts_at, ends_at, created_by, created_at
+     FROM server_calendar_events
+     WHERE server_id = $1
+     ORDER BY starts_at ASC`,
+    [serverId]
+  );
+  res.json(r.rows);
+});
+
+router.post(
+  "/:serverId/events",
+  validate({ params: serverIdParamSchema, body: createServerEventSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    const starts = new Date(req.body.starts_at);
+    const ends = req.body.ends_at ? new Date(req.body.ends_at) : null;
+    if (Number.isNaN(starts.getTime())) {
+      return res.status(400).json({ error: "invalid_starts_at" });
+    }
+    if (ends && Number.isNaN(ends.getTime())) {
+      return res.status(400).json({ error: "invalid_ends_at" });
+    }
+    if (ends && ends < starts) {
+      return res.status(400).json({ error: "ends_before_starts" });
+    }
+    const title = req.body.title;
+    const desc = req.body.description ?? null;
+    if (
+      textContainsBlockedLanguage(`${title}\n${desc || ""}`, {
+        source: "server_event_create",
+        userId: req.user.id,
+      })
+    ) {
+      return res.status(400).json({ error: "blocked_content" });
+    }
+    const ins = await pool.query(
+      `INSERT INTO server_calendar_events (server_id, title, description, starts_at, ends_at, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, server_id, title, description, starts_at, ends_at, created_by, created_at`,
+      [serverId, title, desc, starts, ends, req.user.id]
+    );
+    res.status(201).json(ins.rows[0]);
+  }
+);
+
+router.patch(
+  "/:serverId/events/:eventId",
+  validate({ params: serverEventIdParamSchema, body: patchServerEventSchema }),
+  async (req, res) => {
+    const { serverId, eventId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    const cur = await pool.query(
+      `SELECT title, description, starts_at, ends_at FROM server_calendar_events WHERE id = $1 AND server_id = $2`,
+      [eventId, serverId]
+    );
+    if (!cur.rows.length) return res.status(404).json({ error: "Not found" });
+    const row = cur.rows[0];
+    const title = req.body.title != null ? req.body.title : row.title;
+    const description = req.body.description !== undefined ? req.body.description : row.description;
+    const starts =
+      req.body.starts_at != null ? new Date(req.body.starts_at) : new Date(row.starts_at);
+    const ends =
+      req.body.ends_at !== undefined
+        ? req.body.ends_at
+          ? new Date(req.body.ends_at)
+          : null
+        : row.ends_at
+          ? new Date(row.ends_at)
+          : null;
+    if (Number.isNaN(starts.getTime())) return res.status(400).json({ error: "invalid_starts_at" });
+    if (ends && Number.isNaN(ends.getTime())) return res.status(400).json({ error: "invalid_ends_at" });
+    if (ends && ends < starts) return res.status(400).json({ error: "ends_before_starts" });
+    if (
+      textContainsBlockedLanguage(`${title}\n${description || ""}`, {
+        source: "server_event_patch",
+        userId: req.user.id,
+      })
+    ) {
+      return res.status(400).json({ error: "blocked_content" });
+    }
+    const upd = await pool.query(
+      `UPDATE server_calendar_events
+       SET title = $1, description = $2, starts_at = $3, ends_at = $4
+       WHERE id = $5 AND server_id = $6
+       RETURNING id, server_id, title, description, starts_at, ends_at, created_by, created_at`,
+      [title, description, starts, ends, eventId, serverId]
+    );
+    res.json(upd.rows[0]);
+  }
+);
+
+router.delete(
+  "/:serverId/events/:eventId",
+  validate({ params: serverEventIdParamSchema }),
+  async (req, res) => {
+    const { serverId, eventId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    const del = await pool.query(
+      `DELETE FROM server_calendar_events WHERE id = $1 AND server_id = $2 RETURNING id`,
+      [eventId, serverId]
+    );
+    if (!del.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json({ deleted: true });
+  }
+);
+
+router.get("/:serverId/announcements", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  if (!(await isServerMember(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Not a member" });
+  }
+  const r = await pool.query(
+    `SELECT id, server_id, title, body, created_by, created_at
+     FROM server_announcements WHERE server_id = $1 ORDER BY created_at DESC`,
+    [serverId]
+  );
+  res.json(r.rows);
+});
+
+router.post(
+  "/:serverId/announcements",
+  validate({ params: serverIdParamSchema, body: createAnnouncementSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    if (
+      textContainsBlockedLanguage(`${req.body.title}\n${req.body.body}`, {
+        source: "server_announcement_create",
+        userId: req.user.id,
+      })
+    ) {
+      return res.status(400).json({ error: "blocked_content" });
+    }
+    const ins = await pool.query(
+      `INSERT INTO server_announcements (server_id, title, body, created_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, server_id, title, body, created_by, created_at`,
+      [serverId, req.body.title, req.body.body, req.user.id]
+    );
+    res.status(201).json(ins.rows[0]);
+  }
+);
+
+router.delete(
+  "/:serverId/announcements/:announcementId",
+  validate({ params: announcementIdParamSchema }),
+  async (req, res) => {
+    const { serverId, announcementId } = req.params;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    const del = await pool.query(
+      `DELETE FROM server_announcements WHERE id = $1 AND server_id = $2 RETURNING id`,
+      [announcementId, serverId]
+    );
+    if (!del.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json({ deleted: true });
+  }
+);
+
+router.post(
+  "/:serverId/announcements/:announcementId/publish",
+  validate({ params: announcementIdParamSchema, body: publishAnnouncementSchema }),
+  async (req, res) => {
+    const { serverId, announcementId } = req.params;
+    const channelId = req.body.channel_id;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role" });
+    }
+    const ann = await pool.query(
+      `SELECT id, title, body FROM server_announcements WHERE id = $1 AND server_id = $2`,
+      [announcementId, serverId]
+    );
+    if (!ann.rows.length) return res.status(404).json({ error: "Not found" });
+    const ch = await pool.query(`SELECT id, server_id, type FROM channels WHERE id = $1`, [channelId]);
+    if (!ch.rows.length || Number(ch.rows[0].server_id) !== Number(serverId)) {
+      return res.status(400).json({ error: "invalid_channel" });
+    }
+    if (ch.rows[0].type !== "text") {
+      return res.status(400).json({ error: "channel_not_text" });
+    }
+    if (!(await canSendToChannel(req.user.id, channelId))) {
+      return res.status(403).json({ error: "send_forbidden" });
+    }
+    const { title, body } = ann.rows[0];
+    const content = `**${String(title).trim()}**\n\n${String(body || "").trim()}`;
+    if (
+      textContainsBlockedLanguage(content, {
+        source: "server_announcement_publish",
+        userId: req.user.id,
+      })
+    ) {
+      return res.status(400).json({ error: "blocked_content" });
+    }
+    const io = req.app?.locals?.io;
+    const message = await broadcastChannelMessage(io, pool, {
+      channelId,
+      userId: req.user.id,
+      content,
+    });
+    appEvents.emit("message.created", {
+      channelId,
+      messageId: message.id,
+      userId: req.user.id,
+      serverId: Number(serverId),
+    });
+    res.status(201).json({ message, announcement_id: Number(announcementId) });
+  }
+);
 
 /** Outgoing webhooks (manage channels permission) */
 router.get(
