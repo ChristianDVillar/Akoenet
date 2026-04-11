@@ -203,12 +203,19 @@ export default function ServerCustomContentSettings({ serverId, canManage }) {
     }
   }
 
+  const sid = String(serverId)
+
   return (
     <div className="server-custom-content">
       {localError ? <div className="error-banner inline">{localError}</div> : null}
 
-      <section className="server-custom-section">
-        <h3>Custom commands</h3>
+      <section
+        className="server-custom-section server-settings-panel-section"
+        aria-labelledby={`srv-settings-cmd-${sid}`}
+      >
+        <h2 id={`srv-settings-cmd-${sid}`} className="server-settings-panel-title">
+          Custom commands
+        </h2>
         <p className="muted small">
           Members type <code className="inline-code">!name</code> in text chat; the bot replies with your text.
           Names must be 2–32 characters (<code className="inline-code">a-z</code>, <code className="inline-code">0-9</code>,{' '}
@@ -266,9 +273,16 @@ export default function ServerCustomContentSettings({ serverId, canManage }) {
         )}
       </section>
 
-      <section className="server-custom-section">
-        <h3>Server events</h3>
-        <p className="muted small">Community events (tournaments, meetups, streams). Shown in order by start time.</p>
+      <section
+        className="server-custom-section server-settings-panel-section"
+        aria-labelledby={`srv-settings-events-${sid}`}
+      >
+        <h2 id={`srv-settings-events-${sid}`} className="server-settings-panel-title">
+          Server events
+        </h2>
+        <p className="muted small">
+          Community events (tournaments, meetups, streams). Shown in order by start time.
+        </p>
         {events.length === 0 ? (
           <p className="muted small">No events scheduled.</p>
         ) : (
@@ -337,8 +351,13 @@ export default function ServerCustomContentSettings({ serverId, canManage }) {
         )}
       </section>
 
-      <section className="server-custom-section">
-        <h3>Announcements</h3>
+      <section
+        className="server-custom-section server-settings-panel-section"
+        aria-labelledby={`srv-settings-ann-${sid}`}
+      >
+        <h2 id={`srv-settings-ann-${sid}`} className="server-settings-panel-title">
+          Announcements
+        </h2>
         <p className="muted small">
           Save a message template, then publish it to a text channel as a normal message (from your account).
         </p>

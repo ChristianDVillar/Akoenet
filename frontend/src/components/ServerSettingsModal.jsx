@@ -273,12 +273,11 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
           ) : null}
         </div>
 
-        <div className="invite-list" style={{ marginTop: '1rem' }}>
-          <h3>Events, announcements &amp; commands</h3>
-          {serverId ? (
+        {serverId ? (
+          <div className="server-settings-automation" style={{ marginTop: '1rem' }}>
             <ServerCustomContentSettings serverId={Number(serverId)} canManage={canManageServer} />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )
