@@ -88,7 +88,7 @@ Para cada release desktop:
   - `frontend/package.json`
   - `frontend/src-tauri/tauri.conf.json` (`version`)
   - `frontend/src-tauri/Cargo.toml` (`version`)
-- [ ] Tag de Git coherente (p. ej. `v0.5.0`) si usas releases en GitHub.
+- [ ] Tag de Git coherente (p. ej. `v0.6.0`) si usas releases en GitHub.
 
 ### 5. Build de producción
 
