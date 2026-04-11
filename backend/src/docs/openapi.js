@@ -3,7 +3,7 @@ function buildOpenApiSpec() {
     openapi: "3.0.3",
     info: {
       title: "AkoeNet API",
-      version: process.env.APP_VERSION || process.env.npm_package_version || "1.1.0",
+      version: process.env.APP_VERSION || process.env.npm_package_version || "1.3.0",
       description: "Basic OpenAPI spec for key AkoeNet endpoints.",
     },
     servers: [
@@ -348,6 +348,53 @@ function buildOpenApiSpec() {
             200: { description: "Discovery JSON from remote Scheduler" },
             502: { description: "Scheduler unreachable or invalid" },
             503: { description: "SCHEDULER_API_BASE_URL not set" },
+          },
+        },
+      },
+      "/integrations/scheduler/servers": {
+        get: {
+          summary: "List AkoeNet servers for Scheduler channel picker (shared secret, same as stream-scheduled webhook)",
+          parameters: [
+            {
+              name: "x-scheduler-webhook-secret",
+              in: "header",
+              required: true,
+              schema: { type: "string" },
+              description: "Must match SCHEDULER_WEBHOOK_SECRET",
+            },
+          ],
+          responses: {
+            200: {
+              description: "servers: { id, name }[] (string ids). Excludes system servers.",
+            },
+            401: { description: "Missing or wrong secret" },
+          },
+        },
+      },
+      "/integrations/scheduler/servers/{serverId}/channels": {
+        get: {
+          summary: "List text channels in a server (for announcement target)",
+          parameters: [
+            {
+              name: "x-scheduler-webhook-secret",
+              in: "header",
+              required: true,
+              schema: { type: "string" },
+              description: "Must match SCHEDULER_WEBHOOK_SECRET",
+            },
+            {
+              name: "serverId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+          responses: {
+            200: {
+              description: "channels: { id, name }[] (string ids). Text channels only.",
+            },
+            401: { description: "Missing or wrong secret" },
+            404: { description: "Server not found" },
           },
         },
       },
