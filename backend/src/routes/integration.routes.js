@@ -22,6 +22,10 @@ const upcomingQuerySchema = z.object({
   mode: z.enum(["next", "all"]).optional().default("all"),
 });
 
+const schedulerServerIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+});
+
 const streamScheduledSchema = z.object({
   streamer: z.string().trim().min(1).max(80),
   /** Public slug (same as streamer); sent by Streamer Scheduler for explicit mapping. */
@@ -111,6 +115,53 @@ router.post(
       channel_id: channelId,
       server_id: channelResult.rows[0].server_id,
     });
+  }
+);
+
+/**
+ * GET /integrations/scheduler/servers — list AkoeNet servers for Streamer Scheduler UI (same secret as webhook).
+ */
+router.get("/scheduler/servers", async (req, res) => {
+  if (!hasValidSchedulerSecret(req)) {
+    return res.status(401).json({ error: "Invalid scheduler webhook secret" });
+  }
+  const r = await pool.query(
+    `SELECT id, name FROM servers WHERE COALESCE(is_system, false) = false ORDER BY name ASC`
+  );
+  const servers = r.rows.map((row) => ({
+    id: String(row.id),
+    name: row.name,
+  }));
+  return res.json({ servers });
+});
+
+/**
+ * GET /integrations/scheduler/servers/:serverId/channels — text channels in that server (for announcement target).
+ */
+router.get(
+  "/scheduler/servers/:serverId/channels",
+  validate({ params: schedulerServerIdParamSchema }),
+  async (req, res) => {
+    if (!hasValidSchedulerSecret(req)) {
+      return res.status(401).json({ error: "Invalid scheduler webhook secret" });
+    }
+    const serverId = req.params.serverId;
+    const exists = await pool.query(
+      `SELECT id FROM servers WHERE id = $1 AND COALESCE(is_system, false) = false`,
+      [serverId]
+    );
+    if (!exists.rows.length) {
+      return res.status(404).json({ error: "Server not found" });
+    }
+    const ch = await pool.query(
+      `SELECT id, name FROM channels WHERE server_id = $1 AND type = 'text' ORDER BY position ASC, id ASC`,
+      [serverId]
+    );
+    const channels = ch.rows.map((row) => ({
+      id: String(row.id),
+      name: row.name,
+    }));
+    return res.json({ channels });
   }
 );
 

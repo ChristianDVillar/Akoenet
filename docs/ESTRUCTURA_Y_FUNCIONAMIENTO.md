@@ -2,7 +2,7 @@
 
 Este documento resume la arquitectura actual del proyecto, los flujos principales y los componentes clave de backend/frontend.
 
-*Última revisión estructural: abril 2026 (sesión persistente en cliente: renovación proactiva de JWT + socket con auth dinámica; desktop v0.3.1, `render.yaml`, workflow de publicación Windows por tag; además registro por email, DM/amistad desde miembros, Resend con logo CID, UX móvil y cookies).*
+*Última revisión estructural: abril 2026 (sesión persistente en cliente: renovación proactiva de JWT + socket con auth dinámica; desktop v0.5.0, `render.yaml`, workflow de publicación Windows por tag; además registro por email, DM/amistad desde miembros, Resend con logo CID, UX móvil y cookies).*
 
 ## Últimos cambios del documento
 
@@ -58,7 +58,7 @@ Arquitectura general:
 - `frontend/`
   - `.env`: `VITE_API_URL` apunta al backend en local (p. ej. `http://localhost:3000`); en producción el default es `https://akoenet-backend.onrender.com` si la variable no está definida. Ver `frontend/.env.example`. Opcional: `VITE_DESKTOP_INSTALLER_URL` (ruta relativa bajo `/releases/` o URL absoluta al `.exe`).
   - `src-tauri/`: aplicación de escritorio **Tauri 2** (Windows NSIS); `Cargo.toml` / `tauri.conf.json` y versión alineadas con `package.json`. El instalador generado puede copiarse a `public/releases/` para descarga desde el sitio estático.
-  - `public/releases/`: instaladores desktop servidos como estáticos (p. ej. `AkoeNet_0.3.1_x64-setup.exe`).
+  - `public/releases/`: instaladores desktop servidos como estáticos (p. ej. `AkoeNet_0.5.0_x64-setup.exe`).
   - `src/App.jsx`: rutas principales.
   - `src/context/AuthContext.jsx`: estado de sesión + login/logout + `connectAkoeNet` / `disconnectAkoeNet`; tras sesión válida llama a `startSessionKeepAlive()`; en logout y pérdida de sesión `stopSessionKeepAlive()`; escucha `akoenet:session-lost`; en `visibilitychange` (pestaña visible) puede refrescar tokens vía `refreshSessionAfterForeground`.
   - `src/pages/`: Login, **Register** (paso 1: email + envío de enlace), **RegisterComplete** (token en URL: username, contraseña, fecha de nacimiento), Home (landing o `Dashboard` si hay sesión; invitaciones vía query en `Home` o ruta `/invite/:token`), `Messages` (DMs en ruta dedicada), ServerView, TwitchCallback, **`LegalDocPage`** (`/legal/:slug`), **`DmcaPage`**, **`DpoPage`**, **`InvitePage`**, **`SystemStatus`** (pública en **`/status`**: diagnóstico `GET /health` + `GET /health/deps`).
