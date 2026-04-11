@@ -947,21 +947,12 @@ textarea {
   margin-top: 0.35rem;
 }
 
-.server-settings-automation {
-  border-top: 1px solid rgba(124, 58, 237, 0.12);
-  padding-top: 0.5rem;
-}
-
-.server-settings-panel-section {
-  padding-top: 1.35rem;
-  margin-top: 1.35rem;
-  border-top: 1px solid rgba(124, 58, 237, 0.14);
-}
-
-.server-settings-panel-section:first-child {
-  padding-top: 0;
+.server-custom-content--tab {
   margin-top: 0;
-  border-top: none;
+}
+
+.server-settings-tab-pane {
+  min-width: 0;
 }
 
 .server-settings-panel-title {

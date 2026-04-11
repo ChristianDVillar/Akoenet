@@ -8,7 +8,7 @@ function fromDatetimeLocalValue(s) {
   return d.toISOString()
 }
 
-export default function ServerCustomContentSettings({ serverId, canManage }) {
+export default function ServerCustomContentSettings({ serverId, canManage, tab }) {
   const [commands, setCommands] = useState([])
   const [events, setEvents] = useState([])
   const [announcements, setAnnouncements] = useState([])
@@ -204,13 +204,15 @@ export default function ServerCustomContentSettings({ serverId, canManage }) {
   }
 
   const sid = String(serverId)
+  const sectionClass = 'server-custom-section'
 
   return (
-    <div className="server-custom-content">
+    <div className="server-custom-content server-custom-content--tab">
       {localError ? <div className="error-banner inline">{localError}</div> : null}
 
+      {tab === 'commands' ? (
       <section
-        className="server-custom-section server-settings-panel-section"
+        className={sectionClass}
         aria-labelledby={`srv-settings-cmd-${sid}`}
       >
         <h2 id={`srv-settings-cmd-${sid}`} className="server-settings-panel-title">
@@ -272,9 +274,11 @@ export default function ServerCustomContentSettings({ serverId, canManage }) {
           <p className="muted small">Only moderators and admins can edit commands.</p>
         )}
       </section>
+      ) : null}
 
+      {tab === 'events' ? (
       <section
-        className="server-custom-section server-settings-panel-section"
+        className={sectionClass}
         aria-labelledby={`srv-settings-events-${sid}`}
       >
         <h2 id={`srv-settings-events-${sid}`} className="server-settings-panel-title">
@@ -350,9 +354,11 @@ export default function ServerCustomContentSettings({ serverId, canManage }) {
           <p className="muted small">Only moderators and admins can add events.</p>
         )}
       </section>
+      ) : null}
 
+      {tab === 'announcements' ? (
       <section
-        className="server-custom-section server-settings-panel-section"
+        className={sectionClass}
         aria-labelledby={`srv-settings-ann-${sid}`}
       >
         <h2 id={`srv-settings-ann-${sid}`} className="server-settings-panel-title">
@@ -433,6 +439,7 @@ export default function ServerCustomContentSettings({ serverId, canManage }) {
           <p className="muted small">Only moderators and admins can manage announcements.</p>
         )}
       </section>
+      ) : null}
     </div>
   )
 }
