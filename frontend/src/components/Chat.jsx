@@ -5,6 +5,7 @@ import VoiceRoom from './VoiceRoom'
 import EmojiText from './EmojiText'
 import RichMessageText from './RichMessageText'
 import MessageLinkPreview from './MessageLinkPreview'
+import MessageVideoEmbeds from './MessageVideoEmbeds'
 import StandardEmojiPicker from './StandardEmojiPicker'
 import EditHistoryModal from './EditHistoryModal'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
@@ -73,6 +74,19 @@ export default function Chat({
   useEffect(() => {
     currentUserIdRef.current = user?.id != null ? Number(user.id) : null
   }, [user?.id])
+
+  useEffect(() => {
+    function onComposerInsert(e) {
+      const t = e.detail?.text
+      if (typeof t !== 'string' || !channelId || channelType === 'voice') return
+      const s = t.trim()
+      if (!s) return
+      setText((prev) => (prev && prev.trim() ? `${prev.trimEnd()}\n${s}` : s))
+      requestAnimationFrame(() => composerInputRef.current?.focus())
+    }
+    window.addEventListener('akoenet-composer-insert', onComposerInsert)
+    return () => window.removeEventListener('akoenet-composer-insert', onComposerInsert)
+  }, [channelId, channelType])
 
   useEffect(() => {
     threadRootIdRef.current = threadRootId
@@ -994,6 +1008,9 @@ export default function Chat({
                 <p className="message-body">
                   <RichMessageText text={m.content} emojis={emojiMap} />
                 </p>
+              )}
+              {m.content && m.content !== '(imagen)' && (
+                <MessageVideoEmbeds content={m.content} />
               )}
               {m.content && m.content !== '(imagen)' && (
                 <MessageLinkPreview content={m.content} />

@@ -140,7 +140,12 @@ function formatScheduleReply(events, mode) {
     const when = start
       ? new Date(start).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })
       : "?";
-    lines.push(`${i + 1}. ${eventTitle(e)} — ${when}`);
+    const link = eventUrl(e);
+    let line = `${i + 1}. ${eventTitle(e)} — ${when}`;
+    lines.push(line);
+    if (link) {
+      lines.push(`   🔗 ${link}`);
+    }
   });
   if (list.length > max) {
     lines.push(`… and ${list.length - max} more.`);

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getApiBaseUrl } from '../lib/apiBase'
+import { urlHasVideoEmbed } from '../lib/videoEmbedUrls'
 
 /**
  * Fetches Open Graph data for the first http(s) URL in message text (server-side SSRF-safe fetch).
+ * Skips known video URLs — those are rendered as embeds via MessageVideoEmbeds.
  */
 export default function MessageLinkPreview({ content }) {
   const url = useMemo(() => {
@@ -11,10 +13,12 @@ export default function MessageLinkPreview({ content }) {
     return m[0].replace(/[.,;:!?)\]]+$/u, '')
   }, [content])
 
+  const skipForVideoEmbed = url ? urlHasVideoEmbed(url) : false
+
   const [data, setData] = useState(null)
 
   useEffect(() => {
-    if (!url) return undefined
+    if (!url || skipForVideoEmbed) return undefined
     let cancelled = false
     setData(null)
     fetch(`${getApiBaseUrl()}/link-preview?url=${encodeURIComponent(url)}`)
@@ -27,9 +31,9 @@ export default function MessageLinkPreview({ content }) {
     return () => {
       cancelled = true
     }
-  }, [url])
+  }, [url, skipForVideoEmbed])
 
-  if (!url || !data) return null
+  if (!url || skipForVideoEmbed || !data) return null
 
   return (
     <a

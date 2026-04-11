@@ -940,6 +940,68 @@ textarea {
   padding-bottom: 0;
 }
 
+.server-custom-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.35rem;
+}
+
+.server-custom-section h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  color: var(--nexora-text);
+}
+
+.server-custom-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.server-custom-list li {
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.1);
+}
+
+.server-custom-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.server-custom-preview {
+  margin: 0.35rem 0 0;
+  white-space: pre-wrap;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  max-height: 9rem;
+  overflow: auto;
+}
+
+.server-custom-event-time {
+  display: block;
+  margin: 0.15rem 0 0.25rem;
+  font-size: 0.78rem;
+}
+
+.server-custom-publish-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0.35rem 0 0;
+}
+
+.server-custom-form {
+  margin-top: 0.45rem;
+}
+
 .invite-active-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2503,6 +2565,32 @@ textarea {
   border-radius: 10px;
   margin-top: 0.35rem;
   border: 1px solid var(--nexora-border);
+}
+
+.message-video-embeds {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  max-width: min(520px, 100%);
+}
+
+.message-video-embed-frame-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.message-video-embed-frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  background: #0f172a;
+  border: 1px solid var(--nexora-border);
+}
+
+.message-video-embed-open {
+  align-self: flex-start;
 }
 
 .inline-emoji {
@@ -5543,6 +5631,41 @@ input.theme-color-hex:disabled {
 
 .scheduler-widget-refresh {
   flex-shrink: 0;
+}
+
+.scheduler-widget-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+
+.scheduler-widget-event {
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.scheduler-widget-event:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.scheduler-widget-event-title {
+  font-weight: 600;
+  color: var(--nexora-text);
+  font-size: 0.76rem;
+}
+
+.scheduler-widget-event-when {
+  margin-top: 0.15rem;
+}
+
+.scheduler-widget-event-actions {
+  margin-top: 0.35rem;
 }
 
 /* —— Landing, legal pages, site footer —— */

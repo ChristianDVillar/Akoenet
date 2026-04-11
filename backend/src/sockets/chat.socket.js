@@ -15,6 +15,7 @@ const {
   formatScheduleReply,
   parseSchedulerChatCommand,
 } = require("../lib/scheduler-client");
+const { parseServerCustomCommandText } = require("../lib/custom-server-command");
 const { resolveSchedulerStreamerSlug } = require("../lib/scheduler-resolve");
 const { appEvents } = require("../lib/app-events");
 const { sanitizeMediaUrl, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
@@ -48,6 +49,7 @@ function initSocket(io) {
   const messageLimitPerWindow = Number(process.env.SOCKET_MESSAGE_RATE_LIMIT_MAX || 40);
   const directMessageLimitPerWindow = Number(process.env.SOCKET_DM_RATE_LIMIT_MAX || 30);
   const schedulerCommandLimitPerWindow = Number(process.env.SCHEDULER_SOCKET_RATE_LIMIT_MAX || 15);
+  const customServerCommandLimitPerWindow = Number(process.env.CUSTOM_SERVER_COMMAND_RATE_LIMIT_MAX || 20);
   const gameActivityAutoLimitPerWindow = Number(process.env.GAME_ACTIVITY_SOCKET_RATE_LIMIT_MAX || 24);
   const socketRateState = new Map();
   const typingLastEmit = new Map();
@@ -518,6 +520,103 @@ function initSocket(io) {
             });
           }
           return;
+        }
+
+        const customMatch = !imageUrl && userText ? parseServerCustomCommandText(userText) : null;
+        if (customMatch) {
+          const cmdLookup = await pool.query(
+            `SELECT id, response FROM server_custom_commands WHERE server_id = $1 AND command_name = $2`,
+            [serverId, customMatch.name]
+          );
+          if (cmdLookup.rows.length) {
+            if (!canPassRateLimit(socket.userId, "custom_server_command", customServerCommandLimitPerWindow)) {
+              if (typeof ack === "function") ack({ error: "rate_limited" });
+              return;
+            }
+            const result = await pool.query(
+              `INSERT INTO messages (channel_id, user_id, content, image_url, thread_root_message_id)
+               VALUES ($1, $2, $3, NULL, NULL)
+               RETURNING *`,
+              [channelId, socket.userId, content.trim()]
+            );
+            const row = result.rows[0];
+            const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
+            const userMessage = {
+              ...row,
+              username: u.rows[0]?.username,
+              avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+              reactions: [],
+            };
+            io.to(`channel:${channelId}`).emit("receive_message", userMessage);
+            if (content.trim()) {
+              notifyChannelMentions(io, pool, {
+                serverId,
+                channelId,
+                messageId: userMessage.id,
+                senderId: socket.userId,
+                content: content.trim(),
+              }).catch(() => {});
+            }
+            const snippet = content.trim().slice(0, 80);
+            io.to(`server:${serverId}`).emit("echonet_notification", {
+              serverId,
+              channelId,
+              username: userMessage.username,
+              snippet,
+              messageId: userMessage.id,
+            });
+
+            let replyText = String(cmdLookup.rows[0].response || "").trim();
+            if (
+              replyText &&
+              textContainsBlockedLanguage(replyText, {
+                source: "socket_custom_command_response",
+                userId: socket.userId,
+              })
+            ) {
+              replyText =
+                "_(This command reply was blocked by the server content filter. Ask a moderator to edit the command.)_";
+            }
+            if (!replyText) {
+              replyText = "_(No response text is set for this command.)_";
+            }
+
+            const fullBot = `⚙️ **!${customMatch.name}**\n${replyText}`;
+            const botMessage = await broadcastChannelMessage(io, pool, {
+              channelId,
+              userId: socket.userId,
+              content: fullBot,
+            });
+            notifyChannelMentions(io, pool, {
+              serverId,
+              channelId,
+              messageId: botMessage.id,
+              senderId: socket.userId,
+              content: fullBot,
+            }).catch(() => {});
+
+            appEvents.emit("message.created", {
+              channelId,
+              messageId: userMessage.id,
+              userId: socket.userId,
+              serverId,
+            });
+            appEvents.emit("message.created", {
+              channelId,
+              messageId: botMessage.id,
+              userId: socket.userId,
+              serverId,
+            });
+
+            if (typeof ack === "function") {
+              ack({
+                ok: true,
+                message: userMessage,
+                custom_command_reply: botMessage,
+              });
+            }
+            return;
+          }
         }
 
         const replyToRaw = parseInt(payload?.reply_to_message_id, 10);
