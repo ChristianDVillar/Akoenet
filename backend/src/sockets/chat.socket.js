@@ -1198,6 +1198,10 @@ function initSocket(io) {
     socket.on("voice:signal", ({ channelId, targetSocketId, description, candidate }) => {
       const id = parseInt(channelId, 10);
       if (Number.isNaN(id) || !targetSocketId) return;
+      const voiceRoom = `voice:${id}`;
+      if (!socket.rooms.has(voiceRoom)) return;
+      const room = io.sockets.adapter.rooms.get(voiceRoom);
+      if (!room || !room.has(targetSocketId)) return;
       io.to(targetSocketId).emit("voice:signal", {
         channelId: id,
         fromSocketId: socket.id,
