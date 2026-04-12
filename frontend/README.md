@@ -47,7 +47,7 @@ cd frontend
 npm run release:desktop
 ```
 
-Equivale a `tauri:build` y luego genera en `frontend/public/releases/` **solo la versión más nueva** (semver mayor entre los `.exe` en `bundle/nsis/`), más `AkoeNet-Setup-latest.exe` y la firma `.sig` si existe. Esos `.exe` **no se suben a Git** (límite GitHub 100 MB); están en `.gitignore`. Para el landing en producción usa la URL del asset en **GitHub Releases** (`VITE_DESKTOP_INSTALLER_URL`). Opciones: `--skip-build`, `--clean` (solo borra destino y termina). Destino alternativo: `RELEASE_OUT`.
+Equivale a `tauri:build` y luego genera en `frontend/public/releases/` **solo la versión más nueva** (semver mayor entre los `.exe` en `bundle/nsis/`), más `AkoeNet-Setup-latest.exe`, `akonet-desktop.exe` y la firma `.sig` si existe. Esos `.exe` **no se suben a Git** (límite GitHub 100 MB); están en `.gitignore`. El workflow **Publish desktop (Windows)** (tag `v*`) sube también **`akonet-desktop.exe`** al mismo Release (URL estable `…/releases/latest/download/akonet-desktop.exe`). En Render, el `buildCommand` puede hacer `curl` de ese archivo a `public/releases/` antes de `npm run build`. Opciones: `--skip-build`, `--clean` (solo borra destino y termina). Destino alternativo: `RELEASE_OUT`.
 
 En Windows verás típicamente `.msi` o instalador NSIS; en macOS `.dmg`/`.app`; según targets en `src-tauri/tauri.conf.json`.
 

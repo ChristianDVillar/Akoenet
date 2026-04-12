@@ -23,8 +23,9 @@ const tauriWithCargoPath = path.join(
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const destDefault = path.join(root, 'public', 'releases')
 
-/** Nombre fijo en public/releases/ para el landing (VITE_DESKTOP_INSTALLER_URL sin bump de versión). */
+/** Nombres fijos en public/releases/ para el landing (sin bump de versión en la URL). */
 const LATEST_INSTALLER_FILENAME = 'AkoeNet-Setup-latest.exe'
+const SHORT_INSTALLER_ALIAS = 'akonet-desktop.exe'
 
 const args = process.argv.slice(2)
 const skipBuild = args.includes('--skip-build')
@@ -105,6 +106,7 @@ function cleanOldArtifacts(destDir) {
     if (
       /^AkoeNet_.*\.exe$/i.test(name) ||
       /^AkoeNet-Setup-latest\.exe$/i.test(name) ||
+      /^akonet-desktop\.exe$/i.test(name) ||
       /\.sig$/i.test(name) ||
       name === 'latest.json'
     ) {
@@ -174,4 +176,7 @@ for (const f of copied.sort()) console.info(`  ${f}`)
 const latestPath = path.join(dest, LATEST_INSTALLER_FILENAME)
 copyFileSync(path.join(nsis, primary), latestPath)
 console.info(`[release] Alias “última versión” para el landing: ${LATEST_INSTALLER_FILENAME}`)
+const shortPath = path.join(dest, SHORT_INSTALLER_ALIAS)
+copyFileSync(path.join(nsis, primary), shortPath)
+console.info(`[release] Alias corto (p. ej. Render): ${SHORT_INSTALLER_ALIAS}`)
 console.info('[release] Listo.')

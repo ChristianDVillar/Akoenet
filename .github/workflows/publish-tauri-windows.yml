@@ -23,10 +23,9 @@
 # Permisos: Settings → Actions → General → Workflow permissions →
 #   "Read and write permissions" (para que GITHUB_TOKEN cree el Release).
 #
-# Tras el job: el instalador está en
-#   https://github.com/ChristianDVillar/Akoenet/releases/tag/vX.Y.Z
-# Actualiza VITE_DESKTOP_INSTALLER_URL en Render (o render.yaml) al .exe de ese release
-# si el landing no usa la misma URL que el updater (latest.json).
+# Tras el job: el instalador está en el Release y también como nombre estable:
+#   …/releases/latest/download/akonet-desktop.exe
+# (mismo NSIS que AkoeNet_X.Y.Z_x64-setup.exe). Render puede hacer curl de esa URL al build.
 #
 # Referencia: https://github.com/tauri-apps/tauri-action
 # =============================================================================
@@ -92,3 +91,26 @@ jobs:
           prerelease: false
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
+
+      - name: Subir alias estable akonet-desktop.exe (mismo binario, URL fija /latest/download/)
+        working-directory: frontend
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $nsis = "src-tauri/target/release/bundle/nsis"
+          if (-not (Test-Path $nsis)) { throw "No existe bundle/nsis: $nsis" }
+          $items = Get-ChildItem -Path $nsis -File -Filter "*_x64-setup.exe" | Where-Object { $_.Name -notmatch 'uninstall' }
+          if ($items.Count -eq 0) { throw "No se encontró *_x64-setup.exe en nsis" }
+          $best = $items | ForEach-Object {
+            if ($_.Name -match '_(\d+)\.(\d+)\.(\d+)_') {
+              [PSCustomObject]@{
+                File = $_
+                M = [int]$Matches[1]; N = [int]$Matches[2]; P = [int]$Matches[3]
+              }
+            }
+          } | Sort-Object M, N, P -Descending | Select-Object -First 1
+          if (-not $best) { throw "No se pudo parsear semver en los nombres de nsis" }
+          Copy-Item -LiteralPath $best.File.FullName -Destination "akonet-desktop.exe" -Force
+          Write-Host "Alias desde $($best.File.Name) -> akonet-desktop.exe"
+          gh release upload "${{ github.ref_name }}" "akonet-desktop.exe" --clobber

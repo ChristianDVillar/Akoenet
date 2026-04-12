@@ -10,13 +10,14 @@ services:
     name: akoenet-frontend
     runtime: static
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    # Descarga el instalador estable publicado por CI (akonet-desktop.exe) y lo copia a public/ antes del build.
+    # Requiere que exista ese asset en GitHub Releases (workflow publish-tauri-windows al hacer push del tag v*).
+    buildCommand: mkdir -p public/releases && curl -fsSL "https://github.com/ChristianDVillar/Akoenet/releases/latest/download/akonet-desktop.exe" -o public/releases/akonet-desktop.exe && npm install && npm run build
     staticPublishPath: ./dist
     # Vite inyecta VITE_* en build time: defínelas aquí o en Dashboard → Environment.
-    # Instalador: no subas .exe al repo (límite GitHub 100 MB). Usa URL del asset en GitHub Releases (tag v*).
     envVars:
       - key: VITE_DESKTOP_INSTALLER_URL
-        value: https://github.com/ChristianDVillar/Akoenet/releases/download/v0.7.0/AkoeNet_0.7.0_x64-setup.exe
+        value: /releases/akonet-desktop.exe
     routes:
       - type: redirect
         source: /favicon.ico
