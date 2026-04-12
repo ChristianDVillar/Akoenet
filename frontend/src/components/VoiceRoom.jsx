@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { getSocket } from '../services/socket'
 import {
-  getVoiceAudioConstraints,
+  buildRemoteVoicePlaybackGraph,
+  buildVoiceOutgoingGraph,
+  getVoiceChannelAudioConstraints,
   getVoiceVideoConstraints,
+  getMicTestAudioConstraints,
   getScreenShareConstraints,
+  partitionVoiceAndScreenAudio,
 } from '../lib/voiceConstraints'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import { getSavedVoiceSettings } from './VoiceSettingsModal'
@@ -58,6 +62,12 @@ function streamHasScreenShare(stream) {
     .some((t) => t.readyState === 'live' && t.enabled && isScreenVideoTrack(t))
 }
 
+/** Mic + separate screen-audio track (typical when peer shares a tab with audio). */
+function remoteStreamHasSplittableScreenAudio(stream) {
+  if (!stream || !streamHasScreenShare(stream)) return false
+  return stream.getAudioTracks().filter((t) => t.readyState === 'live').length >= 2
+}
+
 function streamHasCameraPip(stream) {
   const { camera } = splitScreenCameraStreams(stream)
   if (!camera) return false
@@ -83,20 +93,139 @@ function streamShowsVideoInTile(stream, omitScreen) {
   return streamHasLiveVideo(stream)
 }
 
-/** Remote voice: play audio from full stream; split video into screen (large) + camera (pip). */
-function RemoteParticipantMedia({ stream, volume, mutedByDeafen, onAudioRef, omitScreen }) {
-  const audioRef = useRef(null)
+function connectProcessedPlayback(ctx, mediaStream, cleanupRef) {
+  if (cleanupRef.current) {
+    try {
+      cleanupRef.current()
+    } catch (_) {
+      /* ignore */
+    }
+    cleanupRef.current = null
+  }
+  if (!mediaStream || mediaStream.getAudioTracks().length === 0) {
+    return null
+  }
+  const { playbackStream, disconnect } = buildRemoteVoicePlaybackGraph(ctx, mediaStream)
+  cleanupRef.current = disconnect
+  return playbackStream
+}
+
+/** Remote voice: voice + optional screen-share audio (separate mute); video split screen + camera pip. */
+function RemoteParticipantMedia({
+  stream,
+  volume,
+  mutedByDeafen,
+  screenAudioMutedByUser = false,
+  onAudioRef,
+  omitScreen,
+  getAudioContext,
+}) {
+  const voiceAudioRef = useRef(null)
+  const screenAudioRef = useRef(null)
   const screenVideoRef = useRef(null)
   const cameraVideoRef = useRef(null)
   const [videoLayout, setVideoLayout] = useState({ screen: null, camera: null })
+  const voicePlaybackCleanupRef = useRef(null)
+  const screenPlaybackCleanupRef = useRef(null)
+  const [audioTrackEpoch, setAudioTrackEpoch] = useState(0)
 
   useEffect(() => {
-    const a = audioRef.current
-    if (!a || !stream) return
-    a.srcObject = stream
-    a.muted = Boolean(mutedByDeafen)
-    a.volume = volume / 100
-  }, [stream, volume, mutedByDeafen])
+    if (!stream) return undefined
+    const bump = () => setAudioTrackEpoch((e) => e + 1)
+    stream.addEventListener('addtrack', bump)
+    stream.addEventListener('removetrack', bump)
+    return () => {
+      stream.removeEventListener('addtrack', bump)
+      stream.removeEventListener('removetrack', bump)
+    }
+  }, [stream])
+
+  useLayoutEffect(() => {
+    const voiceEl = voiceAudioRef.current
+    const screenEl = screenAudioRef.current
+    if (!stream) {
+      if (voicePlaybackCleanupRef.current) {
+        voicePlaybackCleanupRef.current()
+        voicePlaybackCleanupRef.current = null
+      }
+      if (screenPlaybackCleanupRef.current) {
+        screenPlaybackCleanupRef.current()
+        screenPlaybackCleanupRef.current = null
+      }
+      if (voiceEl) voiceEl.srcObject = null
+      if (screenEl) screenEl.srcObject = null
+      return undefined
+    }
+    if (!voiceEl) return undefined
+
+    if (voicePlaybackCleanupRef.current) {
+      voicePlaybackCleanupRef.current()
+      voicePlaybackCleanupRef.current = null
+    }
+    if (screenPlaybackCleanupRef.current) {
+      screenPlaybackCleanupRef.current()
+      screenPlaybackCleanupRef.current = null
+    }
+    if (voiceEl) voiceEl.srcObject = null
+    if (screenEl) screenEl.srcObject = null
+
+    const { voiceStream, screenStream } = partitionVoiceAndScreenAudio(stream)
+    const ctx = getAudioContext?.()
+
+    if (!ctx) {
+      if (voiceStream.getAudioTracks().length > 0) {
+        voiceEl.srcObject = voiceStream
+        void voiceEl.play()?.catch(() => {})
+      }
+      if (screenEl && screenStream && screenStream.getAudioTracks().length > 0) {
+        screenEl.srcObject = screenStream
+        void screenEl.play()?.catch(() => {})
+      }
+      return undefined
+    }
+
+    const vPlay = connectProcessedPlayback(ctx, voiceStream, voicePlaybackCleanupRef)
+    if (voiceEl) {
+      if (vPlay && vPlay.getAudioTracks().length > 0) {
+        voiceEl.srcObject = vPlay
+      } else if (voiceStream.getAudioTracks().length > 0) {
+        voiceEl.srcObject = voiceStream
+      }
+      void voiceEl.play()?.catch(() => {})
+    }
+
+    if (screenEl && screenStream && screenStream.getAudioTracks().length > 0) {
+      const sPlay = connectProcessedPlayback(ctx, screenStream, screenPlaybackCleanupRef)
+      screenEl.srcObject =
+        sPlay && sPlay.getAudioTracks().length > 0 ? sPlay : screenStream
+      void screenEl.play()?.catch(() => {})
+    }
+
+    return () => {
+      if (voicePlaybackCleanupRef.current) {
+        voicePlaybackCleanupRef.current()
+        voicePlaybackCleanupRef.current = null
+      }
+      if (screenPlaybackCleanupRef.current) {
+        screenPlaybackCleanupRef.current()
+        screenPlaybackCleanupRef.current = null
+      }
+    }
+  }, [stream, audioTrackEpoch, getAudioContext])
+
+  useEffect(() => {
+    const v = voiceAudioRef.current
+    const s = screenAudioRef.current
+    const vol = volume / 100
+    if (v) {
+      v.volume = vol
+      v.muted = Boolean(mutedByDeafen)
+    }
+    if (s) {
+      s.volume = vol
+      s.muted = Boolean(mutedByDeafen) || Boolean(screenAudioMutedByUser)
+    }
+  }, [volume, mutedByDeafen, screenAudioMutedByUser])
 
   useEffect(() => {
     if (!stream) {
@@ -120,8 +249,22 @@ function RemoteParticipantMedia({ stream, volume, mutedByDeafen, onAudioRef, omi
   }, [stream, omitScreen])
 
   useEffect(() => {
-    if (screenVideoRef.current) screenVideoRef.current.srcObject = videoLayout.screen
-    if (cameraVideoRef.current) cameraVideoRef.current.srcObject = videoLayout.camera
+    const sv = screenVideoRef.current
+    const cv = cameraVideoRef.current
+    if (sv) {
+      sv.srcObject = videoLayout.screen
+      if (videoLayout.screen) {
+        const p = sv.play()
+        if (p !== undefined) p.catch(() => {})
+      }
+    }
+    if (cv) {
+      cv.srcObject = videoLayout.camera
+      if (videoLayout.camera) {
+        const p = cv.play()
+        if (p !== undefined) p.catch(() => {})
+      }
+    }
   }, [videoLayout])
 
   if (!stream) return null
@@ -130,12 +273,13 @@ function RemoteParticipantMedia({ stream, volume, mutedByDeafen, onAudioRef, omi
     <>
       <audio
         ref={(el) => {
-          audioRef.current = el
+          voiceAudioRef.current = el
           onAudioRef?.(el)
         }}
         autoPlay
         className="voice-remote-audio-el"
       />
+      <audio ref={screenAudioRef} autoPlay className="voice-remote-audio-el voice-remote-screen-audio-el" />
       {(videoLayout.screen || videoLayout.camera) && (
         <div className="voice-remote-video-stack">
           {videoLayout.screen && (
@@ -391,6 +535,10 @@ export default function VoiceRoom({
   const [localScreenStream, setLocalScreenStream] = useState(null)
   /** Which shared screen is shown large: 'local' or a remote socketId; null when none sharing. */
   const [screenFocusId, setScreenFocusId] = useState(null)
+  const [localScreenAudioSendMuted, setLocalScreenAudioSendMuted] = useState(false)
+  const [localScreenPreviewMuted, setLocalScreenPreviewMuted] = useState(false)
+  /** Per remote socket: mute only their screen-capture audio (not their mic). */
+  const [remoteScreenAudioMuted, setRemoteScreenAudioMuted] = useState({})
   const localStreamRef = useRef(null)
   const localVideoRef = useRef(null)
   const localScreenVideoRef = useRef(null)
@@ -400,6 +548,9 @@ export default function VoiceRoom({
   const screenFocusPipVideoRef = useRef(null)
   const screenShareStreamRef = useRef(null)
   const screenTrackRef = useRef(null)
+  /** Audio tracks from getDisplayMedia (tab/system); empty if browser shares video only. */
+  const screenShareAudioTracksRef = useRef([])
+  const localScreenShareAudioPreviewRef = useRef(null)
   const micTestStreamRef = useRef(null)
   const peersRef = useRef(new Map())
   const remoteMediaRef = useRef(new Map())
@@ -412,6 +563,30 @@ export default function VoiceRoom({
   const voiceJoinedChannelRef = useRef(null)
   const joinInProgressRef = useRef(false)
   const lastScreenShareIdsKeyRef = useRef('')
+  const rawVoiceStreamRef = useRef(null)
+  const outgoingGainNodeRef = useRef(null)
+  const voiceOutgoingDisconnectRef = useRef(null)
+  const pendingAudioCtxCloseRef = useRef(null)
+
+  const ensureAudioContext = useCallback(() => {
+    if (!audioContextRef.current) {
+      const Ctx = window.AudioContext || window.webkitAudioContext
+      if (!Ctx) return null
+      audioContextRef.current = new Ctx()
+    }
+    return audioContextRef.current
+  }, [])
+
+  function teardownVoiceOutgoingProcessing() {
+    try {
+      voiceOutgoingDisconnectRef.current?.()
+    } catch (_) {
+      /* ignore */
+    }
+    voiceOutgoingDisconnectRef.current = null
+    outgoingGainNodeRef.current = null
+  }
+
   const volumeStorageKey = `akoenet_voice_volumes_${user?.id || 'anon'}_${channelId || 'none'}`
   const legacyVolumeStorageKeys = useMemo(
     () => [
@@ -494,6 +669,10 @@ export default function VoiceRoom({
         ? splitScreenCameraStreams(localScreenStream).screen
         : splitScreenCameraStreams(remoteStreams[screenFocusId]).screen
     el.srcObject = screenStream
+    if (screenStream) {
+      const p = el.play()
+      if (p !== undefined) p.catch(() => {})
+    }
   }, [screenFocusId, screenShareOptions, localScreenStream, remoteStreams])
 
   /** Miniatura cámara encima de la pantalla destacada (tú o remoto con cam + pantalla). */
@@ -601,6 +780,20 @@ export default function VoiceRoom({
   }, [user?.id])
 
   useEffect(() => {
+    if (!joined) return undefined
+    const syncMicGain = () => {
+      const g = getSavedVoiceSettings(user?.id).micGain
+      micGainRef.current = g
+      if (outgoingGainNodeRef.current) {
+        outgoingGainNodeRef.current.gain.value = Math.max(0, Math.min(2, g / 100))
+      }
+    }
+    syncMicGain()
+    const id = window.setInterval(syncMicGain, 500)
+    return () => window.clearInterval(id)
+  }, [joined, user?.id])
+
+  useEffect(() => {
     return () => {
       leaveVoice()
     }
@@ -631,20 +824,17 @@ export default function VoiceRoom({
       return next
     })
     setScreenFocusId((prev) => (prev === socketId ? null : prev))
+    setRemoteScreenAudioMuted((prev) => {
+      if (prev[socketId] === undefined) return prev
+      const next = { ...prev }
+      delete next[socketId]
+      return next
+    })
   }
 
   function attachRemoteStream(socketId, stream) {
     setRemoteStreams((prev) => ({ ...prev, [socketId]: stream }))
     setupRemoteAnalyser(socketId, stream)
-  }
-
-  function ensureAudioContext() {
-    if (!audioContextRef.current) {
-      const Ctx = window.AudioContext || window.webkitAudioContext
-      if (!Ctx) return null
-      audioContextRef.current = new Ctx()
-    }
-    return audioContextRef.current
   }
 
   /** Short chime for other participants when someone joins the voice channel (not played to the joiner). */
@@ -766,6 +956,12 @@ export default function VoiceRoom({
         pc.addTrack(tr, ss)
       }
     }
+    screenShareAudioTracksRef.current.forEach((at) => {
+      const ss = screenShareStreamRef.current
+      if (ss && at.readyState === 'live') {
+        pc.addTrack(at, ss)
+      }
+    })
 
     const remoteStream = new MediaStream()
     pc.ontrack = (e) => {
@@ -832,8 +1028,14 @@ export default function VoiceRoom({
     const ss = screenShareStreamRef.current
     screenTrackRef.current = null
     screenShareStreamRef.current = null
+    screenShareAudioTracksRef.current = []
     setLocalScreenStream(null)
     setScreenSharing(false)
+    setLocalScreenAudioSendMuted(false)
+    setLocalScreenPreviewMuted(false)
+    if (localScreenShareAudioPreviewRef.current) {
+      localScreenShareAudioPreviewRef.current.srcObject = null
+    }
     if (track) {
       try {
         track.stop()
@@ -857,11 +1059,15 @@ export default function VoiceRoom({
     if (!track) {
       setLocalScreenStream(null)
       setScreenSharing(false)
+      screenShareAudioTracksRef.current = []
       return
     }
+    const screenAudios = screenShareAudioTracksRef.current
     peersRef.current.forEach((pc) => {
       pc.getSenders().forEach((sender) => {
-        if (sender.track === track) {
+        const tr = sender.track
+        if (!tr) return
+        if (tr === track || screenAudios.includes(tr)) {
           pc.removeTrack(sender)
         }
       })
@@ -874,6 +1080,12 @@ export default function VoiceRoom({
     const ss = screenShareStreamRef.current
     screenTrackRef.current = null
     screenShareStreamRef.current = null
+    screenShareAudioTracksRef.current = []
+    setLocalScreenAudioSendMuted(false)
+    setLocalScreenPreviewMuted(false)
+    if (localScreenShareAudioPreviewRef.current) {
+      localScreenShareAudioPreviewRef.current.srcObject = null
+    }
     if (ss) {
       ss.getTracks().forEach((t) => {
         try {
@@ -904,6 +1116,9 @@ export default function VoiceRoom({
       }
       screenShareStreamRef.current = screenStream
       screenTrackRef.current = vt
+      const audioTracks = screenStream.getAudioTracks()
+      screenShareAudioTracksRef.current = audioTracks
+      setLocalScreenAudioSendMuted(false)
       setLocalScreenStream(screenStream)
       setScreenSharing(true)
       vt.addEventListener('ended', () => {
@@ -911,6 +1126,9 @@ export default function VoiceRoom({
       })
       peersRef.current.forEach((pc) => {
         pc.addTrack(vt, screenStream)
+        audioTracks.forEach((at) => {
+          pc.addTrack(at, screenStream)
+        })
       })
       await renegotiateAllPeers()
     } catch {
@@ -961,14 +1179,14 @@ export default function VoiceRoom({
       let stream
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: getVoiceAudioConstraints(),
+          audio: getVoiceChannelAudioConstraints(),
           video: wantVideo ? getVoiceVideoConstraints() : false,
         })
       } catch (firstErr) {
         if (wantVideo) {
           try {
             stream = await navigator.mediaDevices.getUserMedia({
-              audio: getVoiceAudioConstraints(),
+              audio: getVoiceChannelAudioConstraints(),
               video: false,
             })
             setCameraOn(false)
@@ -979,23 +1197,60 @@ export default function VoiceRoom({
           throw firstErr
         }
       }
+      rawVoiceStreamRef.current = stream
+      if (pendingAudioCtxCloseRef.current) {
+        clearTimeout(pendingAudioCtxCloseRef.current)
+        pendingAudioCtxCloseRef.current = null
+      }
+      const ctx = ensureAudioContext()
+      if (!ctx) {
+        joinInProgressRef.current = false
+        stream.getTracks().forEach((t) => t.stop())
+        rawVoiceStreamRef.current = null
+        setError('Audio is not available in this browser')
+        return
+      }
+      await ctx.resume()
+      const mediaSource = ctx.createMediaStreamSource(stream)
+      const graph = buildVoiceOutgoingGraph(ctx, mediaSource, {
+        micGainPercent: micGainRef.current,
+      })
+      voiceOutgoingDisconnectRef.current = graph.disconnect
+      outgoingGainNodeRef.current = graph.gain
+      localAnalyserRef.current = graph.analyser
+      localDataRef.current = new Uint8Array(graph.analyser.fftSize)
+      startMeterLoop()
+
+      const processedAudioTrack = graph.destination.stream.getAudioTracks()[0]
+      if (!processedAudioTrack) {
+        teardownVoiceOutgoingProcessing()
+        stream.getTracks().forEach((t) => t.stop())
+        rawVoiceStreamRef.current = null
+        joinInProgressRef.current = false
+        setError('Could not process microphone')
+        return
+      }
+      const localStream = new MediaStream([processedAudioTrack, ...stream.getVideoTracks()])
+      localStreamRef.current = localStream
+
       const hasVideo = stream.getVideoTracks().length > 0
       setCameraOn(hasVideo)
-      stream.getAudioTracks().forEach((t) => {
+      localStream.getAudioTracks().forEach((t) => {
         t.enabled = !startMuted
       })
       setMuted(startMuted)
       setDeafened(startDeafened)
-      localStreamRef.current = stream
-      setupLocalAnalyser(stream)
       socket.emit('voice:join', { channelId, username: user?.username }, (ack) => {
         joinInProgressRef.current = false
         if (!ack?.ok) {
           const err = ack?.error
           setError(err === 'voice_full' ? 'This voice channel is full' : 'Could not join voice channel')
+          teardownVoiceOutgoingProcessing()
           stream.getTracks().forEach((t) => t.stop())
           localStreamRef.current = null
+          rawVoiceStreamRef.current = null
           voiceJoinedChannelRef.current = null
+          clearLocalMeter()
           return
         }
         voiceJoinedChannelRef.current = channelId
@@ -1010,6 +1265,13 @@ export default function VoiceRoom({
       })
     } catch {
       joinInProgressRef.current = false
+      teardownVoiceOutgoingProcessing()
+      if (rawVoiceStreamRef.current) {
+        rawVoiceStreamRef.current.getTracks().forEach((t) => t.stop())
+        rawVoiceStreamRef.current = null
+      }
+      localStreamRef.current = null
+      clearLocalMeter()
       setError(discordStyle ? 'No microphone or camera access' : 'No microphone access')
     }
   }
@@ -1042,17 +1304,23 @@ export default function VoiceRoom({
     peersRef.current.forEach((pc) => pc.close())
     peersRef.current.clear()
     remoteAnalysersRef.current.clear()
+    teardownVoiceOutgoingProcessing()
     clearLocalMeter()
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close().catch(() => {})
+    if (pendingAudioCtxCloseRef.current) {
+      clearTimeout(pendingAudioCtxCloseRef.current)
+      pendingAudioCtxCloseRef.current = null
     }
-    audioContextRef.current = null
+    const ctxToClose = audioContextRef.current
     setSpeakingMap({})
-    if (localStreamRef.current) {
+    if (rawVoiceStreamRef.current) {
+      rawVoiceStreamRef.current.getTracks().forEach((t) => t.stop())
+      rawVoiceStreamRef.current = null
+    } else if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop())
-      localStreamRef.current = null
     }
+    localStreamRef.current = null
     setRemoteStreams({})
+    setRemoteScreenAudioMuted({})
     setCameraOn(false)
     setScreenSharing(false)
     setLocalScreenStream(null)
@@ -1064,6 +1332,15 @@ export default function VoiceRoom({
     if (hadServerSession) {
       onVoiceSessionChange?.({ joined: false, channelId })
     }
+    pendingAudioCtxCloseRef.current = window.setTimeout(() => {
+      pendingAudioCtxCloseRef.current = null
+      if (ctxToClose && ctxToClose.state !== 'closed') {
+        ctxToClose.close().catch(() => {})
+      }
+      if (audioContextRef.current === ctxToClose) {
+        audioContextRef.current = null
+      }
+    }, 0)
   }
 
   function toggleMute() {
@@ -1076,6 +1353,21 @@ export default function VoiceRoom({
     if (!next && deafened) {
       setDeafened(false)
     }
+  }
+
+  function toggleLocalScreenAudioSend() {
+    const next = !localScreenAudioSendMuted
+    setLocalScreenAudioSendMuted(next)
+    screenShareAudioTracksRef.current.forEach((t) => {
+      if (t.readyState === 'live') t.enabled = !next
+    })
+  }
+
+  function toggleRemoteScreenAudioMute(socketId) {
+    setRemoteScreenAudioMuted((prev) => ({
+      ...prev,
+      [socketId]: !prev[socketId],
+    }))
   }
 
   function toggleDeafened() {
@@ -1101,7 +1393,7 @@ export default function VoiceRoom({
     setError('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: getVoiceAudioConstraints(),
+        audio: getMicTestAudioConstraints(),
         video: false,
       })
       micTestStreamRef.current = stream
@@ -1221,7 +1513,7 @@ export default function VoiceRoom({
         playVoiceJoinChime()
       }
       upsertParticipant(participant)
-      if (participant.socketId !== socket.id && joined) createPeer(participant.socketId, true)
+      // Only the joiner sends offers (see joinVoice ack). Existing members answer via voice:signal — avoids WebRTC offer glare.
     }
     const onLeft = ({ socketId }) => {
       removeParticipant(socketId)
@@ -1291,6 +1583,24 @@ export default function VoiceRoom({
     })
   }, [remoteVolumes])
 
+  useEffect(() => {
+    const el = localScreenShareAudioPreviewRef.current
+    if (!el || !screenSharing || !localScreenStream) {
+      if (el) el.srcObject = null
+      return undefined
+    }
+    const tracks = localScreenStream.getAudioTracks().filter((t) => t.readyState === 'live')
+    if (tracks.length === 0) {
+      el.srcObject = null
+      return undefined
+    }
+    el.srcObject = new MediaStream(tracks)
+    el.muted = localScreenPreviewMuted
+    const p = el.play()
+    if (p !== undefined) p.catch(() => {})
+    return undefined
+  }, [screenSharing, localScreenStream, localScreenPreviewMuted])
+
   function getInitial(name) {
     return (name || '?').slice(0, 1).toUpperCase()
   }
@@ -1306,6 +1616,11 @@ export default function VoiceRoom({
       : streamHasCameraPip(remoteStreams[screenFocusId]))
 
   const hasScreenShareStage = joined && screenShareOptions.length > 0
+
+  const localHasScreenShareAudio =
+    screenSharing &&
+    localScreenStream &&
+    localScreenStream.getAudioTracks().some((t) => t.readyState === 'live')
 
   return (
     <section
@@ -1529,7 +1844,9 @@ export default function VoiceRoom({
                 stream={remoteStreams[p.socketId]}
                 volume={deafened ? 0 : remoteVolumes[p.socketId] ?? 100}
                 mutedByDeafen={deafened}
+                screenAudioMutedByUser={Boolean(remoteScreenAudioMuted[p.socketId])}
                 omitScreen={screenFocusId === p.socketId}
+                getAudioContext={ensureAudioContext}
                 onAudioRef={(el) => {
                   if (el) remoteMediaRef.current.set(p.socketId, el)
                   else remoteMediaRef.current.delete(p.socketId)
@@ -1582,6 +1899,29 @@ export default function VoiceRoom({
                 />
                 <span>{remoteVolumes[p.socketId] ?? 100}%</span>
               </label>
+              {remoteStreamHasSplittableScreenAudio(remoteStreams[p.socketId]) ? (
+                <div className="voice-screen-audio-row">
+                  <VoiceToolbarBtn
+                    onClick={() => toggleRemoteScreenAudioMute(p.socketId)}
+                    title={
+                      remoteScreenAudioMuted[p.socketId]
+                        ? 'Activar audio de la pantalla compartida'
+                        : 'Silenciar solo el audio de la pantalla (voz sigue)'
+                    }
+                    ariaLabel={
+                      remoteScreenAudioMuted[p.socketId]
+                        ? 'Activar audio de pantalla'
+                        : 'Silenciar audio de pantalla'
+                    }
+                    pressed={Boolean(remoteScreenAudioMuted[p.socketId])}
+                  >
+                    <span className="voice-screen-audio-icon" aria-hidden>
+                      {remoteScreenAudioMuted[p.socketId] ? '🔇' : '🔊'}
+                    </span>
+                  </VoiceToolbarBtn>
+                  <span className="muted small">Audio pantalla</span>
+                </div>
+              ) : null}
             </article>
           ))}
       </div>
@@ -1670,6 +2010,44 @@ export default function VoiceRoom({
           </>
         )}
       </div>
+
+      {joined && localHasScreenShareAudio ? (
+        <div className="voice-screen-audio-local-toolbar">
+          <VoiceToolbarBtn
+            onClick={toggleLocalScreenAudioSend}
+            title={
+              localScreenAudioSendMuted
+                ? 'Enviar a los demás el audio de la pantalla (vídeo o pestaña)'
+                : 'No enviar el audio de la pantalla (solo imagen)'
+            }
+            ariaLabel={localScreenAudioSendMuted ? 'Activar envío de audio de pantalla' : 'Silenciar envío de audio de pantalla'}
+            pressed={localScreenAudioSendMuted}
+          >
+            <span aria-hidden>{localScreenAudioSendMuted ? '🔇' : '🔊'}</span>
+          </VoiceToolbarBtn>
+          <span className="muted small">Audio → otros</span>
+          <VoiceToolbarBtn
+            onClick={() => setLocalScreenPreviewMuted((v) => !v)}
+            title={
+              localScreenPreviewMuted
+                ? 'Escuchar aquí el audio de la pestaña/pantalla'
+                : 'No reproducir aquí el audio local (sigue enviándose si está activo)'
+            }
+            ariaLabel={localScreenPreviewMuted ? 'Activar escucha local del audio' : 'Silenciar escucha local'}
+            pressed={localScreenPreviewMuted}
+          >
+            <span aria-hidden>{localScreenPreviewMuted ? '🔇' : '🔉'}</span>
+          </VoiceToolbarBtn>
+          <span className="muted small">Oír aquí</span>
+        </div>
+      ) : null}
+
+      <audio
+        ref={localScreenShareAudioPreviewRef}
+        className="voice-local-screen-audio-preview"
+        playsInline
+        aria-hidden
+      />
     </section>
   )
 }

@@ -12,7 +12,11 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray
 }
 import { resolveImageUrl } from '../lib/resolveImageUrl'
-import { getVoiceAudioConstraints } from '../lib/voiceConstraints'
+import {
+  buildMicTestMonitorGraph,
+  getMicMonitorPlaybackGain,
+  getMicTestAudioConstraints,
+} from '../lib/voiceConstraints'
 import { getSavedVoiceSettings } from './VoiceSettingsModal'
 import {
   DARK_THEME,
@@ -62,7 +66,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [disable2faCode, setDisable2faCode] = useState('')
   const [micLevel, setMicLevel] = useState(0)
   const [micGain, setMicGain] = useState(100)
-  const [monitorMic, setMonitorMic] = useState(true)
+  const [monitorMic, setMonitorMic] = useState(false)
   const [startWithCamera, setStartWithCamera] = useState(false)
   const [startMuted, setStartMuted] = useState(false)
   const [startDeafened, setStartDeafened] = useState(false)
@@ -173,7 +177,8 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       /* ignore storage errors */
     }
     if (gainNodeRef.current) gainNodeRef.current.gain.value = micGain / 100
-    if (monitorGainRef.current) monitorGainRef.current.gain.value = monitorMic ? 1 : 0
+    if (monitorGainRef.current)
+      monitorGainRef.current.gain.value = monitorMic ? getMicMonitorPlaybackGain(micGain) : 0
   }, [open, user?.id, micGain, monitorMic, startWithCamera, startMuted, startDeafened])
 
   const previewStyle = useMemo(
@@ -388,7 +393,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     if (testing) return
     setError('')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: getVoiceAudioConstraints() })
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: getMicTestAudioConstraints() })
       streamRef.current = stream
       const Ctx = window.AudioContext || window.webkitAudioContext
       if (!Ctx) {
@@ -400,17 +405,10 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       audioCtxRef.current = ctx
       const source = ctx.createMediaStreamSource(stream)
       await ctx.resume()
-      const gain = ctx.createGain()
-      gain.gain.value = micGain / 100
-      const monitorGain = ctx.createGain()
-      monitorGain.gain.value = monitorMic ? 1 : 0
-      const analyser = ctx.createAnalyser()
-      analyser.fftSize = 2048
-      analyser.smoothingTimeConstant = 0.5
-      source.connect(gain)
-      gain.connect(analyser)
-      gain.connect(monitorGain)
-      monitorGain.connect(ctx.destination)
+      const { gain, monitorGain, analyser } = buildMicTestMonitorGraph(ctx, source, {
+        micGain,
+        monitorMic,
+      })
       gainNodeRef.current = gain
       monitorGainRef.current = monitorGain
       analyserRef.current = analyser
