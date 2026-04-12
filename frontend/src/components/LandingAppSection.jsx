@@ -15,7 +15,34 @@ import {
  */
 const desktopDocsUrl = import.meta.env.VITE_DESKTOP_BUILD_DOCS_URL
 const desktopInstallerUrl = import.meta.env.VITE_DESKTOP_INSTALLER_URL
+/** Opcional: fuerza el texto de versión junto al botón (evita confusiones si la URL no lleva semver). */
+const desktopInstallerVersionEnv = String(import.meta.env.VITE_DESKTOP_INSTALLER_VERSION || '').trim()
 const hasHostedDesktop = Boolean(desktopInstallerUrl || desktopDocsUrl)
+
+function semverFromInstallerUrl(url) {
+  if (!url || typeof url !== 'string') return null
+  let path = url
+  if (url.includes('://')) {
+    try {
+      path = new URL(url).pathname
+    } catch {
+      return null
+    }
+  }
+  const fromTag = path.match(/\/download\/v(\d+\.\d+\.\d+)\//i)
+  if (fromTag) return fromTag[1]
+  const fromFile = path.match(/AkoeNet_(\d+\.\d+\.\d+)_/i)
+  if (fromFile) return fromFile[1]
+  const loose = path.match(/(\d+\.\d+\.\d+)/g)
+  return loose ? loose[loose.length - 1] : null
+}
+
+function installerSemverForDisplay() {
+  if (/^\d+\.\d+\.\d+$/.test(desktopInstallerVersionEnv)) return desktopInstallerVersionEnv
+  return semverFromInstallerUrl(desktopInstallerUrl)
+}
+
+const installerSemverShown = installerSemverForDisplay()
 
 function NativeDesktopBlock({ a }) {
   return (
@@ -33,6 +60,11 @@ function NativeDesktopBlock({ a }) {
         >
           {a.desktop.nativeDownloadCta}
         </a>
+      ) : null}
+      {desktopInstallerUrl && installerSemverShown ? (
+        <p className="muted small landing-app-installer-version-hint">
+          {a.desktop.installerVersionHint.replace('{{v}}', installerSemverShown)}
+        </p>
       ) : null}
       {desktopDocsUrl ? (
         <a

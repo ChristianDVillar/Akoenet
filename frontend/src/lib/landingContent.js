@@ -120,6 +120,7 @@ export const landingContent = {
           'Windows installer below. Same web client in a native window — not a browser extension. You can also build from source.',
         nativeDownloadCta: 'Download Windows installer (x64)',
         nativeDocsCta: 'Open build instructions',
+        installerVersionHint: 'Installer linked from this button: v{{v}}',
       },
       mobile: {
         pwaTitle: 'Add to your home screen',
@@ -251,6 +252,7 @@ export const landingContent = {
           'Instalador para Windows más abajo. Mismo cliente web en ventana nativa — no es extensión del navegador. También puedes compilar desde el código.',
         nativeDownloadCta: 'Descargar instalador Windows (x64)',
         nativeDocsCta: 'Ver instrucciones de compilación',
+        installerVersionHint: 'Instalador del enlace de este botón: v{{v}}',
       },
       mobile: {
         pwaTitle: 'Añadir a la pantalla de inicio',
