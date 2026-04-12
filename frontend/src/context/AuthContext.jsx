@@ -27,6 +27,15 @@ function isUnreachableApiError(err) {
   return !err.response
 }
 
+/** 5xx / rate-limit: no borrar tokens; el backend puede estar frío (p. ej. Render) o saturado. */
+function isTransientServerError(err) {
+  const s = err?.response?.status
+  if (s == null) return false
+  if (s >= 500 && s <= 599) return true
+  if (s === 429 || s === 408) return true
+  return false
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -116,6 +125,16 @@ export function AuthProvider({ children }) {
       setLoading(false)
       return
     }
+
+    if (isTransientServerError(lastErr)) {
+      stopSessionKeepAlive()
+      disconnectAkoeNet()
+      setUser(null)
+      setServerUnreachable(true)
+      setLoading(false)
+      return
+    }
+
     if (lastErr.response?.data?.error === 'Token expired, please login again') {
       localStorage.setItem(
         SESSION_NOTICE_KEY,

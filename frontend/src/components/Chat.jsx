@@ -78,7 +78,7 @@ export default function Chat({
   useEffect(() => {
     function onComposerInsert(e) {
       const t = e.detail?.text
-      if (typeof t !== 'string' || !channelId || channelType === 'voice') return
+      if (typeof t !== 'string' || !channelId) return
       const s = t.trim()
       if (!s) return
       setText((prev) => (prev && prev.trim() ? `${prev.trimEnd()}\n${s}` : s))
@@ -105,7 +105,7 @@ export default function Chat({
 
   /** Messages whose text starts with the current composer prefix (oldest first). */
   const composerHistoryMatches = useMemo(() => {
-    if (channelType === 'voice' || !channelId) return []
+    if (!channelId) return []
     const prefix = text.trim()
     if (prefix.length < 1) return []
     const pl = prefix.toLowerCase()
@@ -118,7 +118,7 @@ export default function Chat({
     }
     out.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     return out.slice(0, 40)
-  }, [messages, text, channelType, channelId])
+  }, [messages, text, channelId])
 
   const composerHistorySafeIndex = Math.min(
     composerHistoryIndex,
@@ -315,7 +315,7 @@ export default function Chat({
     const v = e.target.value
     setText(v)
     setComposerHistoryIndex(0)
-    if (channelType === 'voice' || !channelId) return
+    if (!channelId) return
     const s = getSocket()
     if (!s) return
     const now = Date.now()
@@ -556,7 +556,7 @@ export default function Chat({
   }
 
   async function refreshLatestMessages() {
-    if (!channelId || channelType === 'voice') return
+    if (!channelId) return
     try {
       const latestId = messages.reduce((max, m) => {
         const n = Number(m?.id)
@@ -639,7 +639,7 @@ export default function Chat({
   }
 
   function onChatDragEnter(e) {
-    if (!channelId || channelType === 'voice') return
+    if (!channelId) return
     if (!e.dataTransfer?.types?.includes('Files')) return
     e.preventDefault()
     fileDragDepthRef.current += 1
@@ -655,7 +655,7 @@ export default function Chat({
   }
 
   function onChatDragOver(e) {
-    if (!channelId || channelType === 'voice') return
+    if (!channelId) return
     if (e.dataTransfer?.types?.includes('Files')) {
       e.preventDefault()
       e.dataTransfer.dropEffect = 'copy'
@@ -663,7 +663,7 @@ export default function Chat({
   }
 
   async function onChatDrop(e) {
-    if (!channelId || channelType === 'voice') return
+    if (!channelId) return
     fileDragDepthRef.current = 0
     setFileDragOver(false)
     if (!e.dataTransfer?.types?.includes('Files')) return
@@ -706,7 +706,7 @@ export default function Chat({
 
   return (
     <main
-      className={`chat-panel${fileDragOver ? ' chat-panel--file-drag' : ''}`}
+      className={`chat-panel${fileDragOver ? ' chat-panel--file-drag' : ''}${isVoice ? ' chat-panel--voice' : ''}`}
       onDragEnter={onChatDragEnter}
       onDragLeave={onChatDragLeave}
       onDragOver={onChatDragOver}
@@ -719,17 +719,17 @@ export default function Chat({
           </span>
           <div>
             <span className="chat-title">{channelName || 'Channel'}</span>
-            {!isVoice && (
-              <p className="chat-header-hint">Messages update live for everyone here</p>
-            )}
+            <p className="chat-header-hint">
+              {isVoice
+                ? 'Text chat for this voice channel — same history as any channel'
+                : 'Messages update live for everyone here'}
+            </p>
           </div>
         </div>
         <div className="chat-header-actions">
-          {!isVoice && (
-            <button type="button" className="btn ghost small" onClick={refreshLatestMessages} title="Refresh messages">
-              Refresh
-            </button>
-          )}
+          <button type="button" className="btn ghost small" onClick={refreshLatestMessages} title="Refresh messages">
+            Refresh
+          </button>
           {channelId && (
             <button
               type="button"
@@ -756,19 +756,16 @@ export default function Chat({
               )}
             </button>
           )}
-          {!isVoice && (
-            <button
-              type="button"
-              className="btn ghost small"
-              onClick={() => setSearchOpen((o) => !o)}
-              title="Search messages"
-              aria-expanded={searchOpen}
-            >
-              🔎
-            </button>
-          )}
-          {!isVoice && (
-            <div className="chat-save-row" role="group" aria-label="Download chat history">
+          <button
+            type="button"
+            className="btn ghost small"
+            onClick={() => setSearchOpen((o) => !o)}
+            title="Search messages"
+            aria-expanded={searchOpen}
+          >
+            🔎
+          </button>
+          <div className="chat-save-row" role="group" aria-label="Download chat history">
               <button type="button" className="btn link chat-save-link" onClick={() => exportHistory('csv')}>
                 Spreadsheet
               </button>
@@ -779,7 +776,6 @@ export default function Chat({
                 JSON backup
               </button>
             </div>
-          )}
           <span className="chat-live-pill" title="Connected in real time">
             <span className="chat-live-dot" aria-hidden="true" />
             Live
@@ -809,7 +805,6 @@ export default function Chat({
         </div>
       )}
 
-      {!isVoice && (
       <>
       {searchOpen && (
         <section className="chat-search-panel" aria-label="Search in channel">
@@ -916,7 +911,11 @@ export default function Chat({
         {messages.length === 0 && (
           <div className="empty-chat-tip">
             <p className="empty-chat-title">Quiet here for now</p>
-            <p className="empty-chat-sub">Say hello — your message shows up for everyone instantly.</p>
+            <p className="empty-chat-sub">
+              {isVoice
+                ? 'Use this text chat while you’re in voice — messages stay in history like any channel.'
+                : 'Say hello — your message shows up for everyone instantly.'}
+            </p>
           </div>
         )}
         {messages.map((m) => (
@@ -1168,7 +1167,6 @@ export default function Chat({
         <div ref={bottomRef} />
       </div>
       </>
-      )}
 
       {rtcVoiceChannelId != null && (
         <VoiceRoom
@@ -1214,7 +1212,7 @@ export default function Chat({
           setText={setText}
           disabled={!channelId}
         />
-        {!isVoice && emojis.length > 0 && (
+        {emojis.length > 0 && (
           <div className="emoji-picker-wrap" ref={emojiPickerWrapRef}>
             <button
               type="button"
@@ -1287,11 +1285,11 @@ export default function Chat({
           type="button"
           className="btn primary chat-send-btn"
           onClick={send}
-          disabled={isVoice || uploading || !text.trim()}
+          disabled={uploading || !text.trim()}
         >
           {isForum ? 'Post' : 'Send'}
         </button>
-        {!isVoice && text.trim().length > 0 && composerHistoryMatches.length > 0 && (
+        {text.trim().length > 0 && composerHistoryMatches.length > 0 && (
           <div
             id="chat-composer-history-hint"
             className="composer-history-hint"

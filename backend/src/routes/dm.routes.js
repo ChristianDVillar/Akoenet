@@ -4,7 +4,7 @@ const pool = require("../config/db");
 const auth = require("../middleware/auth");
 const requireTermsAccepted = require("../middleware/require-terms");
 const validate = require("../middleware/validate");
-const { reportRateLimiter, userDataRateLimiter } = require("../middleware/rate-limit");
+const { reportRateLimiter, userDataRateLimiter, dmUserSearchRateLimiter } = require("../middleware/rate-limit");
 const { logAdminAction } = require("../lib/audit-log");
 const { sanitizeMediaUrl, sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 const { getConnectedUserIdsGlobal } = require("../sockets/chat.socket");
@@ -83,10 +83,32 @@ async function isConversationParticipant(conversationId, userId) {
   return result.rows.length > 0;
 }
 
-router.get("/users", validate({ query: usersQuerySchema }), async (req, res) => {
+/**
+ * Solo usuarios con los que hay relación: mismo servidor o conversación DM ya existente.
+ * Evita enumerar toda la tabla `users` (privacidad).
+ */
+router.get(
+  "/users",
+  dmUserSearchRateLimiter,
+  validate({ query: usersQuerySchema }),
+  async (req, res) => {
   const q = req.query.q;
-  const params = [req.user.id];
-  let where = "WHERE u.id <> $1";
+  const me = req.user.id;
+  const params = [me];
+  let where = `WHERE u.id <> $1
+    AND (
+      EXISTS (
+        SELECT 1 FROM server_members sm_me
+        INNER JOIN server_members sm_them
+          ON sm_me.server_id = sm_them.server_id AND sm_them.user_id = u.id
+        WHERE sm_me.user_id = $1
+      )
+      OR EXISTS (
+        SELECT 1 FROM direct_conversations dc
+        WHERE dc.user_low_id = LEAST($1::int, u.id)
+          AND dc.user_high_id = GREATEST($1::int, u.id)
+      )
+    )`;
   if (q) {
     params.push(`%${q.toLowerCase()}%`);
     where += ` AND LOWER(u.username) LIKE $${params.length}`;
@@ -106,7 +128,8 @@ router.get("/users", validate({ query: usersQuerySchema }), async (req, res) => 
     presence_status: effectivePresence(row?.presence_status, connectedSet.has(Number(row?.id))),
   }));
   res.json(payload.map((row) => sanitizeUserMediaFields(row)));
-});
+  }
+);
 
 router.post("/conversations", validate({ body: createConversationSchema }), async (req, res) => {
   const targetUserId = req.body.target_user_id;
@@ -121,6 +144,25 @@ router.post("/conversations", validate({ body: createConversationSchema }), asyn
     return res.status(403).json({ error: "blocked" });
   }
   const { low, high } = pairUsers(req.user.id, targetUserId);
+  const already = await pool.query(
+    "SELECT id FROM direct_conversations WHERE user_low_id = $1 AND user_high_id = $2",
+    [low, high]
+  );
+  if (already.rows.length === 0) {
+    const mutualServer = await pool.query(
+      `SELECT 1 AS ok
+       FROM server_members sm1
+       INNER JOIN server_members sm2 ON sm1.server_id = sm2.server_id AND sm2.user_id = $2
+       WHERE sm1.user_id = $1
+       LIMIT 1`,
+      [req.user.id, targetUserId]
+    );
+    if (mutualServer.rows.length === 0) {
+      return res.status(403).json({
+        error: "You can only start a direct message with someone you share a server with.",
+      });
+    }
+  }
   const result = await pool.query(
     `INSERT INTO direct_conversations (user_low_id, user_high_id)
      VALUES ($1, $2)

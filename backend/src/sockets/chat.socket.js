@@ -137,8 +137,20 @@ function initSocket(io) {
   function dedupeVoiceUsers(room) {
     const byUser = new Map();
     for (const p of room.values()) {
+      const micMuted = Boolean(p.mic_muted);
+      const deafened = Boolean(p.deafened);
       if (!byUser.has(p.userId)) {
-        byUser.set(p.userId, { userId: p.userId, username: p.username });
+        byUser.set(p.userId, {
+          userId: p.userId,
+          username: p.username,
+          socketId: p.socketId,
+          mic_muted: micMuted,
+          deafened,
+        });
+      } else {
+        const ex = byUser.get(p.userId);
+        ex.mic_muted = ex.mic_muted || micMuted;
+        ex.deafened = ex.deafened || deafened;
       }
     }
     return Array.from(byUser.values());
@@ -425,11 +437,8 @@ function initSocket(io) {
         if (typeof ack === "function") ack({ error: "forbidden" });
         return;
       }
-      if (perms.channel?.type === "voice" && !perms.can_connect) {
-        if (typeof ack === "function") ack({ error: "voice_forbidden" });
-        return;
-      }
-      if (perms.channel?.type !== "voice" && !(await canSendToChannel(socket.userId, channelId))) {
+      /** Texto / imagen en canal de voz: permiso de envío de mensajes (can_send), no unirse al audio (can_connect). */
+      if (!(await canSendToChannel(socket.userId, channelId))) {
         if (typeof ack === "function") ack({ error: "send_forbidden" });
         return;
       }
@@ -1175,6 +1184,8 @@ function initSocket(io) {
         socketId: socket.id,
         userId: socket.userId,
         username: username || `user_${socket.userId}`,
+        mic_muted: false,
+        deafened: false,
       });
       const participants = await enrichVoiceParticipants(Array.from(room.values()));
       if (typeof cb === "function") cb({ ok: true, participants });
@@ -1208,6 +1219,25 @@ function initSocket(io) {
         description: description || null,
         candidate: candidate || null,
       });
+    });
+
+    /** Mic / sordina: sincroniza UI en lista lateral y tiles (mismo payload que voice:presence). */
+    socket.on("voice:state", ({ channelId, mic_muted: micMuted, deafened: deafenedFlag }) => {
+      if (!canPassRateLimit(socket.userId, "voice_state", 90)) return;
+      const id = parseInt(channelId, 10);
+      if (Number.isNaN(id)) return;
+      const voiceRoom = `voice:${id}`;
+      if (!socket.rooms.has(voiceRoom)) return;
+      const room = voiceRooms.get(id);
+      if (!room || !room.has(socket.id)) return;
+      const cur = room.get(socket.id);
+      const next = {
+        ...cur,
+        mic_muted: micMuted !== undefined ? Boolean(micMuted) : Boolean(cur.mic_muted),
+        deafened: deafenedFlag !== undefined ? Boolean(deafenedFlag) : Boolean(cur.deafened),
+      };
+      room.set(socket.id, next);
+      emitVoicePresence(id, null).catch(() => {});
     });
 
     socket.on("disconnect", () => {

@@ -96,6 +96,17 @@ const linkPreviewRateLimiter = rateLimit({
   },
 });
 
+/** DM user picker — listar usuarios para abrir conversación (anti enumeración). */
+const dmUserSearchRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.DM_USER_SEARCH_RATE_LIMIT_MAX || 40),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many DM user search requests. Try again later.",
+  },
+});
+
 module.exports = {
   globalIpRateLimiter,
   uploadRateLimiter,
@@ -105,4 +116,5 @@ module.exports = {
   reportRateLimiter,
   legalFormsRateLimiter,
   linkPreviewRateLimiter,
+  dmUserSearchRateLimiter,
 };

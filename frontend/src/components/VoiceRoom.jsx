@@ -1534,6 +1534,40 @@ export default function VoiceRoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId, joined])
 
+  /** Sincronizar mic/sordina con el servidor para lista de canal y otros clientes. */
+  useEffect(() => {
+    if (!joined || !channelId) return undefined
+    const socket = getSocket()
+    if (!socket) return undefined
+    socket.emit('voice:state', { channelId, mic_muted: muted, deafened })
+    return undefined
+  }, [joined, channelId, muted, deafened])
+
+  /** Actualizar badges cuando voice:presence incluye mic_muted / deafened. */
+  useEffect(() => {
+    const socket = getSocket()
+    if (!socket || !channelId || !joined) return undefined
+    function onPresence({ channelId: cid, participants: list }) {
+      if (String(cid) !== String(channelId) || !Array.isArray(list)) return
+      setParticipants((prev) => {
+        const bySocket = new Map(list.map((p) => [p.socketId, p]))
+        return prev.map((p) => {
+          const u = bySocket.get(p.socketId)
+          if (!u) return p
+          return {
+            ...p,
+            mic_muted: u.mic_muted,
+            deafened: u.deafened,
+          }
+        })
+      })
+    }
+    socket.on('voice:presence', onPresence)
+    return () => {
+      socket.off('voice:presence', onPresence)
+    }
+  }, [channelId, joined])
+
   useEffect(() => {
     setRemoteVolumes((prev) => {
       const next = { ...prev }
@@ -1876,6 +1910,16 @@ export default function VoiceRoom({
                       <IconScreenShare /> <span className="voice-badge-text">Pantalla</span>
                     </span>
                   )}
+                  {p.mic_muted ? (
+                    <span className="voice-badge muted" title="Micrófono silenciado">
+                      <IconMicMuted /> <span className="voice-badge-text">Mute</span>
+                    </span>
+                  ) : null}
+                  {p.deafened ? (
+                    <span className="voice-badge voice-badge--deafened" title="Sordina (no oye el canal)">
+                      <IconHeadphonesDeafened /> <span className="voice-badge-text">Sordina</span>
+                    </span>
+                  ) : null}
                   <span
                     className={`voice-indicator ${speakingMap[p.socketId] ? 'active' : ''}`}
                     title={speakingMap[p.socketId] ? 'Hablando' : 'Escuchando'}

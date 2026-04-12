@@ -153,7 +153,7 @@ router.get("/:serverId/ban-status", validate({ params: serverIdParamSchema }), a
   });
 });
 
-/** Live voice occupancy (same source as Socket.IO); HTTP fallback for sidebar UI */
+/** Live voice occupancy — same `buildVoiceSnapshotForServer` as Socket.IO `voice:presence` (includes mic_muted, deafened) */
 router.get(
   "/:serverId/voice-presence",
   validate({ params: serverIdParamSchema }),

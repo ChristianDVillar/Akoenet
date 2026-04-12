@@ -36,7 +36,7 @@ function PrivateRoute({ children }) {
             <code className="inline-code">docker compose up</code>) or nothing is listening on the API URL.
           </p>
           <p className="muted api-offline-copy">
-            Wait until the backend is healthy, then try again. Your login token is still saved in this browser.
+            Wait until the backend is healthy, then try again. Your login token is still saved on this device.
           </p>
           <button type="button" className="btn primary api-offline-retry" onClick={() => refreshUser()}>
             Try again
@@ -65,7 +65,7 @@ function AdminRoute({ children }) {
         <div className="auth-card api-offline-card">
           <h1 className="api-offline-title">Can’t reach the API</h1>
           <p className="muted api-offline-copy">
-            Start or restart the backend, then retry. Your session token is still stored locally.
+            Start or restart the backend, then retry. Your session token is still stored on this device.
           </p>
           <button type="button" className="btn primary api-offline-retry" onClick={() => refreshUser()}>
             Try again

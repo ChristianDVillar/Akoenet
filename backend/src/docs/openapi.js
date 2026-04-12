@@ -30,6 +30,28 @@ function buildOpenApiSpec() {
           },
           required: ["error"],
         },
+        VoicePresenceParticipant: {
+          type: "object",
+          description:
+            "Usuario en un canal de voz (mismo shape que en el evento Socket.IO voice:presence). Si un usuario tiene varias sesiones, mic_muted y deafened reflejan OR entre conexiones.",
+          properties: {
+            userId: { type: "integer" },
+            username: { type: "string" },
+            avatar_url: { type: "string", nullable: true },
+            socketId: { type: "string" },
+            mic_muted: { type: "boolean", description: "Micrófono silenciado" },
+            deafened: { type: "boolean", description: "Sordina (no oye el canal)" },
+          },
+        },
+        VoicePresenceSnapshot: {
+          type: "object",
+          description:
+            "Claves = id de canal de voz (string). Valores = lista de participantes. Omite canales vacíos.",
+          additionalProperties: {
+            type: "array",
+            items: { $ref: "#/components/schemas/VoicePresenceParticipant" },
+          },
+        },
       },
     },
     paths: {
@@ -40,6 +62,34 @@ function buildOpenApiSpec() {
             200: {
               description: "Backend is up",
             },
+          },
+        },
+      },
+      "/servers/{serverId}/voice-presence": {
+        get: {
+          summary: "Ocupación de voz en tiempo real (fallback HTTP para la barra lateral)",
+          description:
+            "Misma fuente de datos que los eventos `voice:presence` / `voice:presence_snapshot` (memoria del proceso Socket.IO). Incluye `mic_muted` y `deafened` por participante.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "serverId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+          responses: {
+            200: {
+              description: "Mapa canalId → participantes",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/VoicePresenceSnapshot" },
+                },
+              },
+            },
+            403: { description: "No eres miembro del servidor" },
+            500: { description: "Error al construir el snapshot" },
           },
         },
       },
