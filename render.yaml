@@ -13,9 +13,10 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     # Vite inyecta VITE_* en build time: defínelas aquí o en Dashboard → Environment.
+    # Instalador: no subas .exe al repo (límite GitHub 100 MB). Usa URL del asset en GitHub Releases (tag v*).
     envVars:
       - key: VITE_DESKTOP_INSTALLER_URL
-        value: /releases/AkoeNet_0.5.0_x64-setup.exe
+        value: https://github.com/ChristianDVillar/Akoenet/releases/download/v0.7.0/AkoeNet_0.7.0_x64-setup.exe
     routes:
       - type: redirect
         source: /favicon.ico

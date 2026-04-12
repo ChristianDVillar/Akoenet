@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getVoiceAudioConstraints } from '../lib/voiceConstraints'
+import {
+  buildMicTestMonitorGraph,
+  getMicMonitorPlaybackGain,
+  getMicTestAudioConstraints,
+} from '../lib/voiceConstraints'
 
 function getStorageKey(userId) {
   return `akoenet_voice_settings_${userId || 'anon'}`
@@ -17,7 +21,7 @@ function getLegacyStorageKeys(userId) {
 function readSettings(userId) {
   const fallback = {
     micGain: 100,
-    monitorMic: true,
+    monitorMic: false,
     startWithCamera: false,
     startMuted: false,
     startDeafened: false,
@@ -37,7 +41,7 @@ function readSettings(userId) {
     if (!Number.isFinite(gain)) return fallback
     return {
       micGain: Math.max(0, Math.min(200, Math.round(gain))),
-      monitorMic: typeof parsed?.monitorMic === 'boolean' ? parsed.monitorMic : true,
+      monitorMic: typeof parsed?.monitorMic === 'boolean' ? parsed.monitorMic : false,
       startWithCamera:
         typeof parsed?.startWithCamera === 'boolean'
           ? parsed.startWithCamera
@@ -70,7 +74,7 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
   const loopRef = useRef(null)
   const storageKey = useMemo(() => getStorageKey(user?.id), [user?.id])
 
-  const [monitorMic, setMonitorMic] = useState(true)
+  const [monitorMic, setMonitorMic] = useState(false)
   const [startWithCamera, setStartWithCamera] = useState(false)
   const [startMuted, setStartMuted] = useState(false)
   const [startDeafened, setStartDeafened] = useState(false)
@@ -105,7 +109,7 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
       gainNodeRef.current.gain.value = micGain / 100
     }
     if (monitorGainRef.current) {
-      monitorGainRef.current.gain.value = monitorMic ? 1 : 0
+      monitorGainRef.current.gain.value = monitorMic ? getMicMonitorPlaybackGain(micGain) : 0
     }
   }, [storageKey, micGain, monitorMic, startWithCamera, startMuted, startDeafened])
 
@@ -148,7 +152,7 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
     setError('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: getVoiceAudioConstraints(),
+        audio: getMicTestAudioConstraints(),
       })
       streamRef.current = stream
       const Ctx = window.AudioContext || window.webkitAudioContext
@@ -161,17 +165,10 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
       audioCtxRef.current = ctx
       const source = ctx.createMediaStreamSource(stream)
       await ctx.resume()
-      const gain = ctx.createGain()
-      gain.gain.value = micGain / 100
-      const monitorGain = ctx.createGain()
-      monitorGain.gain.value = monitorMic ? 1 : 0
-      const analyser = ctx.createAnalyser()
-      analyser.fftSize = 2048
-      analyser.smoothingTimeConstant = 0.5
-      source.connect(gain)
-      gain.connect(analyser)
-      gain.connect(monitorGain)
-      monitorGain.connect(ctx.destination)
+      const { gain, monitorGain, analyser } = buildMicTestMonitorGraph(ctx, source, {
+        micGain,
+        monitorMic,
+      })
       gainNodeRef.current = gain
       monitorGainRef.current = monitorGain
       analyserRef.current = analyser

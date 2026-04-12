@@ -34,3 +34,8 @@ dist-ssr
 
 # Claves Tauri si se generaron con ruta ~/.tauri bajo frontend (Windows no expande ~)
 ~/.tauri/
+
+# Instaladores Tauri (suelen superar 100 MB; GitHub rechaza el push). Generados con npm run release:desktop.
+public/releases/*.exe
+public/releases/*.sig
+public/releases/latest.json
