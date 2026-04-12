@@ -2,10 +2,11 @@
 
 Este documento resume la arquitectura actual del proyecto, los flujos principales y los componentes clave de backend/frontend.
 
-*Última revisión estructural: abril 2026 (sesión persistente en cliente: renovación proactiva de JWT + socket con auth dinámica; desktop v0.5.0, `render.yaml`, workflow de publicación Windows por tag; además registro por email, DM/amistad desde miembros, Resend con logo CID, UX móvil y cookies).*
+*Última revisión estructural: abril 2026 (backend **1.4.x**, frontend/desktop **0.6.x**: ajustes de servidor por pestañas como User settings; `GET /integrations/scheduler/servers` y `…/channels` para el Streamer Scheduler; sesión persistente JWT + socket; desktop, `render.yaml`, workflow Windows por tag; registro por email, DM/amistad, Resend, UX móvil y cookies).*
 
 ## Últimos cambios del documento
 
+- **Abril 2026 (servidor + Scheduler):** **`ServerSettingsModal.jsx`** usa el mismo layout de pestañas que **`UserSettingsModal`**: Invites, Emojis, Commands, Events, Announcements. Backend **1.4.0**: OpenAPI y rutas `GET /integrations/scheduler/servers` y `GET /integrations/scheduler/servers/:serverId/channels` (secreto compartido con el webhook de streams). Documentado en §15.1.1 y §24.6.
 - **Abril 2026 (sesión + desktop):** el frontend renueva el access token **antes de caducar** (`startSessionKeepAlive` en `frontend/src/services/api.js`, programado según `exp` del JWT) usando **`sharedRefresh()`** único para evitar carreras con el interceptor axios en `/auth/refresh` (el backend rota el refresh token). Al volver a la pestaña, `refreshSessionAfterForeground()` solo llama a `/auth/refresh` si el JWT expira en menos de 5 minutos o ya caducó. El **Socket.IO** usa `auth` como función que lee `localStorage` en cada handshake y reconexión (`reconnectionAttempts: Infinity`), para que tras cortes de red o suspensión el token siga siendo válido. Si el refresco falla, se dispara `akoenet:session-lost` y `AuthContext` limpia la sesión. **Desktop:** versión **0.3.1** en `package.json` / `src-tauri/tauri.conf.json`; instalador servido desde `frontend/public/releases/` y referenciado en **`render.yaml`** (`VITE_DESKTOP_INSTALLER_URL`). Publicación CI: `.github/workflows/publish-tauri-windows.yml` en push de tag `v*` (secretos `TAURI_SIGNING_PRIVATE_KEY` en GitHub Actions).
 - **Fecha:** abril 2026.
 - Se alineó la guía con el estado real del código: `2FA TOTP`, `refresh tokens`, `notificaciones push web`, `threads` base, `social` (amistades/bloqueos) e `i18n` base.
@@ -58,11 +59,11 @@ Arquitectura general:
 - `frontend/`
   - `.env`: `VITE_API_URL` apunta al backend en local (p. ej. `http://localhost:3000`); en producción el default es `https://akoenet-backend.onrender.com` si la variable no está definida. Ver `frontend/.env.example`. Opcional: `VITE_DESKTOP_INSTALLER_URL` (ruta relativa bajo `/releases/` o URL absoluta al `.exe`).
   - `src-tauri/`: aplicación de escritorio **Tauri 2** (Windows NSIS); `Cargo.toml` / `tauri.conf.json` y versión alineadas con `package.json`. El instalador generado puede copiarse a `public/releases/` para descarga desde el sitio estático.
-  - `public/releases/`: instaladores desktop servidos como estáticos (p. ej. `AkoeNet_0.5.0_x64-setup.exe`).
+  - `public/releases/`: instaladores desktop servidos como estáticos (p. ej. `AkoeNet_0.6.0_x64-setup.exe`).
   - `src/App.jsx`: rutas principales.
   - `src/context/AuthContext.jsx`: estado de sesión + login/logout + `connectAkoeNet` / `disconnectAkoeNet`; tras sesión válida llama a `startSessionKeepAlive()`; en logout y pérdida de sesión `stopSessionKeepAlive()`; escucha `akoenet:session-lost`; en `visibilitychange` (pestaña visible) puede refrescar tokens vía `refreshSessionAfterForeground`.
   - `src/pages/`: Login, **Register** (paso 1: email + envío de enlace), **RegisterComplete** (token en URL: username, contraseña, fecha de nacimiento), Home (landing o `Dashboard` si hay sesión; invitaciones vía query en `Home` o ruta `/invite/:token`), `Messages` (DMs en ruta dedicada), ServerView, TwitchCallback, **`LegalDocPage`** (`/legal/:slug`), **`DmcaPage`**, **`DpoPage`**, **`InvitePage`**, **`SystemStatus`** (pública en **`/status`**: diagnóstico `GET /health` + `GET /health/deps`).
-  - `src/components/`: sidebar, canales, chat, voz, **miembros** (`MembersPanel`: búsqueda, amistad, apertura de DM), permisos, directos, ajustes de usuario/servidor; **`AppChrome.jsx`** (monta solo `GlobalSearchModal` y `children`; el atajo Ctrl+K / ⌘+K sigue abriendo el modal vía evento `akoenet-open-global-search`); **`AppChromeToolbar.jsx`** (botón 🔎 + **`NotificationBell`**), insertado **en la cabecera** de cada vista (no fijo al viewport): en **`Dashboard`** dentro de `.home-header-actions` junto al menú de usuario; en **`Messages`** a la derecha del título; en **`ChannelList`** (vista servidor) dentro de `.channel-header-leading` antes del menú de usuario; **`NotificationBell.jsx`** (escucha `in_app_notification`); **`GlobalSearchModal.jsx`** (búsqueda global `GET /messages/search/global`); **`WelcomeOnboardingModal.jsx`** (primera visita, clave `localStorage` `akoenet_onboarding_v1`); **`RichMessageText.jsx`** / **`EmojiText.jsx`** (URLs, shortcodes `:emoji:` y resaltado de `@menciones`); **`SchedulerUpcomingWidget.jsx`** (sidebar: llama a `GET /integrations/scheduler/upcoming` con JWT; el backend resuelve streamer por Twitch + perfil o variables de entorno; mensajes de error según `error` / `httpStatus`); **`UserSettingsModal.jsx`** incluye campo **Streamer Scheduler username** (`scheduler_streamer_username`) cuando el slug del Scheduler ≠ login de Twitch.
+  - `src/components/`: sidebar, canales, chat, voz, **miembros** (`MembersPanel`: búsqueda, amistad, apertura de DM), permisos, directos, ajustes de usuario (`UserSettingsModal`) y de servidor (`ServerSettingsModal`: pestañas Invites / Emojis / Commands / Events / Announcements); **`AppChrome.jsx`** (monta solo `GlobalSearchModal` y `children`; el atajo Ctrl+K / ⌘+K sigue abriendo el modal vía evento `akoenet-open-global-search`); **`AppChromeToolbar.jsx`** (botón 🔎 + **`NotificationBell`**), insertado **en la cabecera** de cada vista (no fijo al viewport): en **`Dashboard`** dentro de `.home-header-actions` junto al menú de usuario; en **`Messages`** a la derecha del título; en **`ChannelList`** (vista servidor) dentro de `.channel-header-leading` antes del menú de usuario; **`NotificationBell.jsx`** (escucha `in_app_notification`); **`GlobalSearchModal.jsx`** (búsqueda global `GET /messages/search/global`); **`WelcomeOnboardingModal.jsx`** (primera visita, clave `localStorage` `akoenet_onboarding_v1`); **`RichMessageText.jsx`** / **`EmojiText.jsx`** (URLs, shortcodes `:emoji:` y resaltado de `@menciones`); **`SchedulerUpcomingWidget.jsx`** (sidebar: llama a `GET /integrations/scheduler/upcoming` con JWT; el backend resuelve streamer por Twitch + perfil o variables de entorno; mensajes de error según `error` / `httpStatus`); **`UserSettingsModal.jsx`** incluye campo **Streamer Scheduler username** (`scheduler_streamer_username`) cuando el slug del Scheduler ≠ login de Twitch.
   - `src/lib/landingContent.js`: textos de la landing pública (EN/ES); el copy destaca **Streamer Scheduler** y comunidades, no solo “otro chat”.
   - `src/services/api.js`: cliente Axios con `Authorization: Bearer` desde `localStorage`; interceptor **401** → `POST /auth/refresh` mediante **`sharedRefresh()`** (misma promesa en vuelo que la renovación programada); exporta `startSessionKeepAlive`, `stopSessionKeepAlive`, `refreshSessionAfterForeground`.
   - `src/services/socket.js`: `io()` con `auth: (cb) => cb({ token: localStorage… })` para que cada reconexión use el JWT actual; `reconnectionAttempts: Infinity` y backoff; `connectAkoeNet(token)` opcionalmente escribe el token en `localStorage` antes de conectar.
@@ -677,6 +678,8 @@ Se aplicaron mejoras concretas orientadas a estabilidad, seguridad de entrada y 
   - historial de mensajes con parámetros (`channelId`, `limit`, `before`)
   - uploads de canal y directos (multipart)
   - `GET /integrations/scheduler/upcoming` (JWT; proxy al calendario del Scheduler)
+  - `GET /integrations/scheduler/discovery` (sin JWT; proxy al JSON de integración del Scheduler)
+  - `GET /integrations/scheduler/servers` y `GET /integrations/scheduler/servers/:serverId/channels` (header `x-scheduler-webhook-secret`; listados para el selector del Streamer Scheduler)
 - Seguridad declarada:
   - bearer JWT (`bearerAuth`) en endpoints protegidos.
 
@@ -875,7 +878,7 @@ Se aplicaron mejoras concretas orientadas a estabilidad, seguridad de entrada y 
 
 ## 17) Invitaciones por link
 
-- **Crear, listar y revocar invitaciones:** solo desde la vista de servidor, botón **Server settings** (engranaje) → modal de invitaciones (misma lógica que antes evitaba duplicar el formulario en el Dashboard).
+- **Crear, listar y revocar invitaciones:** desde la vista de servidor, botón **Server settings** (engranaje) → modal con **pestañas** (mismo layout que User settings): **Invites**, **Emojis**, **Commands**, **Events**, **Announcements**; la pestaña **Invites** concentra creación, enlace generado e invitaciones activas (misma lógica que antes evitaba duplicar el formulario en el Dashboard).
 - **Dashboard:** permite **unirse** con link o token pegado (y crear/unirse por ID de servidor); no duplica el gestor de invitaciones.
 - Modos de invitación:
   - **Temporal:** dura 1 semana.
@@ -1127,7 +1130,14 @@ Objetivo: unificar comunidad (AkoeNet) + planificación de contenido (Scheduler)
 - AkoeNet y el Scheduler pueden estar en **hosts distintos** (p. ej. local + Render): basta con que `SCHEDULER_API_BASE_URL` apunte al **API JSON** correcto. Si **`/api/integration/akoenet`** devuelve **404**, suele ser un API antiguo sin esa ruta; el calendario puede seguir funcionando vía `/api/streamer/{username}/events` (el backend marca **reachable (legacy)** probando `/api/health/live` cuando aplica).
 - Contrato detallado en el monorepo **streamer-scheduler**: `docs/AKOENET_CONTRACT.md`, `docs/AKOENET_SCHEDULER_INTEGRATION.md`.
 
-### 24.6 Diferenciación frente a Discord (con integración)
+### 24.6 Listados en AkoeNet para el Streamer Scheduler (secreto compartido)
+
+- **`GET /integrations/scheduler/servers`** (header obligatorio **`x-scheduler-webhook-secret`**, mismo valor que el webhook de anuncios): respuesta JSON `{ "servers": [ { "id": "<string>", "name": "…" } ] }`; excluye servidores con `is_system`.
+- **`GET /integrations/scheduler/servers/:serverId/channels`**: `{ "channels": [ { "id": "<string>", "name": "…" } ] }` solo canales **`type = text`**, orden por `position`.
+- **401** si el secreto falta o no coincide; **404** en canales si el servidor no existe o es de sistema.
+- El panel del Scheduler puede usar estas rutas para rellenar desplegables (análogo a guilds/canales en Discord); si no están disponibles, el flujo sigue con ID de canal manual.
+
+### 24.7 Diferenciación frente a Discord (con integración)
 
 - Discord requiere bots/plugins externos para anuncios de calendario.
 - AkoeNet integrado con Scheduler permite anuncios nativos y auditables desde backend propio.

@@ -1,17 +1,35 @@
-# Build firma (updater) y subida a GitHub Releases: genera latest.json para el endpoint
-# configurado en frontend/src-tauri/tauri.conf.json (plugins.updater.endpoints).
+# =============================================================================
+# Publicar instalador Windows (NSIS) + firmas + latest.json en GitHub Releases
+# =============================================================================
 #
-# Requisitos en el repo de GitHub: Settings → Secrets → Actions
-#   TAURI_SIGNING_PRIVATE_KEY        — contenido completo de la clave minisign (.key), una línea base64
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — opcional, si la clave tiene contraseña
+# Flujo recomendado (cada release de escritorio):
+#   1. Sube la versión en:
+#        frontend/package.json  → "version": "0.8.0"
+#        frontend/src-tauri/tauri.conf.json → "version": "0.8.0"
+#        frontend/src-tauri/Cargo.toml → version = "0.8.0"
+#      (deben coincidir entre sí y con el tag.)
+#   2. Commit y push a la rama habitual (p. ej. Development o main).
+#   3. Crea y sube el tag:
+#        git tag v0.8.0
+#        git push origin v0.8.0
 #
-# Si el job falla al subir el release con:
-#   Error: Resource not accessible by integration (create-a-release)
-# entonces en Settings → Actions → General → Workflow permissions elige
-# "Read and write permissions" (no solo lectura). Sin eso, GITHUB_TOKEN no puede crear Releases.
+# Este workflow se dispara solo con tags que empiezan por "v". Compila en
+# windows-latest y tauri-action sube el .exe, .sig y latest.json al Release.
 #
-# Uso: git tag v0.5.0 && git push origin v0.5.0
-# (el tag debe coincidir con la versión en tauri.conf.json, Cargo.toml y package.json)
+# Secretos en GitHub: Settings → Secrets and variables → Actions
+#   TAURI_SIGNING_PRIVATE_KEY — contenido de la clave minisign (.key), una línea
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — si la clave tiene contraseña (opcional)
+#
+# Permisos: Settings → Actions → General → Workflow permissions →
+#   "Read and write permissions" (para que GITHUB_TOKEN cree el Release).
+#
+# Tras el job: el instalador está en
+#   https://github.com/ChristianDVillar/Akoenet/releases/tag/vX.Y.Z
+# Actualiza VITE_DESKTOP_INSTALLER_URL en Render (o render.yaml) al .exe de ese release
+# si el landing no usa la misma URL que el updater (latest.json).
+#
+# Referencia: https://github.com/tauri-apps/tauri-action
+# =============================================================================
 
 name: Publish desktop (Windows)
 
@@ -20,9 +38,12 @@ on:
     tags:
       - 'v*'
 
-# Necesario para que GITHUB_TOKEN pueda crear el Release y subir assets (evita 403 "not accessible by integration").
 permissions:
   contents: write
+
+concurrency:
+  group: publish-tauri-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   publish-tauri:
@@ -45,6 +66,13 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Comprobar que el tag coincide con package.json, tauri.conf y Cargo.toml
+        working-directory: frontend
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node -e "const fs=require('fs'); const tag=process.env.TAG.replace(/^v/i,''); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')).version; const conf=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')).version; const m=fs.readFileSync('src-tauri/Cargo.toml','utf8').match(/^version\s*=\s*\"([^\"]+)\"/m); const cargo=m?m[1]:null; if(pkg!==tag) throw new Error('package.json '+pkg+' != tag '+tag); if(conf!==tag) throw new Error('tauri.conf.json '+conf+' != tag '+tag); if(cargo&&cargo!==tag) throw new Error('Cargo.toml '+cargo+' != tag '+tag); console.log('OK: versión',tag,'=',process.env.TAG);"
+
       - name: Build Tauri and upload release + latest.json
         uses: tauri-apps/tauri-action@v0.6
         env:
@@ -53,10 +81,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: frontend
-          tauriScript: npm run tauri
+          tauriScript: tauri
           tagName: ${{ github.ref_name }}
           releaseName: AkoeNet ${{ github.ref_name }}
-          releaseBody: 'Instalador NSIS y latest.json para actualizaciones automáticas.'
+          releaseBody: |
+            Instalador NSIS Windows y `latest.json` para actualizaciones automáticas (Tauri updater).
+
+            Descarga el `.exe` desde los assets de abajo. La app instalada comprobará actualizaciones según `tauri.conf.json`.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true
