@@ -1473,6 +1473,31 @@ textarea {
   flex: 1;
 }
 
+.voice-channel-audio-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.voice-channel-audio-badge {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.voice-channel-audio-badge--mute {
+  color: #94a3b8;
+}
+
+.voice-channel-audio-badge--deaf {
+  color: #f87171;
+}
+
+.voice-channel-audio-svg {
+  display: block;
+}
+
 .voice-channel-live-badge {
   flex-shrink: 0;
   margin-left: auto;
@@ -3466,6 +3491,17 @@ textarea {
   overflow: auto;
 }
 
+/* Voice channel: show scrollable text history above the voice stage */
+.chat-panel.chat-panel--voice .message-list {
+  flex: 1 1 38%;
+  min-height: 120px;
+  max-height: min(44vh, 440px);
+}
+.chat-panel.chat-panel--voice > .voice-room-discord:not(.voice-room-compact) {
+  flex: 1 1 52%;
+  min-height: 180px;
+}
+
 .voice-room-compact {
   flex-shrink: 0;
   margin-top: auto;
@@ -4128,10 +4164,15 @@ textarea {
 }
 
 .voice-badge.screen,
-.voice-badge.muted {
+.voice-badge.muted,
+.voice-badge.voice-badge--deafened {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
+}
+
+.voice-badge.voice-badge--deafened {
+  color: #fca5a5;
 }
 
 .voice-badge .voice-toolbar-svg {
