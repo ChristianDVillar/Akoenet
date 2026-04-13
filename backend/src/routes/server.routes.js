@@ -8,6 +8,7 @@ const validate = require("../middleware/validate");
 const logger = require("../lib/logger");
 const {
   canManageChannels,
+  canManageMemberRoles,
   canSendToChannel,
   isServerMember,
   getActiveServerBan,
@@ -70,6 +71,13 @@ const banUserSchema = z.object({
 const banUserParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
   userId: z.coerce.number().int().positive(),
+});
+const memberRolesParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  userId: z.coerce.number().int().positive(),
+});
+const patchMemberRoleBodySchema = z.object({
+  role: z.string().trim().min(1).max(64),
 });
 const customCommandIdParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
@@ -669,13 +677,97 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
   res.json(result.rows.map((row) => shapeMemberRowForPublicApi(row, connectedSet)));
 });
 
+router.patch(
+  "/:serverId/members/:userId/roles",
+  validate({
+    params: memberRolesParamSchema,
+    body: patchMemberRoleBodySchema,
+  }),
+  async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const targetUserId = Number(req.params.userId);
+    const roleName = String(req.body.role || "")
+      .trim()
+      .toLowerCase();
+    if (!(await canManageMemberRoles(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to manage member roles" });
+    }
+    const memberCheck = await pool.query(
+      "SELECT 1 FROM server_members WHERE user_id = $1 AND server_id = $2",
+      [targetUserId, serverId]
+    );
+    if (!memberCheck.rows.length) {
+      return res.status(404).json({ error: "Member not found" });
+    }
+    const serverRow = await pool.query("SELECT owner_id FROM servers WHERE id = $1", [serverId]);
+    if (!serverRow.rows.length) {
+      return res.status(404).json({ error: "Server not found" });
+    }
+    const ownerId = Number(serverRow.rows[0].owner_id);
+    if (targetUserId === ownerId && roleName !== "admin") {
+      return res.status(400).json({ error: "cannot_change_owner_role" });
+    }
+    const roleRow = await pool.query(
+      `SELECT id, name FROM roles WHERE server_id = $1 AND LOWER(name) = $2`,
+      [serverId, roleName]
+    );
+    if (!roleRow.rows.length) {
+      return res.status(400).json({ error: "role_not_found" });
+    }
+    const newRoleId = roleRow.rows[0].id;
+
+    const targetHadAdmin = await pool.query(
+      `SELECT 1 FROM user_roles ur
+       INNER JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = $1 AND r.server_id = $2 AND r.name = 'admin'`,
+      [targetUserId, serverId]
+    );
+    if (targetHadAdmin.rows.length && roleName !== "admin") {
+      const otherAdmins = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM user_roles ur
+         INNER JOIN roles r ON r.id = ur.role_id
+         WHERE r.server_id = $1 AND r.name = 'admin' AND ur.user_id <> $2`,
+        [serverId, targetUserId]
+      );
+      if ((otherAdmins.rows[0]?.c ?? 0) < 1) {
+        return res.status(400).json({ error: "last_admin" });
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DELETE FROM user_roles ur
+         USING roles r
+         WHERE ur.user_id = $1 AND ur.role_id = r.id AND r.server_id = $2`,
+        [targetUserId, serverId]
+      );
+      await client.query(
+        `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
+        [targetUserId, newRoleId]
+      );
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      logger.error({ err: e }, "Patch member role failed");
+      return res.status(500).json({ error: "Could not update role" });
+    } finally {
+      client.release();
+    }
+
+    res.json({ ok: true, user_id: targetUserId, role: roleRow.rows[0].name });
+  }
+);
+
 router.get("/:serverId/my-permissions", validate({ params: serverIdParamSchema }), async (req, res) => {
   const serverId = req.params.serverId;
   if (!(await isServerMember(req.user.id, serverId))) {
     return res.status(403).json({ error: "Not a member" });
   }
   const can = await canManageChannels(req.user.id, serverId);
-  res.json({ can_manage_channels: can });
+  const canRoles = await canManageMemberRoles(req.user.id, serverId);
+  res.json({ can_manage_channels: can, can_manage_member_roles: canRoles });
 });
 
 router.get("/:serverId/custom-commands", validate({ params: serverIdParamSchema }), async (req, res) => {

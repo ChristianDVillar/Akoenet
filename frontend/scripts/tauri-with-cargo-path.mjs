@@ -7,6 +7,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { normalizeTauriUpdaterKeyMaterialForEnv } from './tauri-updater-key-inline.mjs'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const cargoBin = path.join(os.homedir(), '.cargo', 'bin')
@@ -48,7 +49,7 @@ function ensureUpdaterPrivateKeyForBuild() {
     if (!found) {
       const ciHint =
         process.env.GITHUB_ACTIONS === 'true'
-          ? '\n  GitHub Actions: añade el secreto del repo TAURI_SIGNING_PRIVATE_KEY (contenido del .key minisign, tal cual) en Settings → Secrets and variables → Actions. Opcional: TAURI_SIGNING_PRIVATE_KEY_PASSWORD.\n'
+          ? '\n  GitHub Actions: secreto TAURI_SIGNING_PRIVATE_KEY = contenido del `.key` (multilínea) **o** la línea base64 que imprime `tauri signer generate`. Opcional: TAURI_SIGNING_PRIVATE_KEY_PASSWORD.\n'
           : ''
       console.error(
         '[tauri] Falta la clave privada para firmar artefactos del updater (hay pubkey en tauri.conf.json).\n' +
@@ -80,8 +81,8 @@ function ensureUpdaterPrivateKeyForBuild() {
       process.exit(1)
     }
     try {
-      const raw = readFileSync(p, 'utf8').replace(/\r\n/g, '\n').trimEnd()
-      process.env.TAURI_SIGNING_PRIVATE_KEY = raw
+      const raw = readFileSync(p, 'utf8')
+      process.env.TAURI_SIGNING_PRIVATE_KEY = normalizeTauriUpdaterKeyMaterialForEnv(raw)
       console.info('[tauri] Set TAURI_SIGNING_PRIVATE_KEY from file (Windows-friendly).')
     } catch (e) {
       console.error('[tauri] No se pudo leer la clave:', p, e?.message || e)
@@ -91,6 +92,12 @@ function ensureUpdaterPrivateKeyForBuild() {
 }
 
 ensureUpdaterPrivateKeyForBuild()
+
+if (process.env.TAURI_SIGNING_PRIVATE_KEY?.trim()) {
+  process.env.TAURI_SIGNING_PRIVATE_KEY = normalizeTauriUpdaterKeyMaterialForEnv(
+    process.env.TAURI_SIGNING_PRIVATE_KEY
+  )
+}
 const r = spawnSync(process.execPath, [tauriJs, ...args], {
   stdio: 'inherit',
   cwd: root,

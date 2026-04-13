@@ -1,7 +1,7 @@
 {
   "name": "akonet-frontend",
   "private": true,
-  "version": "0.7.2",
+  "version": "0.7.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,8 @@
     "tauri": "node scripts/tauri-with-cargo-path.mjs",
     "tauri:dev": "node scripts/tauri-with-cargo-path.mjs dev",
     "tauri:build": "node scripts/tauri-with-cargo-path.mjs build",
-    "release:desktop": "node scripts/release-desktop-to-public.mjs"
+    "release:desktop": "node scripts/release-desktop-to-public.mjs",
+    "updater:pubkey-for-conf": "node scripts/print-updater-pubkey-for-tauri-conf.mjs"
   },
   "dependencies": {
     "@tauri-apps/plugin-log": "^2.8.0",

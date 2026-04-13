@@ -27,6 +27,18 @@ function isMemberOnline(member, connectedSet, currentUser) {
 }
 
 const ROLE_ORDER = ['admin', 'moderator', 'streamer', 'member']
+const ROLE_OPTION_ORDER = ['admin', 'moderator', 'member', 'streamer']
+
+function sortServerRoleNames(names) {
+  const lower = (names || []).map((n) => String(n || '').trim().toLowerCase()).filter(Boolean)
+  const set = new Set(lower)
+  const out = []
+  for (const k of ROLE_OPTION_ORDER) {
+    if (set.has(k)) out.push(k)
+  }
+  const rest = [...set].filter((k) => !ROLE_OPTION_ORDER.includes(k)).sort((a, b) => a.localeCompare(b))
+  return [...out, ...rest]
+}
 
 function resolveDisplayRole(member) {
   const roles = normalizedRoles(member)
@@ -43,6 +55,10 @@ export default function MembersPanel({
   onClose = null,
   activityByUserId = {},
   gameRanking = [],
+  serverId = null,
+  canManageMemberRoles = false,
+  serverOwnerId = null,
+  onMemberRolesUpdated = null,
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -55,6 +71,9 @@ export default function MembersPanel({
   const [friendRequestBusyId, setFriendRequestBusyId] = useState(null)
   const [dmOpenBusyId, setDmOpenBusyId] = useState(null)
   const [friendNotice, setFriendNotice] = useState(null)
+  const [serverRoleNames, setServerRoleNames] = useState([])
+  const [roleBusyId, setRoleBusyId] = useState(null)
+  const [roleNotice, setRoleNotice] = useState(null)
   const connectedSet = useMemo(
     () => new Set((connectedUserIds || []).map((id) => Number(id))),
     [connectedUserIds]
@@ -72,6 +91,26 @@ export default function MembersPanel({
   useEffect(() => {
     refreshFriendships()
   }, [refreshFriendships])
+
+  useEffect(() => {
+    if (!serverId || !canManageMemberRoles) {
+      setServerRoleNames([])
+      return undefined
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get(`/servers/${serverId}/roles`)
+        const names = sortServerRoleNames((Array.isArray(data) ? data : []).map((r) => r?.name))
+        if (!cancelled) setServerRoleNames(names)
+      } catch {
+        if (!cancelled) setServerRoleNames([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [serverId, canManageMemberRoles])
 
   const friendshipByPeerId = useMemo(() => {
     const m = new Map()
@@ -157,6 +196,33 @@ export default function MembersPanel({
     }
   }
 
+  async function handleMemberRoleChange(member, nextRole) {
+    if (!serverId || !canManageMemberRoles) return
+    const current = resolveDisplayRole(member)
+    if (String(nextRole).toLowerCase() === current) return
+    setFriendNotice(null)
+    setRoleNotice(null)
+    setRoleBusyId(Number(member.id))
+    try {
+      await api.patch(`/servers/${serverId}/members/${member.id}/roles`, {
+        role: String(nextRole).toLowerCase(),
+      })
+      await onMemberRolesUpdated?.()
+      setFriendNotice({ type: 'ok', text: t('members.roleUpdated') })
+    } catch (err) {
+      const code = err.response?.data?.error
+      if (code === 'last_admin') {
+        setRoleNotice({ type: 'err', text: t('members.roleErrLastAdmin') })
+      } else if (code === 'cannot_change_owner_role') {
+        setRoleNotice({ type: 'err', text: t('members.roleErrOwner') })
+      } else {
+        setRoleNotice({ type: 'err', text: t('members.roleErrGeneric') })
+      }
+    } finally {
+      setRoleBusyId(null)
+    }
+  }
+
   async function handleAddFriend(peerId) {
     setFriendNotice(null)
     setFriendRequestBusyId(peerId)
@@ -196,6 +262,14 @@ export default function MembersPanel({
           </button>
         )}
       </header>
+      {roleNotice && (
+        <p
+          className={`members-friend-notice ${roleNotice.type === 'err' ? 'members-friend-notice--err' : ''}`}
+          role="status"
+        >
+          {roleNotice.text}
+        </p>
+      )}
       {Array.isArray(gameRanking) && gameRanking.length > 0 && (
         <div className="members-trending" aria-label={t('members.trendingAria')}>
           <div className="members-trending-title">{t('members.trendingTitle')}</div>
@@ -317,6 +391,44 @@ export default function MembersPanel({
                         </span>
                       </div>
                     </button>
+                    {selected && canManageMemberRoles && serverId && (
+                      <div
+                        className="member-item-actions member-item-role-row"
+                        onClick={(e) => e.stopPropagation()}
+                        role="presentation"
+                      >
+                        {serverOwnerId != null && Number(member.id) === Number(serverOwnerId) ? (
+                          <p className="muted small member-owner-role-hint">{t('members.ownerRoleLocked')}</p>
+                        ) : (
+                          <label className="member-role-select-label">
+                            <span className="member-role-select-text">{t('members.roleLabel')}</span>
+                            {(() => {
+                              const dr = resolveDisplayRole(member)
+                              const optionNames = sortServerRoleNames(
+                                [...new Set([...serverRoleNames, dr])].filter(Boolean)
+                              )
+                              return (
+                            <select
+                              className="select-inline member-role-select"
+                              aria-label={t('members.roleLabel')}
+                              value={dr}
+                              disabled={roleBusyId === Number(member.id) || optionNames.length === 0}
+                              onChange={(e) => handleMemberRoleChange(member, e.target.value)}
+                            >
+                              {optionNames.map((rn) => (
+                                <option key={rn} value={rn}>
+                                  {t(`members.roles.${rn}`, {
+                                    defaultValue: rn.charAt(0).toUpperCase() + rn.slice(1),
+                                  })}
+                                </option>
+                              ))}
+                            </select>
+                              )
+                            })()}
+                          </label>
+                        )}
+                      </div>
+                    )}
                     {selected && !isSelf && (
                       <div
                         className="member-item-actions member-item-actions--stack"

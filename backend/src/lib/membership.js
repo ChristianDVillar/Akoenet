@@ -58,6 +58,12 @@ async function canManageChannels(userId, serverId) {
   return roles.includes("admin") || roles.includes("moderator");
 }
 
+/** Only server admins may assign or change member roles (not moderators). */
+async function canManageMemberRoles(userId, serverId) {
+  const roles = await getUserServerRoles(userId, serverId);
+  return roles.includes("admin");
+}
+
 async function getChannelInfo(channelId) {
   const r = await pool.query(
     "SELECT id, server_id, type, is_private, voice_user_limit FROM channels WHERE id = $1",
@@ -189,6 +195,7 @@ module.exports = {
   canAccessChannel,
   getUserServerRoles,
   canManageChannels,
+  canManageMemberRoles,
   canReadChannel,
   listReadableChannelIds,
   canSendToChannel,

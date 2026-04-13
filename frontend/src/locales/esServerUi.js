@@ -569,6 +569,12 @@ export default {
     emptyTitle: 'No hay miembros',
     emptyHint: 'Prueba a cambiar los filtros.',
     roleMember: 'miembro',
+    roleLabel: 'Rol en el servidor',
+    ownerRoleLocked: 'El dueño del servidor siempre tiene el rol Administrador.',
+    roleUpdated: 'Rol actualizado.',
+    roleErrLastAdmin: 'Necesitas otro administrador antes de quitar este.',
+    roleErrOwner: 'El dueño debe seguir siendo administrador.',
+    roleErrGeneric: 'No se pudo actualizar el rol.',
     roles: {
       admin: 'Administrador',
       moderator: 'Moderador',

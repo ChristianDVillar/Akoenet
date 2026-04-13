@@ -17,7 +17,8 @@
 # windows-latest y tauri-action sube el .exe, .sig y latest.json al Release.
 #
 # Secretos en GitHub: Settings → Secrets and variables → Actions
-#   TAURI_SIGNING_PRIVATE_KEY — contenido completo del fichero .key de minisign (varias líneas)
+#   TAURI_SIGNING_PRIVATE_KEY — fichero .key completo (multilínea) o la línea base64 de `tauri signer generate`
+#     (el script tauri-with-cargo-path.mjs adapta el formato al que espera el CLI de Tauri)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — si la clave tiene contraseña (opcional)
 #
 # Permisos: Settings → Actions → General → Workflow permissions →
@@ -71,7 +72,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           if [ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]; then
-            echo "::error::Falta el secreto del repositorio TAURI_SIGNING_PRIVATE_KEY (contenido del fichero .key de minisign, varias líneas). Sin él el build de Tauri con createUpdaterArtifacts falla y no se crea el Release. Añádelo en: Settings → Secrets and variables → Actions."
+            echo "::error::Falta el secreto TAURI_SIGNING_PRIVATE_KEY (contenido del .key o línea base64 del signer). Sin él el build con createUpdaterArtifacts falla. Settings → Secrets and variables → Actions."
             exit 1
           fi
 

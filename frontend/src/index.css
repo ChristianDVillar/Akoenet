@@ -4866,6 +4866,28 @@ input.theme-color-hex:disabled {
   gap: 0.4rem;
 }
 
+.member-item-role-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.member-role-select-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--nexora-muted);
+}
+
+.member-role-select {
+  width: 100%;
+}
+
+.member-owner-role-hint {
+  margin: 0;
+}
+
 .member-dm-btn,
 .member-item-actions--stack .member-add-friend-btn {
   width: 100%;

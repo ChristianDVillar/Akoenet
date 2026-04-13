@@ -61,7 +61,7 @@ Marca cada ítem cuando lo completes.
 - [ ] Si cambias de clave, actualiza `pubkey` en el repo y publica **solo** builds firmados con la clave privada correspondiente.
 - [ ] En cada build de release, exportar antes de compilar, por ejemplo:
   - `TAURI_SIGNING_PRIVATE_KEY_PATH` apuntando al archivo `.key`, o
-  - `TAURI_SIGNING_PRIVATE_KEY` con el contenido del secret (p. ej. GitHub Actions).
+  - `TAURI_SIGNING_PRIVATE_KEY` con el **contenido del `.key` (multilínea)** o la **única línea base64** que imprime `tauri signer generate` (en GitHub Actions puedes pegar el fichero tal cual: `tauri-with-cargo-path.mjs` lo normaliza).
 - [ ] Documentar en tu equipo **dónde** está respaldada la clave privada (sin subirla al repositorio).
 
 Referencia: [Signer y actualizaciones](https://v2.tauri.app/plugin/updater/#signing-updates).
@@ -150,7 +150,14 @@ Significa que `tauri.conf.json` tiene `plugins.updater.pubkey` y `bundle.createU
 
 ### Aviso: «secret key does not match the public key»
 
-La **`plugins.updater.pubkey` en `tauri.conf.json`** debe ser **exactamente** el contenido del fichero **`.pub`** que acompaña a la **`.key`** con la que firmas (misma generación `tauri signer generate`). Si regeneras la clave o usas otro fichero, vuelve a copiar el `.pub` entero al JSON. Si no coinciden, el updater rechazará las actualizaciones en tiempo de ejecución aunque el build genere `.sig`.
+La clave privada (`TAURI_SIGNING_PRIVATE_KEY` / tu `.key`) y **`plugins.updater.pubkey`** deben ser **el mismo par** (misma ejecución de `tauri signer generate`). Si no coinciden, Tauri muestra este *warn* y el updater fallará en runtime.
+
+- **Quieres seguir usando la `pubkey` del repo** (p. ej. la misma que en GitHub Actions): firma solo con la **`.key` emparejada** a esa pública; no uses otro `.key` local.
+- **Tu `.key` local es la buena**: actualiza `pubkey` en `tauri.conf.json` con el valor que corresponde a tu `.pub`. Desde `frontend/`:
+
+  `npm run updater:pubkey-for-conf -- "%USERPROFILE%\.tauri\akonet.key.pub"`
+
+  (ajusta la ruta al `.pub` que va junto a tu `.key`). Pega la línea que imprime en `plugins.updater.pubkey`. Si cambias `pubkey` en el repo, actualiza también el secreto `TAURI_SIGNING_PRIVATE_KEY` en GitHub para que CI siga coincidiendo.
 
 ### Varias claves en `%USERPROFILE%\.tauri\`
 

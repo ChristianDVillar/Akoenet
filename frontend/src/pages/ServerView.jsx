@@ -85,6 +85,8 @@ export default function ServerView() {
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
   const [membersDrawerOpen, setMembersDrawerOpen] = useState(false)
+  const [canManageMemberRoles, setCanManageMemberRoles] = useState(false)
+  const [serverOwnerId, setServerOwnerId] = useState(null)
   const showInlineMembersPanel = useShowInlineMembersPanel()
   const membersAutoCloseTimerRef = useRef(null)
 
@@ -201,6 +203,7 @@ export default function ServerView() {
         setServers(data)
         const current = data.find((s) => s.id === id)
         if (!current) {
+          setServerOwnerId(null)
           try {
             await api.get(`/servers/${id}/ban-status`)
             navigate('/')
@@ -215,7 +218,9 @@ export default function ServerView() {
           }
         }
         setServerName(current.name)
+        setServerOwnerId(current?.owner_id != null ? Number(current.owner_id) : null)
       } catch {
+        setServerOwnerId(null)
         navigate('/')
       }
     })()
@@ -227,15 +232,17 @@ export default function ServerView() {
     setBanStatus(null)
     ;(async () => {
       try {
-        const [{ data: channelData }, { data: categoriesData }, { data: membersData }] =
+        const [{ data: channelData }, { data: categoriesData }, { data: membersData }, { data: permData }] =
           await Promise.all([
             api.get(`/channels/server/${id}`),
             api.get(`/channels/server/${id}/categories`),
             api.get(`/servers/${id}/members`),
+            api.get(`/servers/${id}/my-permissions`).catch(() => ({ data: {} })),
           ])
         setChannels(channelData)
         setCategories(categoriesData)
         setMembers(membersData)
+        setCanManageMemberRoles(Boolean(permData?.can_manage_member_roles))
         setActiveChannelId(channelData[0]?.id ?? null)
         const { data: emojiData } = await api.get(`/servers/${id}/emojis`)
         setEmojis(emojiData)
@@ -397,6 +404,16 @@ export default function ServerView() {
     const { data } = await api.get(`/channels/server/${id}`)
     setChannels(data)
   }
+
+  const refreshServerMembers = useCallback(async () => {
+    if (Number.isNaN(id)) return
+    try {
+      const { data } = await api.get(`/servers/${id}/members`)
+      setMembers(data)
+    } catch {
+      /* ignore */
+    }
+  }, [id])
 
   async function createCategory({ name }) {
     if (!name?.trim() || Number.isNaN(id)) return
@@ -704,6 +721,10 @@ export default function ServerView() {
                 currentUser={user}
                 activityByUserId={activityByUserId}
                 gameRanking={gameRanking}
+                serverId={id}
+                canManageMemberRoles={canManageMemberRoles}
+                serverOwnerId={serverOwnerId}
+                onMemberRolesUpdated={refreshServerMembers}
               />
             </div>
           )}
@@ -733,6 +754,10 @@ export default function ServerView() {
                   currentUser={user}
                   activityByUserId={activityByUserId}
                   gameRanking={gameRanking}
+                  serverId={id}
+                  canManageMemberRoles={canManageMemberRoles}
+                  serverOwnerId={serverOwnerId}
+                  onMemberRolesUpdated={refreshServerMembers}
                   onClose={closeMembersPanel}
                 />
               </div>

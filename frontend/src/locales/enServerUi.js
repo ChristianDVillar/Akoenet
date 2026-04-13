@@ -567,6 +567,12 @@ export default {
     emptyTitle: 'No members found',
     emptyHint: 'Try changing filters.',
     roleMember: 'member',
+    roleLabel: 'Server role',
+    ownerRoleLocked: 'The server owner always has the Admin role.',
+    roleUpdated: 'Role updated.',
+    roleErrLastAdmin: 'You need another admin before removing this one.',
+    roleErrOwner: 'The owner must remain an admin.',
+    roleErrGeneric: 'Could not update role.',
     roles: {
       admin: 'Admin',
       moderator: 'Moderator',
