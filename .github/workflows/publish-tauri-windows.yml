@@ -73,15 +73,19 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Comprobar secreto TAURI_SIGNING_PRIVATE_KEY (firma updater / NSIS)
+      # Escribir el secreto en un fichero y usar solo TAURI_SIGNING_PRIVATE_KEY_PATH en el build.
+      # Pasar la clave multilínea solo por variable de entorno en Windows a veces la trunca o corrompe
+      # → Tauri: "failed to decode base64 ... Invalid padding".
+      - name: Preparar clave de firma (fichero temporal)
         shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]; then
-            echo "::error::Falta el secreto TAURI_SIGNING_PRIVATE_KEY (contenido del .key o línea base64 del signer). Sin él el build con createUpdaterArtifacts falla. Settings → Secrets and variables → Actions."
+          if [ -z "$KEY" ]; then
+            echo "::error::Falta el secreto TAURI_SIGNING_PRIVATE_KEY. Settings → Secrets and variables → Actions."
             exit 1
           fi
+          printf '%s' "$KEY" > "${RUNNER_TEMP}/tauri-signing.key"
 
       - name: Comprobar que el tag coincide con package.json, tauri.conf y Cargo.toml
         working-directory: frontend
@@ -93,7 +97,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PATH: ${{ runner.temp }}/tauri-signing.key
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: frontend
