@@ -4,6 +4,7 @@ import SiteFooter from '../components/SiteFooter'
 import { useLandingLocale } from '../hooks/useLandingLocale'
 import { landingContent } from '../lib/landingContent'
 import LandingAppSection from '../components/LandingAppSection'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 import { inviteLandingPath, parseInviteTokenFromInput } from '../lib/invites'
 
 const FEATURE_ICONS = ['💬', '🎙️', '🛡️', '✉️']
@@ -53,7 +54,7 @@ function LandingInviteStrip({ t }) {
 }
 
 export default function Landing({ apiUnreachable = false, onRetryApi }) {
-  const { locale, setLocale } = useLandingLocale()
+  const { locale } = useLandingLocale()
   const t = landingContent[locale]
 
   return (
@@ -75,28 +76,7 @@ export default function Landing({ apiUnreachable = false, onRetryApi }) {
             <img src="/Akoenet.png" alt="" className="landing-logo-mark" aria-hidden="true" />
           </span>
           <nav className="landing-nav-links" aria-label={locale === 'es' ? 'Principal' : 'Primary'}>
-            <div
-              className="landing-lang-toggle"
-              role="group"
-              aria-label={t.nav.langLabel}
-            >
-              <button
-                type="button"
-                className={`landing-lang-btn${locale === 'en' ? ' is-active' : ''}`}
-                onClick={() => setLocale('en')}
-                aria-pressed={locale === 'en'}
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                className={`landing-lang-btn${locale === 'es' ? ' is-active' : ''}`}
-                onClick={() => setLocale('es')}
-                aria-pressed={locale === 'es'}
-              >
-                ES
-              </button>
-            </div>
+            <LanguageSwitcher ariaLabel={t.nav.langLabel} />
             <a href="#features">{t.nav.features}</a>
             <a href="#app">{t.nav.app}</a>
             <a href="#faq">{t.nav.faq}</a>

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useLandingLocale } from '../hooks/useLandingLocale'
+import { clientCopyrightLineParts } from '../lib/copyright'
 import { DAKINIS_SYSTEMS_URL, footerContent } from '../lib/landingContent'
 
 const legalContactEmail = String(import.meta.env.VITE_LEGAL_CONTACT_EMAIL || '').trim()
@@ -9,10 +10,8 @@ export default function SiteFooter({ className = '' }) {
   const f = footerContent[locale]
   const v = __APP_VERSION__
   const rootClass = ['site-footer', className].filter(Boolean).join(' ')
-  const copyrightRest =
-    locale === 'es'
-      ? '(marca comercial de Christian Villar). Todos los derechos reservados.'
-      : '(trading name of Christian Villar). All rights reserved.'
+  const { year: copyrightYear, holder: copyrightHolder, suffix: copyrightSuffix } =
+    clientCopyrightLineParts(locale)
 
   return (
     <footer className={rootClass}>
@@ -24,7 +23,7 @@ export default function SiteFooter({ className = '' }) {
             target="_blank"
             rel="noopener noreferrer"
           >
-            <img className="site-footer-brand-logo" src="/Logo Grande.jpeg" alt="Dakinis Systems" loading="lazy" />
+            <img className="site-footer-brand-logo" src="/Logo Grande.jpeg" alt={copyrightHolder} loading="lazy" />
           </a>
           <span className="site-footer-version" title={f.versionTitle}>
             v{v}
@@ -72,11 +71,11 @@ export default function SiteFooter({ className = '' }) {
           </p>
         ) : null}
         <p className="site-footer-copyright muted small">
-          © 2026{' '}
+          © {copyrightYear}{' '}
           <a href={DAKINIS_SYSTEMS_URL} target="_blank" rel="noopener noreferrer">
-            Dakinis Systems
+            {copyrightHolder}
           </a>{' '}
-          {copyrightRest}
+          {copyrightSuffix}
         </p>
         <p className="site-footer-disclaimer">{f.independentNotice}</p>
         <p className="site-footer-disclaimer site-footer-trademark">{f.twitchDisclaimer}</p>

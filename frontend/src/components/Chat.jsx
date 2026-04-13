@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
 import VoiceRoom from './VoiceRoom'
@@ -38,6 +39,7 @@ export default function Chat({
   onOpenMembersPanel,
   membersCount = 0,
 }) {
+  const { t } = useTranslation()
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -374,25 +376,25 @@ export default function Chat({
       (ack) => {
         setMessages((prev) => prev.filter((m) => m._clientId !== clientId))
         if (ack?.error === 'rate_limited') {
-          setSendError('Slow down a little — you are sending a bit too fast.')
+          setSendError(t('chat.errRateLimited'))
           setText(toSend)
           setReplyTo(savedReply)
           return
         }
         if (ack?.error === 'blocked_content') {
-          setSendError('That message contains prohibited language.')
+          setSendError(t('chat.errBlocked'))
           setText(toSend)
           setReplyTo(savedReply)
           return
         }
         if (ack?.error === 'duplicate_message') {
-          setSendError(ack?.message || 'Duplicate message; wait a moment before sending again.')
+          setSendError(ack?.message || t('chat.errDuplicate'))
           setText(toSend)
           setReplyTo(savedReply)
           return
         }
         if (ack?.error === 'save_failed') {
-          setSendError('Message could not be saved. Try again.')
+          setSendError(t('chat.errSaveFailed'))
           setText(toSend)
           setReplyTo(savedReply)
           return
@@ -430,7 +432,7 @@ export default function Chat({
     if (!s) return
     s.emit('delete_message', { message_id: messageId }, (ack) => {
       if (ack?.error === 'forbidden') {
-        setSendError("You can't delete that message.")
+        setSendError(t('chat.errDeleteForbidden'))
       }
     })
   }
@@ -440,7 +442,7 @@ export default function Chat({
     if (!s) return
     s.emit('pin_message', { message_id: messageId, pin }, (ack) => {
       if (ack?.error === 'forbidden') {
-        setSendError("You can't pin messages here.")
+        setSendError(t('chat.errPinForbidden'))
       }
     })
   }
@@ -471,7 +473,7 @@ export default function Chat({
       m.content && m.content !== '(imagen)'
         ? m.content.slice(0, 120)
         : m.image_url
-          ? 'Image'
+          ? t('common.image')
           : ''
     setReplyTo({ id: m.id, username: m.username, snippet })
   }
@@ -489,10 +491,10 @@ export default function Chat({
       setEditHistoryModalOpen(true)
     } catch (err) {
       if (err?.response?.status === 403) {
-        setSendError('You do not have permission to view edit history.')
+        setSendError(t('chat.errEditHistory403'))
         return
       }
-      setSendError('Could not load edit history.')
+      setSendError(t('chat.errEditHistory'))
     }
   }
 
@@ -505,11 +507,11 @@ export default function Chat({
     const content = editingDraft.trim()
     s.emit('edit_message', { message_id: id, content }, (ack) => {
       if (ack?.error === 'blocked_content') {
-        setSendError('That message contains prohibited language.')
+        setSendError(t('chat.errEditBlocked'))
         return
       }
       if (ack?.error === 'forbidden' || ack?.error === 'not_found') {
-        setSendError("You can't edit that message.")
+        setSendError(t('chat.errEditForbidden'))
         return
       }
       if (ack?.ok) {
@@ -519,16 +521,16 @@ export default function Chat({
   }
 
   async function reportMessage(messageId) {
-    const reason = window.prompt('Why are you reporting this message? (required)')
+    const reason = window.prompt(t('chat.promptReport'))
     if (!reason || !reason.trim()) return
     try {
       await api.post(`/messages/${messageId}/report`, { reason: reason.trim() })
-      setSendError('Report sent. Moderators will review it.')
+      setSendError(t('chat.reportSent'))
     } catch (err) {
       const msg =
         err?.response?.status === 429
-          ? 'You are reporting too fast. Try again later.'
-          : err?.response?.data?.error || 'Could not send report'
+          ? t('chat.report429')
+          : err?.response?.data?.error || t('chat.reportFailed')
       setSendError(msg)
     }
   }
@@ -573,17 +575,17 @@ export default function Chat({
         return [...map.values()].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       })
     } catch {
-      setSendError('Could not refresh messages right now.')
+      setSendError(t('chat.errRefresh'))
     }
   }
 
   function validateUploadFile(file) {
-    if (!file) return 'Please select an image.'
+    if (!file) return t('chat.uploadNoFile')
     if (!ALLOWED_IMAGE_MIME_TYPES.has(String(file.type || '').toLowerCase())) {
-      return 'Invalid file type. Allowed: JPG, PNG, WEBP, GIF, AVIF.'
+      return t('chat.uploadBadType')
     }
     if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-      return 'File is too large. Maximum size is 5MB.'
+      return t('chat.uploadTooBig')
     }
     return ''
   }
@@ -618,10 +620,10 @@ export default function Chat({
         },
         (ack) => {
           if (ack?.error === 'rate_limited') {
-            setSendError('Slow down a little — you are sending a bit too fast.')
+            setSendError(t('chat.errRateLimited'))
           }
           if (ack?.error === 'blocked_content') {
-            setSendError('That message contains prohibited language.')
+            setSendError(t('chat.errBlocked'))
           }
         }
       )
@@ -646,7 +648,7 @@ export default function Chat({
     setFileDragOver(true)
   }
 
-  function onChatDragLeave(e) {
+  function onChatDragLeave(_e) {
     fileDragDepthRef.current -= 1
     if (fileDragDepthRef.current <= 0) {
       fileDragDepthRef.current = 0
@@ -676,8 +678,8 @@ export default function Chat({
     return (
       <main className="chat-panel empty">
         <div className="chat-empty-hero">
-          <p className="chat-empty-title">Choose a channel</p>
-          <p className="chat-empty-sub">Pick one on the left and jump into the conversation.</p>
+          <p className="chat-empty-title">{t('chat.emptyChoose')}</p>
+          <p className="chat-empty-sub">{t('chat.emptyHint')}</p>
         </div>
       </main>
     )
@@ -697,11 +699,15 @@ export default function Chat({
 
   const typingNames = Object.values(typingPeers)
   let typingLine = ''
-  if (typingNames.length === 1) typingLine = `${typingNames[0]} is writing…`
-  else if (typingNames.length === 2) typingLine = `${typingNames[0]} and ${typingNames[1]} are writing…`
+  if (typingNames.length === 1) typingLine = t('chat.typingOne', { name: typingNames[0] })
+  else if (typingNames.length === 2)
+    typingLine = t('chat.typingTwo', { a: typingNames[0], b: typingNames[1] })
   else if (typingNames.length > 2) {
     const n = typingNames.length - 2
-    typingLine = `${typingNames[0]}, ${typingNames[1]} and ${n} other${n === 1 ? '' : 's'} are writing…`
+    typingLine =
+      n === 1
+        ? t('chat.typingManyOne', { a: typingNames[0], b: typingNames[1] })
+        : t('chat.typingMany', { a: typingNames[0], b: typingNames[1], n })
   }
 
   return (
@@ -718,24 +724,22 @@ export default function Chat({
             {isVoice ? '🔊' : isForum ? '🗂' : '#'}
           </span>
           <div>
-            <span className="chat-title">{channelName || 'Channel'}</span>
+            <span className="chat-title">{channelName || t('chat.channelFallback')}</span>
             <p className="chat-header-hint">
-              {isVoice
-                ? 'Text chat for this voice channel — same history as any channel'
-                : 'Messages update live for everyone here'}
+              {isVoice ? t('chat.hintVoice') : t('chat.hintLive')}
             </p>
           </div>
         </div>
         <div className="chat-header-actions">
-          <button type="button" className="btn ghost small" onClick={refreshLatestMessages} title="Refresh messages">
-            Refresh
+          <button type="button" className="btn ghost small" onClick={refreshLatestMessages} title={t('chat.refreshTitle')}>
+            {t('common.refresh')}
           </button>
           {channelId && (
             <button
               type="button"
               className="btn ghost small"
               onClick={onOpenChannelSettings}
-              title="Channel settings"
+              title={t('chat.channelSettingsTitle')}
             >
               ⚙
             </button>
@@ -745,10 +749,10 @@ export default function Chat({
               type="button"
               className="btn ghost small chat-members-trigger"
               onClick={onOpenMembersPanel}
-              title="Server members"
-              aria-label={`Open server members list (${membersCount} members)`}
+              title={t('chat.membersTitle')}
+              aria-label={t('chat.membersOpenAria', { count: membersCount })}
             >
-              <span className="chat-members-trigger-text">Members</span>
+              <span className="chat-members-trigger-text">{t('chat.membersLabel')}</span>
               {membersCount > 0 && (
                 <span className="chat-members-badge" aria-hidden="true">
                   {membersCount > 99 ? '99+' : membersCount}
@@ -760,36 +764,36 @@ export default function Chat({
             type="button"
             className="btn ghost small"
             onClick={() => setSearchOpen((o) => !o)}
-            title="Search messages"
+            title={t('chat.searchTitle')}
             aria-expanded={searchOpen}
           >
             🔎
           </button>
-          <div className="chat-save-row" role="group" aria-label="Download chat history">
+          <div className="chat-save-row" role="group" aria-label={t('chat.downloadHistoryAria')}>
               <button type="button" className="btn link chat-save-link" onClick={() => exportHistory('csv')}>
-                Spreadsheet
+                {t('chat.spreadsheet')}
               </button>
               <span className="chat-save-dot" aria-hidden="true">
                 ·
               </span>
               <button type="button" className="btn link chat-save-link" onClick={() => exportHistory('json')}>
-                JSON backup
+                {t('chat.jsonBackup')}
               </button>
             </div>
-          <span className="chat-live-pill" title="Connected in real time">
+          <span className="chat-live-pill" title={t('chat.liveTitle')}>
             <span className="chat-live-dot" aria-hidden="true" />
-            Live
+            {t('chat.live')}
           </span>
         </div>
       </header>
 
       {threadRootId && !isVoice && (
-        <div className="thread-banner" role="region" aria-label="Thread">
+        <div className="thread-banner" role="region" aria-label={t('chat.threadAria')}>
           <button type="button" className="btn ghost small" onClick={() => setThreadRootId(null)}>
-            ← Back to channel
+            {t('chat.backToChannel')}
           </button>
           <span className="thread-banner-label">
-            Thread
+            {t('chat.threadLabel')}
             {(() => {
               const root = messages.find((m) => Number(m.id) === Number(threadRootId))
               const n = Number(root?.thread_reply_count)
@@ -797,7 +801,7 @@ export default function Chat({
               return (
                 <span className="thread-banner-count">
                   {' '}
-                  · {n} {n === 1 ? 'respuesta' : 'respuestas'}
+                  {n === 1 ? t('chat.threadReply_one', { count: n }) : t('chat.threadReply_other', { count: n })}
                 </span>
               )
             })()}
@@ -807,17 +811,17 @@ export default function Chat({
 
       <>
       {searchOpen && (
-        <section className="chat-search-panel" aria-label="Search in channel">
+        <section className="chat-search-panel" aria-label={t('chat.searchInChannelAria')}>
           <form className="chat-search-form" onSubmit={runSearch}>
             <input
               className="composer-input chat-search-input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search in this channel (2+ characters)"
-              aria-label="Search query"
+              placeholder={t('chat.searchPlaceholder')}
+              aria-label={t('chat.searchQueryAria')}
             />
             <button type="submit" className="btn secondary small" disabled={searchBusy || searchQuery.trim().length < 2}>
-              {searchBusy ? '…' : 'Search'}
+              {searchBusy ? '…' : t('common.search')}
             </button>
             <button
               type="button"
@@ -827,7 +831,7 @@ export default function Chat({
                 setSearchResults([])
               }}
             >
-              Close
+              {t('chat.close')}
             </button>
           </form>
           {searchResults.length > 0 && (
@@ -847,7 +851,7 @@ export default function Chat({
                       {sm.content && sm.content !== '(imagen)'
                         ? sm.content.slice(0, 120)
                         : sm.image_url
-                          ? 'Image'
+                          ? t('common.image')
                           : ''}
                     </span>
                   </button>
@@ -860,7 +864,7 @@ export default function Chat({
       {pinnedMessages.length > 0 && (
         <section className="pinned-strip">
           <div className="pinned-strip-head">
-            <span className="pinned-strip-label">Pinned for everyone</span>
+            <span className="pinned-strip-label">{t('chat.pinnedForEveryone')}</span>
             <span className="pinned-strip-badge">{pinnedMessages.length}</span>
           </div>
           <div className="pinned-strip-list">
@@ -870,7 +874,7 @@ export default function Chat({
                 type="button"
                 className="pinned-chip"
                 onClick={() => jumpToMessage(m.id)}
-                title="Go to this message"
+                title={t('chat.goToMessage')}
               >
                 <span className="pinned-chip-user">{m.username}:</span>
                 {m.content && m.content !== '(imagen)' && (
@@ -882,7 +886,7 @@ export default function Chat({
                   <>
                     <img
                       src={resolveImageUrl(m.image_url)}
-                      alt="Pinned image"
+                      alt={t('chat.pinnedImageAlt')}
                       className="pinned-chip-image"
                     />
                     <span className="pinned-chip-preview" aria-hidden="true">
@@ -890,7 +894,7 @@ export default function Chat({
                     </span>
                   </>
                 )}
-                {!m.content && m.image_url && <span className="pinned-chip-text">Image</span>}
+                {!m.content && m.image_url && <span className="pinned-chip-text">{t('common.image')}</span>}
               </button>
             ))}
           </div>
@@ -910,11 +914,9 @@ export default function Chat({
         {sendError && <div className="error-banner inline">{sendError}</div>}
         {messages.length === 0 && (
           <div className="empty-chat-tip">
-            <p className="empty-chat-title">Quiet here for now</p>
+            <p className="empty-chat-title">{t('chat.quietTitle')}</p>
             <p className="empty-chat-sub">
-              {isVoice
-                ? 'Use this text chat while you’re in voice — messages stay in history like any channel.'
-                : 'Say hello — your message shows up for everyone instantly.'}
+              {isVoice ? t('chat.quietVoice') : t('chat.quietText')}
             </p>
           </div>
         )}
@@ -941,7 +943,7 @@ export default function Chat({
               <img
                 className="avatar avatar-img"
                 src={resolveImageUrl(m.avatar_url || memberAvatarByUserId.get(Number(m.user_id)))}
-                alt={`${m.username || 'User'} avatar`}
+                alt={t('chat.userAvatar', { name: m.username || t('channelList.userFallback') })}
                 onError={() =>
                   setFailedAvatarKeys((prev) => {
                     const next = new Set(prev)
@@ -956,19 +958,21 @@ export default function Chat({
             <div>
               <div className="message-meta">
                 <strong>{m.username}</strong>
-                {m.is_pinned && <span className="pin-badge">Pinned</span>}
+                {m.is_pinned && <span className="pin-badge">{t('chat.pinned')}</span>}
                 <time>
                   {new Date(m.created_at).toLocaleString(undefined, {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}
                 </time>
-                {m.edited_at && <span className="edited-badge">(edited)</span>}
+                {m.edited_at && <span className="edited-badge">{t('common.edited')}</span>}
               </div>
               {(m.reply_preview_username || m.reply_preview_content) && (
                 <div className="message-reply-preview">
                   <span className="message-reply-preview-label">
-                    Replying to {m.reply_preview_username || 'message'}
+                    {t('chat.replyingTo', {
+                      name: m.reply_preview_username || t('chat.replyingToGeneric'),
+                    })}
                   </span>
                   {m.reply_preview_content && m.reply_preview_content !== '(imagen)' && (
                     <span className="message-reply-preview-snippet">
@@ -994,10 +998,10 @@ export default function Chat({
                   />
                   <div className="message-edit-actions">
                     <button type="button" className="btn primary small" onClick={saveEdit}>
-                      Save
+                      {t('chat.save')}
                     </button>
                     <button type="button" className="btn ghost small" onClick={cancelEdit}>
-                      Cancel
+                      {t('chat.cancel')}
                     </button>
                   </div>
                 </div>
@@ -1063,12 +1067,12 @@ export default function Chat({
                   </div>
                 )}
               </div>
-              <div className="message-actions" aria-label="Message actions">
+              <div className="message-actions" aria-label={t('chat.messageActionsAria')}>
                 <button
                   type="button"
                   className="message-action-icon"
-                  title="Delete"
-                  aria-label="Delete message"
+                  title={t('chat.deleteTitle')}
+                  aria-label={t('chat.deleteAria')}
                   onClick={() => deleteMessage(m.id)}
                 >
                   🗑️
@@ -1077,8 +1081,8 @@ export default function Chat({
                   <button
                     type="button"
                     className="message-action-icon"
-                    title="Reply"
-                    aria-label="Reply to message"
+                    title={t('chat.replyTitle')}
+                    aria-label={t('chat.replyAria')}
                     onClick={() => startReply(m)}
                   >
                     ↩
@@ -1090,10 +1094,10 @@ export default function Chat({
                     className="message-action-icon message-thread-btn"
                     title={
                       Number(m.thread_reply_count) > 0
-                        ? `Abrir hilo (${m.thread_reply_count} respuestas)`
-                        : 'Abrir hilo'
+                        ? t('chat.threadOpenCount', { count: m.thread_reply_count })
+                        : t('chat.threadOpen')
                     }
-                    aria-label="Abrir hilo"
+                    aria-label={t('chat.threadOpenAria')}
                     onClick={() => setThreadRootId(Number(m.id))}
                   >
                     <span className="message-thread-btn-inner" aria-hidden>
@@ -1109,8 +1113,8 @@ export default function Chat({
                     <button
                       type="button"
                       className={`message-action-icon${m.is_pinned ? ' message-action-icon--on' : ''}`}
-                      title={m.is_pinned ? 'Unpin' : 'Pin'}
-                      aria-label={m.is_pinned ? 'Unpin message' : 'Pin message'}
+                      title={m.is_pinned ? t('chat.unpin') : t('chat.pin')}
+                      aria-label={m.is_pinned ? t('chat.unpinAria') : t('chat.pinAria')}
                       onClick={() => pinMessage(m.id, !m.is_pinned)}
                     >
                       📌
@@ -1118,8 +1122,8 @@ export default function Chat({
                     <button
                       type="button"
                       className="message-action-icon"
-                      title="React"
-                      aria-label="Add reaction"
+                      title={t('chat.reactTitle')}
+                      aria-label={t('chat.reactAria')}
                       onClick={() => setReactionPickerId((prev) => (prev === m.id ? null : m.id))}
                     >
                       ➕
@@ -1127,8 +1131,8 @@ export default function Chat({
                     <button
                       type="button"
                       className="message-action-icon"
-                      title="Report"
-                      aria-label="Report message"
+                      title={t('chat.reportTitle')}
+                      aria-label={t('chat.reportAria')}
                       onClick={() => reportMessage(m.id)}
                     >
                       🚩
@@ -1137,8 +1141,8 @@ export default function Chat({
                       <button
                         type="button"
                         className="message-action-icon"
-                        title="Edit"
-                        aria-label="Edit message"
+                        title={t('chat.editTitle')}
+                        aria-label={t('chat.editAria')}
                         onClick={() => {
                           setEditingMessageId(m.id)
                           setEditingDraft(m.content || '')
@@ -1151,8 +1155,8 @@ export default function Chat({
                       <button
                         type="button"
                         className="message-action-icon"
-                        title="View edit history"
-                        aria-label="View edit history"
+                        title={t('chat.viewHistoryTitle')}
+                        aria-label={t('chat.viewHistoryAria')}
                         onClick={() => showEditHistory(m.id)}
                       >
                         🕘
@@ -1185,12 +1189,12 @@ export default function Chat({
         {replyTo && (
           <div className="reply-context-bar">
             <div className="reply-context-text">
-              <span className="reply-context-label">Replying to {replyTo.username}</span>
+              <span className="reply-context-label">{t('chat.replyingToBar', { name: replyTo.username })}</span>
               {replyTo.snippet ? (
                 <p className="reply-context-snippet">{replyTo.snippet}</p>
               ) : null}
             </div>
-            <button type="button" className="btn ghost small" onClick={() => setReplyTo(null)} aria-label="Cancel reply">
+            <button type="button" className="btn ghost small" onClick={() => setReplyTo(null)} aria-label={t('chat.cancelReplyAria')}>
               ✕
             </button>
           </div>
@@ -1218,7 +1222,7 @@ export default function Chat({
               type="button"
               className="btn ghost small"
               onClick={() => setPickerOpen((prev) => !prev)}
-              title="Server emojis"
+              title={t('chat.serverEmojisTitle')}
             >
               😀
             </button>
@@ -1250,12 +1254,12 @@ export default function Chat({
           className="composer-input"
           placeholder={
             isVoice
-              ? 'Side chat for this voice room…'
+              ? t('chat.phVoice')
               : isForum
-                ? 'Start a thread…'
+                ? t('chat.phForum')
                 : channelName
-                  ? `Message #${channelName}`
-                  : 'Write a message…'
+                  ? t('chat.phChannel', { name: channelName })
+                  : t('chat.phDefault')
           }
           value={text}
           onChange={handleComposerChange}
@@ -1287,7 +1291,7 @@ export default function Chat({
           onClick={send}
           disabled={uploading || !text.trim()}
         >
-          {isForum ? 'Post' : 'Send'}
+          {isForum ? t('chat.post') : t('chat.send')}
         </button>
         {text.trim().length > 0 && composerHistoryMatches.length > 0 && (
           <div
@@ -1296,7 +1300,7 @@ export default function Chat({
             role="status"
             aria-live="polite"
           >
-            <span className="composer-history-hint-label">History match</span>
+            <span className="composer-history-hint-label">{t('chat.historyMatch')}</span>
             <span className="composer-history-hint-meta">
               {composerHistorySafeIndex + 1} / {composerHistoryMatches.length}
             </span>
@@ -1313,7 +1317,7 @@ export default function Chat({
       </footer>
       <EditHistoryModal
         open={editHistoryModalOpen}
-        title="Message edit history"
+        title={t('chat.editHistoryTitle')}
         entries={editHistoryEntries}
         onClose={() => {
           setEditHistoryModalOpen(false)

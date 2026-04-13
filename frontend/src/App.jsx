@@ -1,82 +1,75 @@
+import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from './context/AuthContext'
-import Login from './pages/Login'
-import Register from './pages/Register'
-import RegisterComplete from './pages/RegisterComplete'
-import Home from './pages/Home'
-import Messages from './pages/Messages'
-import ServerView from './pages/ServerView'
-import TwitchCallback from './pages/TwitchCallback'
-import DashboardAdmin from './pages/DashboardAdmin'
-import LegalDocPage from './pages/LegalDocPage'
-import DmcaPage from './pages/DmcaPage'
-import DpoPage from './pages/DpoPage'
-import InvitePage from './pages/InvitePage'
-import SystemStatus from './pages/SystemStatus'
 import CookieConsentBanner from './components/CookieConsentBanner'
 import ThemeSync from './components/ThemeSync'
 import LegalTermsGate from './components/LegalTermsGate'
+import Home from './pages/Home'
+import Login from './pages/Login'
+import Register from './pages/Register'
+import DashboardAdmin from './pages/DashboardAdmin'
+import InvitePage from './pages/InvitePage'
 
-function PrivateRoute({ children }) {
-  const { user, loading, serverUnreachable, refreshUser } = useAuth()
-  if (loading) {
-    return (
-      <div className="auth-page">
-        <p className="muted">Loading AkoeNet…</p>
-      </div>
-    )
-  }
-  if (!user && serverUnreachable) {
-    return (
-      <div className="auth-page">
-        <div className="auth-card api-offline-card">
-          <h1 className="api-offline-title">Can’t reach the API</h1>
-          <p className="muted api-offline-copy">
-            The app could not load your session. Usually the backend is still starting (for example right after{' '}
-            <code className="inline-code">docker compose up</code>) or nothing is listening on the API URL.
-          </p>
-          <p className="muted api-offline-copy">
-            Wait until the backend is healthy, then try again. Your login token is still saved on this device.
-          </p>
-          <button type="button" className="btn primary api-offline-retry" onClick={() => refreshUser()}>
-            Try again
-          </button>
-        </div>
-      </div>
-    )
-  }
-  if (!user) return <Navigate to="/login" replace />
-  if (user.needs_terms_acceptance) return <LegalTermsGate />
-  return children
+const RegisterComplete = lazy(() => import('./pages/RegisterComplete'))
+const Messages = lazy(() => import('./pages/Messages'))
+const ServerView = lazy(() => import('./pages/ServerView'))
+const TwitchCallback = lazy(() => import('./pages/TwitchCallback'))
+const LegalDocPage = lazy(() => import('./pages/LegalDocPage'))
+const DmcaPage = lazy(() => import('./pages/DmcaPage'))
+const DpoPage = lazy(() => import('./pages/DpoPage'))
+const SystemStatus = lazy(() => import('./pages/SystemStatus'))
+
+function PageFallback() {
+  const { t } = useTranslation()
+  return (
+    <div className="auth-page">
+      <p className="muted">{t('app.loadingAkoeNet')}</p>
+    </div>
+  )
 }
 
-function AdminRoute({ children }) {
+/**
+ * @param {object} props
+ * @param {import('react').ReactNode} props.children
+ * @param {boolean} [props.requireAdmin]
+ */
+function AuthGateRoute({ children, requireAdmin = false }) {
+  const { t } = useTranslation()
   const { user, loading, serverUnreachable, refreshUser } = useAuth()
+
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Loading AkoeNet…</p>
+        <p className="muted">{t('app.loadingAkoeNet')}</p>
       </div>
     )
   }
+
   if (!user && serverUnreachable) {
     return (
       <div className="auth-page">
         <div className="auth-card api-offline-card">
-          <h1 className="api-offline-title">Can’t reach the API</h1>
-          <p className="muted api-offline-copy">
-            Start or restart the backend, then retry. Your session token is still stored on this device.
-          </p>
+          <h1 className="api-offline-title">{t('app.apiOfflineTitle')}</h1>
+          {requireAdmin ? (
+            <p className="muted api-offline-copy">{t('app.apiOfflineBodyAdmin')}</p>
+          ) : (
+            <>
+              <p className="muted api-offline-copy">{t('app.apiOfflineBodyMember1')}</p>
+              <p className="muted api-offline-copy">{t('app.apiOfflineBodyMember2')}</p>
+            </>
+          )}
           <button type="button" className="btn primary api-offline-retry" onClick={() => refreshUser()}>
-            Try again
+            {t('app.tryAgain')}
           </button>
         </div>
       </div>
     )
   }
+
   if (!user) return <Navigate to="/login" replace />
   if (user.needs_terms_acceptance) return <LegalTermsGate />
-  if (!user.is_admin) return <Navigate to="/" replace />
+  if (requireAdmin && !user.is_admin) return <Navigate to="/" replace />
   return children
 }
 
@@ -84,43 +77,45 @@ export default function App() {
   return (
     <>
       <ThemeSync />
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/register/complete" element={<RegisterComplete />} />
-        <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
-        <Route path="/legal/dmca" element={<DmcaPage />} />
-        <Route path="/legal/dpo" element={<DpoPage />} />
-        <Route path="/legal/:slug" element={<LegalDocPage />} />
-        <Route path="/invite/:token" element={<InvitePage />} />
-        <Route path="/status" element={<SystemStatus />} />
-        <Route path="/" element={<Home />} />
-        <Route
-          path="/messages"
-          element={
-            <PrivateRoute>
-              <Messages />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/server/:serverId"
-          element={
-            <PrivateRoute>
-              <ServerView />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <AdminRoute>
-              <DashboardAdmin />
-            </AdminRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/register/complete" element={<RegisterComplete />} />
+          <Route path="/auth/twitch/callback" element={<TwitchCallback />} />
+          <Route path="/legal/dmca" element={<DmcaPage />} />
+          <Route path="/legal/dpo" element={<DpoPage />} />
+          <Route path="/legal/:slug" element={<LegalDocPage />} />
+          <Route path="/invite/:token" element={<InvitePage />} />
+          <Route path="/status" element={<SystemStatus />} />
+          <Route path="/" element={<Home />} />
+          <Route
+            path="/messages"
+            element={
+              <AuthGateRoute>
+                <Messages />
+              </AuthGateRoute>
+            }
+          />
+          <Route
+            path="/server/:serverId"
+            element={
+              <AuthGateRoute>
+                <ServerView />
+              </AuthGateRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AuthGateRoute requireAdmin>
+                <DashboardAdmin />
+              </AuthGateRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
       <CookieConsentBanner />
     </>
   )

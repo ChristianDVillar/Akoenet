@@ -15,6 +15,7 @@ const {
 } = require("../lib/sanitize-media-url");
 const { textContainsBlockedLanguage } = require("../lib/blocked-content");
 const { searchGlobalElastic } = require("../lib/elastic-index");
+const logger = require("../lib/logger");
 
 const router = express.Router();
 router.use(auth);
@@ -122,6 +123,10 @@ router.get(
       const enriched = await withReactionsOnMessages(rows, req.user.id);
       res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
     } catch (e) {
+      logger.warn(
+        { err: e, route: "GET /messages/search/global", userId: req.user.id, qLen: q.length },
+        "Global message search failed"
+      );
       return res.status(400).json({ error: "Invalid search query" });
     }
   }
@@ -203,6 +208,10 @@ router.get(
       const enriched = await withReactionsOnMessages(rows, req.user.id);
       res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
     } catch (e) {
+      logger.warn(
+        { err: e, route: "GET /messages/channel/:channelId/search", userId: req.user.id, channelId },
+        "Channel message search failed"
+      );
       return res.status(400).json({ error: "Invalid search query" });
     }
   }

@@ -10,7 +10,6 @@ function ensureWebPush() {
     return false;
   }
   try {
-    // eslint-disable-next-line global-require
     const webpush = require("web-push");
     webpush.setVapidDetails(subject, pub, priv);
     configured = true;
@@ -29,7 +28,6 @@ const pool = require("../config/db");
  */
 async function sendPushToUsers(userIds, payload) {
   if (!ensureWebPush() || !userIds?.length) return;
-  // eslint-disable-next-line global-require
   const webpush = require("web-push");
   const unique = [...new Set(userIds.map(Number).filter((n) => n > 0))];
   const bodyStr = JSON.stringify({

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 
 export default function GlobalSearchModal() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -23,11 +25,11 @@ export default function GlobalSearchModal() {
       setResults(Array.isArray(data) ? data : [])
     } catch {
       setResults([])
-      setError('Search failed')
+      setError(t('globalSearch.errFailed'))
     } finally {
       setBusy(false)
     }
-  }, [q])
+  }, [q, t])
 
   useEffect(() => {
     function onOpen() {
@@ -65,19 +67,19 @@ export default function GlobalSearchModal() {
       className="global-search-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Search messages"
+      aria-label={t('globalSearch.ariaDialog')}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setOpen(false)
       }}
     >
       <div className="global-search-modal card">
         <div className="global-search-head">
-          <h2 className="global-search-title">Search all channels</h2>
+          <h2 className="global-search-title">{t('globalSearch.title')}</h2>
           <button type="button" className="btn ghost small" onClick={() => setOpen(false)}>
-            Close
+            {t('common.close')}
           </button>
         </div>
-        <p className="muted small">PostgreSQL full-text search across every channel you can read. Min. 2 characters.</p>
+        <p className="muted small">{t('globalSearch.lead')}</p>
         <form
           className="global-search-form"
           onSubmit={(e) => {
@@ -90,11 +92,11 @@ export default function GlobalSearchModal() {
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Words to find…"
-            aria-label="Search query"
+            placeholder={t('globalSearch.placeholder')}
+            aria-label={t('globalSearch.queryAria')}
           />
           <button type="submit" className="btn primary" disabled={busy || q.trim().length < 2}>
-            {busy ? '…' : 'Search'}
+            {busy ? t('globalSearch.busy') : t('common.search')}
           </button>
         </form>
         {error && <div className="error-banner inline">{error}</div>}
@@ -107,7 +109,7 @@ export default function GlobalSearchModal() {
                 </span>
                 <span className="global-search-hit-user">{m.username}</span>
                 <span className="global-search-hit-text">
-                  {m.content && m.content !== '(imagen)' ? m.content.slice(0, 160) : m.image_url ? 'Image' : ''}
+                  {m.content && m.content !== '(imagen)' ? m.content.slice(0, 160) : m.image_url ? t('common.image') : ''}
                 </span>
               </button>
             </li>

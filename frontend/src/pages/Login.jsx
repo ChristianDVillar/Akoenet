@@ -8,6 +8,7 @@ import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
 import { postAuthDestination } from '../lib/postAuthDestination'
 import { isTauri } from '../lib/isTauri'
 import AuthLegalStrip from '../components/AuthLegalStrip'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
 const LEGACY_SESSION_NOTICE_KEYS = ['akonet_session_notice', 'Akonet_session_notice']
@@ -63,8 +64,8 @@ export default function Login() {
     const code = sessionStorage.getItem(TWITCH_OAUTH_ERR_KEY)
     if (!code) return
     sessionStorage.removeItem(TWITCH_OAUTH_ERR_KEY)
-    setError(`Twitch sign-in failed (${code}). Try again or use email and password.`)
-  }, [])
+    setError(t('login.twitchSignInFailed', { code }))
+  }, [t])
 
   useEffect(() => {
     let cancelled = false
@@ -144,15 +145,13 @@ export default function Login() {
       navigate(postAuthDestination(loggedInUser))
     } catch (err) {
       if (twoFactorToken) {
-        setError('Invalid code')
+        setError(t('login.invalidCode'))
       } else if (!err?.response) {
-        setError(
-          `Cannot reach the API at ${getApiBaseUrl()}. If you are using the desktop app, reinstall from a fresh build or ensure it was not built with a local-only API URL.`
-        )
+        setError(t('login.cannotReachApi', { url: getApiBaseUrl() }))
       } else if (err.response.status === 401) {
-        setError('Invalid credentials')
+        setError(t('login.invalidCredentials'))
       } else {
-        setError(String(err.response?.data?.error || err.response?.data?.message || 'Sign-in failed'))
+        setError(String(err.response?.data?.error || err.response?.data?.message || t('login.signInFailed')))
       }
     } finally {
       setBusy(false)
@@ -170,9 +169,12 @@ export default function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="brand-block">
-          <span className="brand-akoenet">AkoeNet</span>
-          <span className="brand-sub">Community</span>
+        <div className="auth-card-top-row">
+          <div className="brand-block">
+            <span className="brand-akoenet">AkoeNet</span>
+            <span className="brand-sub">{t('common.community')}</span>
+          </div>
+          <LanguageSwitcher />
         </div>
         <p className="muted small" style={{ marginBottom: '0.75rem' }}>
           <Link to="/">← {t('login.home')}</Link>
@@ -180,8 +182,8 @@ export default function Login() {
         <h1>{twoFactorToken ? t('login.twoFactorTitle') : t('login.title')}</h1>
         <p className="muted">
           {searchParams.get(INVITE_QUERY_PARAM) || readPendingInviteFromSession()
-            ? 'After you sign in, we will add you to the invited server automatically.'
-            : 'Communities and real-time chat.'}
+            ? t('login.leadInvite')
+            : t('login.leadDefault')}
         </p>
         <form onSubmit={onSubmit} className="form-stack">
           {notice && <div className="info-banner">{notice}</div>}
@@ -249,11 +251,7 @@ export default function Login() {
             type="button"
             className="btn twitch"
             disabled={twitchConfigured !== true}
-            title={
-              twitchConfigured === false
-                ? 'Twitch OAuth is not configured on the server (missing TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET).'
-                : undefined
-            }
+            title={twitchConfigured === false ? t('login.twitchDisabledTitle') : undefined}
             onClick={() => {
               const inv = searchParams.get(INVITE_QUERY_PARAM)
               if (inv) {
@@ -267,32 +265,27 @@ export default function Login() {
             }}
           >
             {twitchConfigured === null
-              ? 'Checking Twitch…'
+              ? t('login.twitchChecking')
               : twitchConfigured === false
-                ? 'Twitch unavailable'
-                : 'Sign in with Twitch'}
+                ? t('login.twitchUnavailable')
+                : t('login.twitchSignIn')}
           </button>
           {twitchConfigured === false && (
             <p className="muted small" style={{ marginTop: '0.5rem' }}>
-              Server admin must set <code>TWITCH_CLIENT_ID</code> and <code>TWITCH_CLIENT_SECRET</code>. In the Twitch
-              Developer Console, add <strong>exactly</strong> this redirect URL (must match{' '}
-              <code>TWITCH_REDIRECT_URI</code> / your API):{' '}
+              {t('login.twitchHelpBeforeUri')}{' '}
               <code>{twitchOAuthRedirectUri || `${apiBase}/auth/twitch/callback`}</code>
-              {twitchOAuthRedirectUri?.includes('/api/user/') && (
+              {twitchOAuthRedirectUri?.includes('/api/user/') ? (
                 <>
                   {' '}
-                  (your API mounts the same routes under <code>/auth/…</code> and <code>/api/user/auth/…</code>; the
-                  server uses the URL above for OAuth.)
+                  ({t('login.twitchHelpMountNote')})
                 </>
-              )}
-              {isTauri() && (
+              ) : null}
+              {isTauri() ? (
                 <>
                   {' '}
-                  Desktop uses the same callback URL the API reports (from <code>VITE_API_URL</code> / production
-                  API)—not <code>http://localhost:5173</code> or <code>tauri://</code>. Twitch only allows{' '}
-                  <code>https://</code> or <code>http://localhost</code> callbacks to your backend.
+                  {t('login.twitchHelpDesktopNote')}
                 </>
-              )}
+              ) : null}
             </p>
           )}
             </>

@@ -670,15 +670,17 @@ function initSocket(io) {
         }
 
         const result = await pool.query(
-          `INSERT INTO messages (channel_id, user_id, content, image_url, reply_to_id, thread_root_message_id)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           RETURNING *`,
+          `WITH ins AS (
+             INSERT INTO messages (channel_id, user_id, content, image_url, reply_to_id, thread_root_message_id)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *
+           )
+           SELECT ins.*, u.username, u.avatar_url
+           FROM ins
+           JOIN users u ON u.id = ins.user_id`,
           [channelId, socket.userId, content.trim() || "(imagen)", imageUrl, replyToId, threadRootId]
         );
         const row = result.rows[0];
-        const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [
-          socket.userId,
-        ]);
         let replyPreviewContent = null;
         let replyPreviewUsername = null;
         if (row.reply_to_id) {
@@ -697,8 +699,8 @@ function initSocket(io) {
         const message = {
           ...sanitizeImageUrlField({
             ...row,
-            username: u.rows[0]?.username,
-            avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+            username: row.username,
+            avatar_url: row.avatar_url ? sanitizeMediaUrl(row.avatar_url) : null,
           }),
           reactions: [],
           reply_preview_content: replyPreviewContent,
@@ -736,7 +738,7 @@ function initSocket(io) {
 
         if (typeof ack === "function") ack({ ok: true, message });
       } catch (e) {
-        console.error(e);
+        logger.error({ err: e, event: "send_message", userId: socket.userId }, "send_message failed");
         if (typeof ack === "function") ack({ error: "save_failed" });
       }
     });
@@ -774,11 +776,16 @@ function initSocket(io) {
         }
         const oldContent = String(msg.content || "");
         const updated = await pool.query(
-          `UPDATE messages
-           SET content = $2, edited_at = NOW()
-           WHERE id = $1
-           RETURNING *`,
-          [messageId, content]
+          `WITH upd AS (
+             UPDATE messages
+             SET content = $2, edited_at = NOW()
+             WHERE id = $1
+             RETURNING *
+           )
+           SELECT upd.*, u.username, u.avatar_url
+           FROM upd
+           JOIN users u ON u.id = $3`,
+          [messageId, content, socket.userId]
         );
         if (oldContent !== content) {
           await pool.query(
@@ -787,16 +794,16 @@ function initSocket(io) {
             [messageId, oldContent, content, socket.userId]
           );
         }
-        const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
+        const updRow = updated.rows[0];
         const out = sanitizeImageUrlField({
-          ...updated.rows[0],
-          username: u.rows[0]?.username,
-          avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+          ...updRow,
+          username: updRow.username,
+          avatar_url: updRow.avatar_url ? sanitizeMediaUrl(updRow.avatar_url) : null,
         });
         io.to(`channel:${msg.channel_id}`).emit("message_updated", out);
         if (typeof ack === "function") ack({ ok: true, message: out });
       } catch (e) {
-        console.error(e);
+        logger.error({ err: e, event: "edit_message", userId: socket.userId }, "edit_message failed");
         if (typeof ack === "function") ack({ error: "save_failed" });
       }
     });
@@ -963,7 +970,7 @@ function initSocket(io) {
         });
         if (typeof ack === "function") ack({ ok: true, reactions });
       } catch (error) {
-        console.error("react_message failed", error);
+        logger.error({ err: error, event: "react_message", userId: socket.userId }, "react_message failed");
         if (typeof ack === "function") ack({ error: "save_failed" });
       }
     });
@@ -1042,13 +1049,17 @@ function initSocket(io) {
         }
 
         const result = await pool.query(
-          `INSERT INTO direct_messages (conversation_id, sender_id, content, image_url, reply_to_id)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING *`,
+          `WITH ins AS (
+             INSERT INTO direct_messages (conversation_id, sender_id, content, image_url, reply_to_id)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *
+           )
+           SELECT ins.*, u.username, u.avatar_url
+           FROM ins
+           JOIN users u ON u.id = ins.sender_id`,
           [conversationId, socket.userId, content || "(imagen)", imageUrl, replyToId]
         );
         const row = result.rows[0];
-        const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
         let replyPreviewContent = null;
         let replyPreviewUsername = null;
         if (row.reply_to_id) {
@@ -1066,8 +1077,8 @@ function initSocket(io) {
         }
         const message = sanitizeImageUrlField({
           ...row,
-          username: u.rows[0]?.username || `user_${socket.userId}`,
-          avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+          username: row.username || `user_${socket.userId}`,
+          avatar_url: row.avatar_url ? sanitizeMediaUrl(row.avatar_url) : null,
           reply_preview_content: replyPreviewContent,
           reply_preview_username: replyPreviewUsername,
         });
@@ -1080,9 +1091,10 @@ function initSocket(io) {
           conversationId,
           message,
         });
+        recordDmMessage();
         if (typeof ack === "function") ack({ ok: true, message });
       } catch (e) {
-        console.error(e);
+        logger.error({ err: e, event: "send_direct_message", userId: socket.userId }, "send_direct_message failed");
         if (typeof ack === "function") ack({ error: "save_failed" });
       }
     });
@@ -1125,11 +1137,16 @@ function initSocket(io) {
         }
         const oldContent = String(msg.content || "");
         const updated = await pool.query(
-          `UPDATE direct_messages
-           SET content = $2, edited_at = NOW()
-           WHERE id = $1
-           RETURNING *`,
-          [dmMessageId, content]
+          `WITH upd AS (
+             UPDATE direct_messages
+             SET content = $2, edited_at = NOW()
+             WHERE id = $1
+             RETURNING *
+           )
+           SELECT upd.*, u.username, u.avatar_url
+           FROM upd
+           JOIN users u ON u.id = $3`,
+          [dmMessageId, content, socket.userId]
         );
         if (oldContent !== content) {
           await pool.query(
@@ -1138,16 +1155,16 @@ function initSocket(io) {
             [dmMessageId, oldContent, content, socket.userId]
           );
         }
-        const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [socket.userId]);
+        const dmUpd = updated.rows[0];
         const out = sanitizeImageUrlField({
-          ...updated.rows[0],
-          username: u.rows[0]?.username,
-          avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+          ...dmUpd,
+          username: dmUpd.username,
+          avatar_url: dmUpd.avatar_url ? sanitizeMediaUrl(dmUpd.avatar_url) : null,
         });
         io.to(`dm:${msg.conversation_id}`).emit("direct_message_updated", out);
         if (typeof ack === "function") ack({ ok: true, message: out });
       } catch (e) {
-        console.error(e);
+        logger.error({ err: e, event: "edit_direct_message", userId: socket.userId }, "edit_direct_message failed");
         if (typeof ack === "function") ack({ error: "save_failed" });
       }
     });

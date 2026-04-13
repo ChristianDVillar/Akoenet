@@ -6,7 +6,6 @@ let httpRequestDuration;
 function initPrometheusIfEnabled() {
   if (process.env.PROMETHEUS_METRICS_ENABLED !== "1") return;
   try {
-    // eslint-disable-next-line global-require
     prom = require("prom-client");
     register = prom.register;
     prom.collectDefaultMetrics({ register, prefix: "akonet_" });

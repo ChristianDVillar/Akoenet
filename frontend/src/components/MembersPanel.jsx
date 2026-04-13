@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 
@@ -43,6 +44,7 @@ export default function MembersPanel({
   activityByUserId = {},
   gameRanking = [],
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [avatarFailed, setAvatarFailed] = useState(() => new Set())
   const [query, setQuery] = useState('')
@@ -106,7 +108,7 @@ export default function MembersPanel({
 
   const groupedMembers = useMemo(() => {
     const sections = new Map()
-    const titleFor = (key) => key.charAt(0).toUpperCase() + key.slice(1)
+    const titleFor = (key) => t(`members.roles.${key}`, { defaultValue: key.charAt(0).toUpperCase() + key.slice(1) })
     for (const member of filteredMembers) {
       const key = resolveDisplayRole(member)
       if (!sections.has(key)) {
@@ -134,7 +136,7 @@ export default function MembersPanel({
       return a.title.localeCompare(b.title)
     })
     return arr
-  }, [filteredMembers])
+  }, [filteredMembers, t])
 
   async function openDirectMessage(peerId) {
     setFriendNotice(null)
@@ -146,9 +148,9 @@ export default function MembersPanel({
     } catch (err) {
       const code = err.response?.data?.error
       if (code === 'blocked' || err.response?.status === 403) {
-        setFriendNotice({ type: 'err', text: 'You cannot message this user.' })
+        setFriendNotice({ type: 'err', text: t('members.errDmBlocked') })
       } else {
-        setFriendNotice({ type: 'err', text: 'Could not open direct messages.' })
+        setFriendNotice({ type: 'err', text: t('members.errDmOpen') })
       }
     } finally {
       setDmOpenBusyId(null)
@@ -161,16 +163,16 @@ export default function MembersPanel({
     try {
       await api.post('/social/friends/request', { user_id: peerId })
       await refreshFriendships()
-      setFriendNotice({ type: 'ok', text: 'Friend request sent.' })
+      setFriendNotice({ type: 'ok', text: t('members.friendSent') })
     } catch (err) {
       const code = err.response?.data?.error
       if (code === 'already_exists') {
         await refreshFriendships()
-        setFriendNotice({ type: 'muted', text: 'Already connected or pending.' })
+        setFriendNotice({ type: 'muted', text: t('members.friendAlready') })
       } else if (code === 'blocked') {
-        setFriendNotice({ type: 'err', text: 'You cannot add this user.' })
+        setFriendNotice({ type: 'err', text: t('members.errFriendBlocked') })
       } else {
-        setFriendNotice({ type: 'err', text: 'Could not send friend request.' })
+        setFriendNotice({ type: 'err', text: t('members.errFriendSend') })
       }
     } finally {
       setFriendRequestBusyId(null)
@@ -181,28 +183,28 @@ export default function MembersPanel({
     <aside className="members-column">
       <header className="members-header">
         <span className="members-header-title" id={onClose ? 'members-drawer-title' : undefined}>
-          Members
+          {t('members.title')}
         </span>
         {onClose && (
           <button
             type="button"
             className="btn ghost small members-header-close"
             onClick={onClose}
-            aria-label="Close members list"
+            aria-label={t('members.closeAria')}
           >
             ✕
           </button>
         )}
       </header>
       {Array.isArray(gameRanking) && gameRanking.length > 0 && (
-        <div className="members-trending" aria-label="Trending games in this server">
-          <div className="members-trending-title">Trending now</div>
+        <div className="members-trending" aria-label={t('members.trendingAria')}>
+          <div className="members-trending-title">{t('members.trendingTitle')}</div>
           <ol className="members-trending-list">
             {gameRanking.slice(0, 5).map((row, idx) => (
               <li key={`${row.game}-${idx}`}>
                 <span className="members-trending-rank">#{idx + 1}</span>
                 <span className="members-trending-game">{row.game}</span>
-                <span className="members-trending-count">{row.players} playing</span>
+                <span className="members-trending-count">{t('members.playingCount', { count: row.players })}</span>
               </li>
             ))}
           </ol>
@@ -212,7 +214,7 @@ export default function MembersPanel({
         <input
           id="members-filter-query"
           name="members_filter_query"
-          placeholder="Search member..."
+          placeholder={t('members.searchPh')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -226,7 +228,7 @@ export default function MembersPanel({
           >
             {roleOptions.map((r) => (
               <option key={r} value={r}>
-                {r === 'all' ? 'All roles' : r}
+                {r === 'all' ? t('members.allRoles') : t(`members.roles.${r}`, { defaultValue: r })}
               </option>
             ))}
           </select>
@@ -237,9 +239,9 @@ export default function MembersPanel({
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="all">All</option>
-            <option value="connected">Connected</option>
-            <option value="offline">Offline</option>
+            <option value="all">{t('members.all')}</option>
+            <option value="connected">{t('members.connected')}</option>
+            <option value="offline">{t('members.offline')}</option>
           </select>
         </div>
       </div>
@@ -303,14 +305,16 @@ export default function MembersPanel({
                           {member.username}
                           <span className={`member-status-dot ${isOnline ? 'online' : 'offline'}`} />
                         </strong>
-                        <span>{member.roles?.join(', ') || 'member'}</span>
+                        <span>{member.roles?.join(', ') || t('members.roleMember')}</span>
                         {act?.game ? (
                           <span className="member-game-activity">
-                            Playing {act.game}
+                            {t('members.playing')} {act.game}
                             {act.platform ? ` · ${act.platform}` : ''}
                           </span>
                         ) : null}
-                        <span className="member-status-text">{isOnline ? 'Connected' : 'Offline'}</span>
+                        <span className="member-status-text">
+                          {isOnline ? t('members.statusConnected') : t('members.statusOffline')}
+                        </span>
                       </div>
                     </button>
                     {selected && !isSelf && (
@@ -325,13 +329,13 @@ export default function MembersPanel({
                           disabled={dmOpenBusyId === Number(member.id)}
                           onClick={() => openDirectMessage(Number(member.id))}
                         >
-                          {dmOpenBusyId === Number(member.id) ? 'Opening…' : 'Message'}
+                          {dmOpenBusyId === Number(member.id) ? t('members.opening') : t('members.message')}
                         </button>
                         {friendLabel === 'friends' && (
-                          <span className="member-friend-status">Friends</span>
+                          <span className="member-friend-status">{t('members.friends')}</span>
                         )}
                         {friendLabel === 'pending' && (
-                          <span className="member-friend-status">Request pending</span>
+                          <span className="member-friend-status">{t('members.requestPending')}</span>
                         )}
                         {!friendLabel && (
                           <button
@@ -340,7 +344,7 @@ export default function MembersPanel({
                             disabled={friendRequestBusyId === Number(member.id)}
                             onClick={() => handleAddFriend(Number(member.id))}
                           >
-                            {friendRequestBusyId === Number(member.id) ? 'Sending…' : 'Add friend'}
+                            {friendRequestBusyId === Number(member.id) ? t('members.sending') : t('members.addFriend')}
                           </button>
                         )}
                       </div>
@@ -354,8 +358,8 @@ export default function MembersPanel({
         {filteredMembers.length === 0 && (
           <li className="member-item">
             <div className="member-meta">
-              <strong>No members found</strong>
-              <span>Try changing filters.</span>
+              <strong>{t('members.emptyTitle')}</strong>
+              <span>{t('members.emptyHint')}</span>
             </div>
           </li>
         )}

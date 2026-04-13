@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useDismissiblePopover } from '../hooks/useDismissiblePopover'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import SchedulerUpcomingWidget from './SchedulerUpcomingWidget'
@@ -61,6 +62,7 @@ export default function ChannelList({
   voicePresence = {},
   voiceScreenSharingUserIds = [],
 }) {
+  const { t } = useTranslation()
   function voiceUsersForChannel(channelId) {
     const k = String(channelId)
     const raw = voicePresence[k] ?? voicePresence[channelId] ?? voicePresence[Number(channelId)]
@@ -212,7 +214,7 @@ export default function ChannelList({
               <span className="channel-item-main channel-item-main--voice">
                 {channelIcon(c)}
                 {c.is_private && (
-                  <span className="channel-lock" title="Private channel">
+                  <span className="channel-lock" title={t('common.privateChannel')}>
                     🔒
                   </span>
                 )}
@@ -220,7 +222,11 @@ export default function ChannelList({
                 {showVoiceXy && (
                   <span
                     className={`voice-channel-xy ${voiceXyFull ? 'voice-channel-xy--full' : ''}`}
-                    title={vMax != null ? `Conectados / máximo: ${vCount} / ${vMax}` : `Conectados: ${vCount}`}
+                    title={
+                      vMax != null
+                        ? t('channelList.voiceConnectedMax', { count: vCount, max: vMax })
+                        : t('channelList.voiceConnectedTitle', { count: vCount })
+                    }
                   >
                     {vMax != null ? `(${vCount}/${vMax})` : `(${vCount})`}
                   </span>
@@ -230,7 +236,7 @@ export default function ChannelList({
                 <button
                   type="button"
                   className="channel-row-add"
-                  title="Add channel with same type in this section"
+                  title={t('channelList.addChannelSameSection')}
                   onClick={(e) => {
                     e.stopPropagation()
                     setCreateUI({ type: 'beside', channelId: c.id })
@@ -241,7 +247,7 @@ export default function ChannelList({
                 <button
                   type="button"
                   className="channel-row-action"
-                  title="Delete channel"
+                  title={t('channelList.deleteChannel')}
                   onClick={(e) => {
                     e.stopPropagation()
                     onDeleteChannel(c.id)
@@ -251,7 +257,7 @@ export default function ChannelList({
                 </button>
               </span>
             </div>
-            <ul className="voice-channel-connected" aria-label={`Connected in ${c.name}`}>
+            <ul className="voice-channel-connected" aria-label={t('channelList.voiceConnectedAria', { name: c.name })}>
               {vSorted.map((p) => {
                 const uidKey = p.userId != null ? String(p.userId) : ''
                 const showImg = p.avatar_url && !voiceAvatarFailed.has(uidKey)
@@ -275,19 +281,19 @@ export default function ChannelList({
                     <span className="voice-channel-connected-name">{p.username || `User ${p.userId}`}</span>
                     <span className="voice-channel-audio-badges" aria-hidden>
                       {p.mic_muted ? (
-                        <span className="voice-channel-audio-badge voice-channel-audio-badge--mute" title="Micrófono silenciado">
+                        <span className="voice-channel-audio-badge voice-channel-audio-badge--mute" title={t('channelList.micMutedTitle')}>
                           <VoiceSidebarMicMutedIcon />
                         </span>
                       ) : null}
                       {p.deafened ? (
-                        <span className="voice-channel-audio-badge voice-channel-audio-badge--deaf" title="Sordina (no oye el canal)">
+                        <span className="voice-channel-audio-badge voice-channel-audio-badge--deaf" title={t('channelList.deafenedTitle')}>
                           <VoiceSidebarHeadphonesDeafIcon />
                         </span>
                       ) : null}
                     </span>
                     {liveSharing ? (
-                      <span className="voice-channel-live-badge" title="Compartiendo pantalla">
-                        EN VIVO
+                      <span className="voice-channel-live-badge" title={t('channelList.screenShareTitle')}>
+                        {t('channelList.liveBadge')}
                       </span>
                     ) : null}
                   </li>
@@ -308,7 +314,7 @@ export default function ChannelList({
             <span className="channel-item-main">
               {channelIcon(c)}
               {c.is_private && (
-                <span className="channel-lock" title="Private channel">
+                <span className="channel-lock" title={t('common.privateChannel')}>
                   🔒
                 </span>
               )}
@@ -343,7 +349,7 @@ export default function ChannelList({
         {besideOpen && (
           <div ref={popoverRef} className="channel-create-inline channel-create-inline--beside">
             <p className="channel-create-inline-hint">
-              New channel (same type as <strong>{c.name}</strong>)
+              {t('channelList.newChannelSameType', { name: c.name })}
             </p>
             <form
               className="channel-create-inline-form"
@@ -363,15 +369,15 @@ export default function ChannelList({
                 name="channel_name"
                 autoFocus
                 className="channel-create-inline-input"
-                placeholder="channel-name"
+                placeholder={t('channelList.channelNamePh')}
                 value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
               />
               <button type="submit" className="btn small primary">
-                Create
+                {t('channelList.create')}
               </button>
               <button type="button" className="btn small ghost" onClick={closeCreate}>
-                Cancel
+                {t('channelList.cancel')}
               </button>
             </form>
           </div>
@@ -393,7 +399,7 @@ export default function ChannelList({
             className={`channel-create-tab ${tab === 'channel' ? 'active' : ''}`}
             onClick={() => setCreateUI({ type: 'top', tab: 'channel' })}
           >
-            Channel
+            {t('channelList.tabChannel')}
           </button>
           <button
             type="button"
@@ -402,7 +408,7 @@ export default function ChannelList({
             className={`channel-create-tab ${tab === 'section' ? 'active' : ''}`}
             onClick={() => setCreateUI({ type: 'top', tab: 'section' })}
           >
-            Section
+            {t('channelList.tabSection')}
           </button>
         </div>
         {tab === 'section' ? (
@@ -420,15 +426,15 @@ export default function ChannelList({
               name="section_name"
               autoFocus
               className="channel-create-inline-input"
-              placeholder="Section name"
+              placeholder={t('channelList.sectionNamePh')}
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
             />
             <button type="submit" className="btn small primary">
-              Create section
+              {t('channelList.createSection')}
             </button>
             <button type="button" className="btn small ghost" onClick={closeCreate}>
-              Cancel
+              {t('channelList.cancel')}
             </button>
           </form>
         ) : (
@@ -450,7 +456,7 @@ export default function ChannelList({
               name="channel_name"
               autoFocus
               className="channel-create-inline-input"
-              placeholder="channel-name"
+              placeholder={t('channelList.channelNamePh')}
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
             />
@@ -461,9 +467,9 @@ export default function ChannelList({
               value={draftType}
               onChange={(e) => setDraftType(e.target.value)}
             >
-              <option value="text">Text</option>
-              <option value="voice">Voice</option>
-              <option value="forum">Forum</option>
+              <option value="text">{t('channelList.typeText')}</option>
+              <option value="voice">{t('channelList.typeVoice')}</option>
+              <option value="forum">{t('channelList.typeForum')}</option>
             </select>
             <select
               id="channel-create-top-category"
@@ -472,7 +478,7 @@ export default function ChannelList({
               value={draftCategoryId}
               onChange={(e) => setDraftCategoryId(e.target.value)}
             >
-              <option value="">No section (top)</option>
+              <option value="">{t('channelList.noSectionTop')}</option>
               {categories.map((cat) => (
                 <option key={cat.id} value={String(cat.id)}>
                   {cat.name}
@@ -487,14 +493,14 @@ export default function ChannelList({
                 checked={draftPrivate}
                 onChange={(e) => setDraftPrivate(e.target.checked)}
               />
-              Private
+              {t('channelList.private')}
             </label>
             <div className="channel-create-inline-actions">
               <button type="submit" className="btn small primary">
-                Create channel
+                {t('channelList.createChannel')}
               </button>
               <button type="button" className="btn small ghost" onClick={closeCreate}>
-                Cancel
+                {t('channelList.cancel')}
               </button>
             </div>
           </form>
@@ -525,7 +531,7 @@ export default function ChannelList({
             name="channel_name"
             autoFocus
             className="channel-create-inline-input"
-            placeholder="channel-name"
+            placeholder={t('channelList.channelNamePh')}
             value={draftName}
             onChange={(e) => setDraftName(e.target.value)}
           />
@@ -536,9 +542,9 @@ export default function ChannelList({
             value={draftType}
             onChange={(e) => setDraftType(e.target.value)}
           >
-            <option value="text">Text</option>
-            <option value="voice">Voice</option>
-            <option value="forum">Forum</option>
+            <option value="text">{t('channelList.typeText')}</option>
+            <option value="voice">{t('channelList.typeVoice')}</option>
+            <option value="forum">{t('channelList.typeForum')}</option>
           </select>
           <label className="channel-create-private">
             <input
@@ -548,14 +554,14 @@ export default function ChannelList({
               checked={draftPrivate}
               onChange={(e) => setDraftPrivate(e.target.checked)}
             />
-            Private
+            {t('channelList.private')}
           </label>
           <div className="channel-create-inline-actions">
             <button type="submit" className="btn small primary">
-              Create
+              {t('channelList.create')}
             </button>
             <button type="button" className="btn small ghost" onClick={closeCreate}>
-              Cancel
+              {t('channelList.cancel')}
             </button>
           </div>
         </form>
@@ -571,15 +577,15 @@ export default function ChannelList({
             type="button"
             className="channel-server-name-btn"
             onClick={() => onOpenServerSettings?.()}
-            title="Server settings"
+            title={t('channelList.serverSettings')}
           >
-            <span className="channel-server-name">{serverName || 'Server'}</span>
+            <span className="channel-server-name">{serverName || t('channelList.serverFallback')}</span>
             <span className="channel-server-chevron" aria-hidden="true" />
           </button>
           <button
             type="button"
             className="channel-server-toolbar-btn"
-            title="Invite & server overview"
+            title={t('channelList.serverInviteOverview')}
             onClick={() => onOpenServerSettings?.()}
           >
             +
@@ -599,7 +605,7 @@ export default function ChannelList({
                   <img
                     className="user-avatar-tiny"
                     src={resolveImageUrl(user.avatar_url)}
-                    alt="User avatar"
+                    alt={t('channelList.avatarAlt')}
                     onError={() => setUserAvatarFailed(true)}
                   />
                 ) : (
@@ -607,7 +613,7 @@ export default function ChannelList({
                     {avatarInitial}
                   </span>
                 )}
-                <span>{user?.username || 'User'}</span>
+                <span>{user?.username || t('channelList.userFallback')}</span>
               </span>
             </button>
             {userMenuOpen && (
@@ -622,8 +628,8 @@ export default function ChannelList({
                   }}
                 >
                   {String(user?.presence_status || '').toLowerCase() === 'invisible'
-                    ? 'Set as online'
-                    : 'Set as offline'}
+                    ? t('channelList.setOnline')
+                    : t('channelList.setOffline')}
                 </button>
                 <button
                   type="button"
@@ -633,7 +639,7 @@ export default function ChannelList({
                     onOpenUserSettings?.()
                   }}
                 >
-                  Settings
+                  {t('channelList.settings')}
                 </button>
                 <button
                   type="button"
@@ -643,7 +649,7 @@ export default function ChannelList({
                     onOpenServerSettings?.()
                   }}
                 >
-                  Server settings
+                  {t('channelList.serverSettingsLink')}
                 </button>
                 {user?.is_admin && (
                   <button
@@ -654,7 +660,7 @@ export default function ChannelList({
                       onOpenAdminDashboard?.()
                     }}
                   >
-                    Admin dashboard
+                    {t('channelList.adminDashboard')}
                   </button>
                 )}
                 <button
@@ -665,7 +671,7 @@ export default function ChannelList({
                     onLogout?.()
                   }}
                 >
-                  Logout
+                  {t('channelList.logout')}
                 </button>
               </div>
             )}
@@ -675,7 +681,7 @@ export default function ChannelList({
             <button
               type="button"
               className="channel-server-toolbar-btn channel-server-toolbar-btn--ghost"
-              title="Server settings"
+              title={t('channelList.serverSettings')}
               onClick={onOpenServerSettings}
             >
               ⚙
@@ -686,11 +692,11 @@ export default function ChannelList({
       <SchedulerUpcomingWidget streamerUsername={schedulerStreamerUsername} />
       <div className="channel-list-scroll">
         <div className="channel-list-toolbar">
-          <span className="channel-list-toolbar-label">Channels</span>
+          <span className="channel-list-toolbar-label">{t('channelList.channelsToolbar')}</span>
           <button
             type="button"
             className="channel-list-toolbar-add"
-            title="Create channel or section"
+            title={t('channelList.createChannelOrSection')}
             onClick={() => setCreateUI({ type: 'top', tab: 'channel' })}
           >
             +
@@ -739,7 +745,11 @@ export default function ChannelList({
                   className="category-chevron-btn"
                   onClick={() => onToggleCategory(group.id)}
                   aria-expanded={!collapsedCategories.includes(group.id)}
-                  aria-label={collapsedCategories.includes(group.id) ? 'Expand category' : 'Collapse category'}
+                  aria-label={
+                    collapsedCategories.includes(group.id)
+                      ? t('channelList.expandCategory')
+                      : t('channelList.collapseCategory')
+                  }
                 >
                   <span
                     className={`category-chevron ${collapsedCategories.includes(group.id) ? 'is-collapsed' : ''}`}
@@ -756,7 +766,7 @@ export default function ChannelList({
                   <button
                     type="button"
                     className="category-add-btn"
-                    title="Add channel in this section"
+                    title={t('channelList.addChannelInSection')}
                     onClick={(e) => {
                       e.stopPropagation()
                       if (collapsedCategories.includes(group.id)) {
@@ -770,7 +780,7 @@ export default function ChannelList({
                   <button
                     type="button"
                     className="category-delete"
-                    title="Delete category"
+                    title={t('channelList.deleteCategory')}
                     onClick={(e) => {
                       e.stopPropagation()
                       onDeleteCategory(group.id)

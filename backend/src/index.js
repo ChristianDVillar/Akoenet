@@ -9,6 +9,7 @@ const { registerDomainHandlers } = require("./lib/register-domain-handlers");
 registerDomainHandlers();
 const initSocket = require("./sockets/chat.socket");
 const logger = require("./lib/logger");
+const { dakinisCopyrightNotice } = require("./lib/copyright");
 const { appEvents } = require("./lib/app-events");
 const { recordChannelMessage } = require("./lib/runtime-metrics");
 
@@ -68,7 +69,10 @@ configureRedisAdapterIfNeeded()
       process.exit(1);
     });
     server.listen(port, () => {
-      logger.info(`AkoeNet backend on port ${port} (socket ready; Twitch; Steam when STEAM_WEB_API_KEY is set)`);
+      logger.info(
+        { port, copyright: dakinisCopyrightNotice() },
+        `AkoeNet backend on port ${port} (socket ready; Twitch; Steam when STEAM_WEB_API_KEY is set)`
+      );
     });
   })
   .catch((e) => {

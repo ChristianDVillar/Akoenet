@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 
 function fromDatetimeLocalValue(s) {
@@ -9,6 +10,7 @@ function fromDatetimeLocalValue(s) {
 }
 
 export default function ServerCustomContentSettings({ serverId, canManage, tab }) {
+  const { t } = useTranslation()
   const [commands, setCommands] = useState([])
   const [events, setEvents] = useState([])
   const [announcements, setAnnouncements] = useState([])
@@ -40,9 +42,9 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       setAnnouncements(a.data || [])
       setTextChannels((ch.data || []).filter((x) => x.type === 'text'))
     } catch {
-      setLocalError('Could not load server automations.')
+      setLocalError(t('serverAutomations.errLoad'))
     }
-  }, [serverId])
+  }, [serverId, t])
 
   useEffect(() => {
     loadAll()
@@ -68,10 +70,10 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       await loadAll()
     } catch (err) {
       const code = err.response?.data?.error
-      if (code === 'reserved_command_name') setLocalError('That name is reserved (!schedule / !next).')
-      else if (code === 'command_name_taken') setLocalError('That command name already exists.')
-      else if (code === 'blocked_content') setLocalError('Content blocked by filters.')
-      else setLocalError('Could not save command.')
+      if (code === 'reserved_command_name') setLocalError(t('serverAutomations.errReservedName'))
+      else if (code === 'command_name_taken') setLocalError(t('serverAutomations.errNameTaken'))
+      else if (code === 'blocked_content') setLocalError(t('serverAutomations.errBlocked'))
+      else setLocalError(t('serverAutomations.errSaveCommand'))
     } finally {
       setBusy(false)
     }
@@ -85,7 +87,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       await api.delete(`/servers/${serverId}/custom-commands/${id}`)
       await loadAll()
     } catch {
-      setLocalError('Could not delete command.')
+      setLocalError(t('serverAutomations.errDeleteCommand'))
     } finally {
       setBusy(false)
     }
@@ -96,16 +98,16 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
     if (!canManage) return
     const starts = fromDatetimeLocalValue(evStart)
     if (!starts) {
-      setLocalError('Choose a start date and time for the event.')
+      setLocalError(t('serverAutomations.errEventStart'))
       return
     }
     let ends = fromDatetimeLocalValue(evEnd)
     if (evEnd.trim() && !ends) {
-      setLocalError('End time is invalid.')
+      setLocalError(t('serverAutomations.errEndInvalid'))
       return
     }
     if (ends && new Date(ends) < new Date(starts)) {
-      setLocalError('End must be after start.')
+      setLocalError(t('serverAutomations.errEndBeforeStart'))
       return
     }
     setBusy(true)
@@ -123,8 +125,8 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       setEvEnd('')
       await loadAll()
     } catch (err) {
-      if (err.response?.data?.error === 'blocked_content') setLocalError('Content blocked by filters.')
-      else setLocalError('Could not save event.')
+      if (err.response?.data?.error === 'blocked_content') setLocalError(t('serverAutomations.errBlocked'))
+      else setLocalError(t('serverAutomations.errSaveEvent'))
     } finally {
       setBusy(false)
     }
@@ -138,7 +140,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       await api.delete(`/servers/${serverId}/events/${id}`)
       await loadAll()
     } catch {
-      setLocalError('Could not delete event.')
+      setLocalError(t('serverAutomations.errDeleteEvent'))
     } finally {
       setBusy(false)
     }
@@ -159,8 +161,8 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       setAnnBody('')
       await loadAll()
     } catch (err) {
-      if (err.response?.data?.error === 'blocked_content') setLocalError('Content blocked by filters.')
-      else setLocalError('Could not save announcement.')
+      if (err.response?.data?.error === 'blocked_content') setLocalError(t('serverAutomations.errBlocked'))
+      else setLocalError(t('serverAutomations.errSaveAnnouncement'))
     } finally {
       setBusy(false)
     }
@@ -174,7 +176,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       await api.delete(`/servers/${serverId}/announcements/${id}`)
       await loadAll()
     } catch {
-      setLocalError('Could not delete announcement.')
+      setLocalError(t('serverAutomations.errDeleteAnnouncement'))
     } finally {
       setBusy(false)
     }
@@ -184,7 +186,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
     if (!canManage || !announcementId) return
     const cid = parseInt(publishChannelId, 10)
     if (Number.isNaN(cid) || cid <= 0) {
-      setLocalError('Choose a text channel to publish.')
+      setLocalError(t('serverAutomations.errChooseChannel'))
       return
     }
     setBusy(true)
@@ -196,8 +198,8 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       await loadAll()
     } catch (err) {
       const code = err.response?.data?.error
-      if (code === 'send_forbidden') setLocalError('You cannot send messages in that channel.')
-      else setLocalError('Could not publish announcement.')
+      if (code === 'send_forbidden') setLocalError(t('serverAutomations.errSendForbidden'))
+      else setLocalError(t('serverAutomations.errPublish'))
     } finally {
       setBusy(false)
     }
@@ -216,16 +218,11 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
         aria-labelledby={`srv-settings-cmd-${sid}`}
       >
         <h2 id={`srv-settings-cmd-${sid}`} className="server-settings-panel-title">
-          Custom commands
+          {t('serverAutomations.commandsTitle')}
         </h2>
-        <p className="muted small">
-          Members type <code className="inline-code">!name</code> in text chat; the bot replies with your text.
-          Names must be 2–32 characters (<code className="inline-code">a-z</code>, <code className="inline-code">0-9</code>,{' '}
-          <code className="inline-code">_</code>). Built-in <code className="inline-code">!schedule</code> /{' '}
-          <code className="inline-code">!next</code> stay reserved.
-        </p>
+        <p className="muted small">{t('serverAutomations.commandsLead')}</p>
         {commands.length === 0 ? (
-          <p className="muted small">No custom commands yet.</p>
+          <p className="muted small">{t('serverAutomations.noCommandsYet')}</p>
         ) : (
           <ul className="server-custom-list">
             {commands.map((c) => (
@@ -238,7 +235,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
                     disabled={busy}
                     onClick={() => removeCommand(c.id)}
                   >
-                    Remove
+                    {t('serverAutomations.remove')}
                   </button>
                 ) : null}
                 <pre className="server-custom-preview">{c.response}</pre>
@@ -248,30 +245,30 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
         )}
         {canManage ? (
           <form className="form-stack server-custom-form" onSubmit={addCommand}>
-            <label htmlFor={`srv-cmd-name-${serverId}`}>New command (without !)</label>
+            <label htmlFor={`srv-cmd-name-${serverId}`}>{t('serverAutomations.newCommandLabel')}</label>
             <input
               id={`srv-cmd-name-${serverId}`}
               name="command_name"
               value={cmdName}
               onChange={(e) => setCmdName(e.target.value)}
-              placeholder="rules"
+              placeholder={t('serverAutomations.cmdNamePh')}
               autoComplete="off"
             />
-            <label htmlFor={`srv-cmd-resp-${serverId}`}>Reply text</label>
+            <label htmlFor={`srv-cmd-resp-${serverId}`}>{t('serverAutomations.replyTextLabel')}</label>
             <textarea
               id={`srv-cmd-resp-${serverId}`}
               name="command_response"
               value={cmdResponse}
               onChange={(e) => setCmdResponse(e.target.value)}
               rows={4}
-              placeholder="Server rules: be respectful…"
+              placeholder={t('serverAutomations.replyTextPh')}
             />
             <button type="submit" className="btn primary small" disabled={busy}>
-              Add command
+              {t('serverAutomations.addCommand')}
             </button>
           </form>
         ) : (
-          <p className="muted small">Only moderators and admins can edit commands.</p>
+          <p className="muted small">{t('serverAutomations.commandsReadOnly')}</p>
         )}
       </section>
       ) : null}
@@ -282,13 +279,11 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
         aria-labelledby={`srv-settings-events-${sid}`}
       >
         <h2 id={`srv-settings-events-${sid}`} className="server-settings-panel-title">
-          Server events
+          {t('serverAutomations.eventsTitle')}
         </h2>
-        <p className="muted small">
-          Community events (tournaments, meetups, streams). Shown in order by start time.
-        </p>
+        <p className="muted small">{t('serverAutomations.eventsLead')}</p>
         {events.length === 0 ? (
-          <p className="muted small">No events scheduled.</p>
+          <p className="muted small">{t('serverAutomations.noEvents')}</p>
         ) : (
           <ul className="server-custom-list">
             {events.map((ev) => (
@@ -305,7 +300,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
                     disabled={busy}
                     onClick={() => removeEvent(ev.id)}
                   >
-                    Remove
+                    {t('serverAutomations.remove')}
                   </button>
                 ) : null}
                 {ev.description ? <pre className="server-custom-preview">{ev.description}</pre> : null}
@@ -315,14 +310,14 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
         )}
         {canManage ? (
           <form className="form-stack server-custom-form" onSubmit={addEvent}>
-            <label htmlFor={`srv-ev-title-${serverId}`}>Title</label>
+            <label htmlFor={`srv-ev-title-${serverId}`}>{t('serverAutomations.titleLabel')}</label>
             <input
               id={`srv-ev-title-${serverId}`}
               name="event_title"
               value={evTitle}
               onChange={(e) => setEvTitle(e.target.value)}
             />
-            <label htmlFor={`srv-ev-desc-${serverId}`}>Description (optional)</label>
+            <label htmlFor={`srv-ev-desc-${serverId}`}>{t('serverAutomations.descOptional')}</label>
             <textarea
               id={`srv-ev-desc-${serverId}`}
               name="event_description"
@@ -330,7 +325,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
               onChange={(e) => setEvDesc(e.target.value)}
               rows={3}
             />
-            <label htmlFor={`srv-ev-start-${serverId}`}>Starts</label>
+            <label htmlFor={`srv-ev-start-${serverId}`}>{t('serverAutomations.startsLabel')}</label>
             <input
               id={`srv-ev-start-${serverId}`}
               name="event_starts"
@@ -338,7 +333,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
               value={evStart}
               onChange={(e) => setEvStart(e.target.value)}
             />
-            <label htmlFor={`srv-ev-end-${serverId}`}>Ends (optional)</label>
+            <label htmlFor={`srv-ev-end-${serverId}`}>{t('serverAutomations.endsOptional')}</label>
             <input
               id={`srv-ev-end-${serverId}`}
               name="event_ends"
@@ -347,11 +342,11 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
               onChange={(e) => setEvEnd(e.target.value)}
             />
             <button type="submit" className="btn primary small" disabled={busy}>
-              Add event
+              {t('serverAutomations.addEvent')}
             </button>
           </form>
         ) : (
-          <p className="muted small">Only moderators and admins can add events.</p>
+          <p className="muted small">{t('serverAutomations.eventsReadOnly')}</p>
         )}
       </section>
       ) : null}
@@ -362,13 +357,11 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
         aria-labelledby={`srv-settings-ann-${sid}`}
       >
         <h2 id={`srv-settings-ann-${sid}`} className="server-settings-panel-title">
-          Announcements
+          {t('serverAutomations.announcementsTitle')}
         </h2>
-        <p className="muted small">
-          Save a message template, then publish it to a text channel as a normal message (from your account).
-        </p>
+        <p className="muted small">{t('serverAutomations.announcementsLead')}</p>
         {announcements.length === 0 ? (
-          <p className="muted small">No saved announcements.</p>
+          <p className="muted small">{t('serverAutomations.noAnnouncements')}</p>
         ) : (
           <ul className="server-custom-list">
             {announcements.map((an) => (
@@ -382,16 +375,16 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
                       disabled={busy}
                       onClick={() => removeAnnouncement(an.id)}
                     >
-                      Delete
+                      {t('serverAutomations.delete')}
                     </button>
                     <div className="server-custom-publish-row">
                       <select
-                        aria-label="Channel for announcement"
+                        aria-label={t('serverAutomations.channelForAnnouncement')}
                         value={publishChannelId}
                         onChange={(e) => setPublishChannelId(e.target.value)}
                         className="select-inline"
                       >
-                        <option value="">Channel…</option>
+                        <option value="">{t('serverAutomations.channelPlaceholder')}</option>
                         {textChannels.map((ch) => (
                           <option key={ch.id} value={String(ch.id)}>
                             #{ch.name}
@@ -404,7 +397,7 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
                         disabled={busy}
                         onClick={() => publishAnnouncement(an.id)}
                       >
-                        Publish
+                        {t('serverAutomations.publish')}
                       </button>
                     </div>
                   </>
@@ -416,14 +409,14 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
         )}
         {canManage ? (
           <form className="form-stack server-custom-form" onSubmit={addAnnouncement}>
-            <label htmlFor={`srv-ann-title-${serverId}`}>Title</label>
+            <label htmlFor={`srv-ann-title-${serverId}`}>{t('serverAutomations.titleLabel')}</label>
             <input
               id={`srv-ann-title-${serverId}`}
               name="announcement_title"
               value={annTitle}
               onChange={(e) => setAnnTitle(e.target.value)}
             />
-            <label htmlFor={`srv-ann-body-${serverId}`}>Body</label>
+            <label htmlFor={`srv-ann-body-${serverId}`}>{t('serverAutomations.bodyLabel')}</label>
             <textarea
               id={`srv-ann-body-${serverId}`}
               name="announcement_body"
@@ -432,11 +425,11 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
               rows={4}
             />
             <button type="submit" className="btn primary small" disabled={busy}>
-              Save announcement
+              {t('serverAutomations.saveAnnouncement')}
             </button>
           </form>
         ) : (
-          <p className="muted small">Only moderators and admins can manage announcements.</p>
+          <p className="muted small">{t('serverAutomations.announcementsReadOnly')}</p>
         )}
       </section>
       ) : null}

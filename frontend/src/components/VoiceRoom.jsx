@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getSocket } from '../services/socket'
 import {
   buildRemoteVoicePlaybackGraph,
@@ -38,7 +39,7 @@ function isScreenVideoTrack(track) {
   try {
     const s = track.getSettings()
     if (s.displaySurface) return true
-  } catch (_) {
+  } catch {
     /* ignore */
   }
   return false
@@ -83,8 +84,8 @@ function streamHasLiveVideo(stream) {
 /** True if the tile should show a video element (respects omitScreen for focus layout). */
 function streamShowsVideoInTile(stream, omitScreen) {
   if (!stream) return false
-  const { screen, camera } = splitScreenCameraStreams(stream)
   if (omitScreen) {
+    const { camera } = splitScreenCameraStreams(stream)
     return (
       camera &&
       camera.getVideoTracks().some((t) => t.readyState === 'live' && t.enabled)
@@ -97,7 +98,7 @@ function connectProcessedPlayback(ctx, mediaStream, cleanupRef) {
   if (cleanupRef.current) {
     try {
       cleanupRef.current()
-    } catch (_) {
+    } catch {
       /* ignore */
     }
     cleanupRef.current = null
@@ -519,6 +520,7 @@ export default function VoiceRoom({
   voiceConnectedCount,
   onVoiceSessionChange,
 }) {
+  const { t: tr } = useTranslation()
   const [joined, setJoined] = useState(false)
   const [testingMic, setTestingMic] = useState(false)
   const [participants, setParticipants] = useState([])
@@ -580,7 +582,7 @@ export default function VoiceRoom({
   function teardownVoiceOutgoingProcessing() {
     try {
       voiceOutgoingDisconnectRef.current?.()
-    } catch (_) {
+    } catch {
       /* ignore */
     }
     voiceOutgoingDisconnectRef.current = null
@@ -600,7 +602,7 @@ export default function VoiceRoom({
   const screenShareOptions = useMemo(() => {
     const opts = []
     if (joined && screenSharing && localScreenStream && streamHasScreenShare(localScreenStream)) {
-      opts.push({ key: 'local', label: 'Tu pantalla' })
+      opts.push({ key: 'local', label: tr('voiceRoom.yourScreen') })
     }
     const socket = getSocket()
     const selfSid = socket?.id
@@ -612,7 +614,7 @@ export default function VoiceRoom({
       }
     }
     return opts
-  }, [joined, screenSharing, localScreenStream, participants, remoteStreams])
+  }, [joined, screenSharing, localScreenStream, participants, remoteStreams, tr])
 
   useEffect(() => {
     if (screenShareOptions.length === 0) {
@@ -1132,7 +1134,7 @@ export default function VoiceRoom({
       })
       await renegotiateAllPeers()
     } catch {
-      setError('Screen share was cancelled or not allowed')
+      setError(tr('voiceRoom.errScreenCancelled'))
     }
   }
 
@@ -1207,7 +1209,7 @@ export default function VoiceRoom({
         joinInProgressRef.current = false
         stream.getTracks().forEach((t) => t.stop())
         rawVoiceStreamRef.current = null
-        setError('Audio is not available in this browser')
+        setError(tr('voiceRoom.errNoAudio'))
         return
       }
       await ctx.resume()
@@ -1227,7 +1229,7 @@ export default function VoiceRoom({
         stream.getTracks().forEach((t) => t.stop())
         rawVoiceStreamRef.current = null
         joinInProgressRef.current = false
-        setError('Could not process microphone')
+        setError(tr('voiceRoom.errMicProcess'))
         return
       }
       const localStream = new MediaStream([processedAudioTrack, ...stream.getVideoTracks()])
@@ -1244,7 +1246,9 @@ export default function VoiceRoom({
         joinInProgressRef.current = false
         if (!ack?.ok) {
           const err = ack?.error
-          setError(err === 'voice_full' ? 'This voice channel is full' : 'Could not join voice channel')
+          setError(
+            err === 'voice_full' ? tr('voiceRoom.errVoiceFull') : tr('voiceRoom.errJoinVoice')
+          )
           teardownVoiceOutgoingProcessing()
           stream.getTracks().forEach((t) => t.stop())
           localStreamRef.current = null
@@ -1272,7 +1276,7 @@ export default function VoiceRoom({
       }
       localStreamRef.current = null
       clearLocalMeter()
-      setError(discordStyle ? 'No microphone or camera access' : 'No microphone access')
+      setError(discordStyle ? tr('voiceRoom.errNoMicCamera') : tr('voiceRoom.errNoMic'))
     }
   }
 
@@ -1400,7 +1404,7 @@ export default function VoiceRoom({
       setTestingMic(true)
       setupLocalAnalyser(stream)
     } catch {
-      setError('No microphone access for test')
+      setError(tr('voiceRoom.errMicTest'))
     }
   }
 
@@ -1464,7 +1468,7 @@ export default function VoiceRoom({
         await renegotiateAllPeers()
       }
     } catch {
-      setError('Camera could not be toggled')
+      setError(tr('voiceRoom.errCameraToggle'))
     }
   }
 
@@ -1641,7 +1645,7 @@ export default function VoiceRoom({
 
   const voiceCap = voiceCapNumber(voiceUserLimit)
   const showVoiceCap = voiceCap != null && typeof voiceConnectedCount === 'number'
-  const displayTitle = channelLabel || 'Voice Channel'
+  const displayTitle = channelLabel || tr('voiceRoom.defaultChannelName')
 
   const showScreenFocusPip =
     Boolean(screenFocusId) &&
@@ -1666,56 +1670,66 @@ export default function VoiceRoom({
             <span className="voice-room-title-icon" aria-hidden>
               {joined ? <IconWaveSpeaking /> : <IconHeadphones />}
             </span>
-            {compact ? `En voz: ${displayTitle}` : 'Voice Channel'}
+            {compact ? tr('voiceRoom.titleCompact', { name: displayTitle }) : tr('voiceRoom.defaultChannelName')}
           </h3>
           {showVoiceCap && (
             <p
               className={`voice-room-cap-line ${voiceConnectedCount >= voiceCap ? 'voice-room-cap-line--full' : ''}`}
               aria-live="polite"
             >
-              <span className="voice-room-cap-icon" title="Usuarios en el canal" aria-hidden>
+              <span className="voice-room-cap-icon" title={tr('voiceRoom.capUsersTitle')} aria-hidden>
                 👥
               </span>
               <strong>
                 ({voiceConnectedCount}/{voiceCap})
               </strong>{' '}
-              en el canal
+              {tr('voiceRoom.capInChannel')}
             </p>
           )}
           <p className="voice-room-status-line">
             {joined ? (
               <>
-                <span className="voice-status-chip" title="Personas conectadas">
+                <span className="voice-status-chip" title={tr('voiceRoom.chipConnectedTitle')}>
                   <span aria-hidden>👤</span> {participants.length}
                 </span>
-                <span className="voice-status-chip" title={cameraOn ? 'Cámara encendida' : 'Cámara apagada'}>
+                <span
+                  className="voice-status-chip"
+                  title={cameraOn ? tr('voiceRoom.camOnTitle') : tr('voiceRoom.camOffTitle')}
+                >
                   {cameraOn ? <IconVideo /> : <IconVideoOff />}
-                  <span className="voice-status-chip-label">{cameraOn ? 'Cam on' : 'Cam off'}</span>
+                  <span className="voice-status-chip-label">
+                    {cameraOn ? tr('voiceRoom.camOnLabel') : tr('voiceRoom.camOffLabel')}
+                  </span>
                 </span>
-                <span className="voice-status-chip" title={screenSharing ? 'Compartiendo pantalla' : 'Sin pantalla'}>
+                <span
+                  className="voice-status-chip"
+                  title={screenSharing ? tr('voiceRoom.screenOnTitle') : tr('voiceRoom.screenOffTitle')}
+                >
                   <IconScreenShare />
-                  <span className="voice-status-chip-label">{screenSharing ? 'Pantalla' : '—'}</span>
+                  <span className="voice-status-chip-label">
+                    {screenSharing ? tr('voiceRoom.screenLabel') : tr('voiceRoom.dash')}
+                  </span>
                 </span>
               </>
             ) : autoJoin ? (
               <>
-                <span className="voice-status-chip voice-status-chip--pulse" title="Conectando">
-                  <IconMic /> Conectando…
+                <span className="voice-status-chip voice-status-chip--pulse" title={tr('voiceRoom.connectingTitle')}>
+                  <IconMic /> {tr('voiceRoom.connectingLabel')}
                 </span>
               </>
             ) : (
               <>
-                <IconJoinCall /> <span>Únete para hablar por voz y opcionalmente usar cámara</span>
+                <IconJoinCall /> <span>{tr('voiceRoom.joinHint')}</span>
               </>
             )}
           </p>
         </div>
         <div
           className={`voice-room-chip ${joined ? 'voice-room-chip--live' : 'voice-room-chip--idle'}`}
-          title={joined ? 'En llamada' : 'Sin conexión'}
+          title={joined ? tr('voiceRoom.statusLiveTitle') : tr('voiceRoom.statusIdleTitle')}
         >
           <span className="voice-room-chip-dot" aria-hidden />
-          {joined ? 'EN VIVO' : 'LISTO'}
+          {joined ? tr('voiceRoom.statusLive') : tr('voiceRoom.statusReady')}
         </div>
       </header>
 
@@ -1723,11 +1737,11 @@ export default function VoiceRoom({
         <div className="voice-screen-focus-block">
           <div className="voice-screen-focus-canvas">
             <span className="voice-screen-focus-live-badge" aria-hidden>
-              EN VIVO
+              {tr('voiceRoom.liveBadge')}
             </span>
             <div className="voice-screen-focus-toolbar voice-screen-focus-toolbar--overlay">
               <label htmlFor="voice-screen-focus-select" className="voice-screen-focus-label">
-                Pantalla destacada
+                {tr('voiceRoom.featuredScreen')}
               </label>
               <select
                 id="voice-screen-focus-select"
@@ -1768,18 +1782,23 @@ export default function VoiceRoom({
                   const url = window.location.href
                   void navigator.clipboard?.writeText(url)
                 }}
-                title="Copiar enlace de esta página"
+                title={tr('voiceRoom.copyPageLinkTitle')}
               >
                 <span className="voice-screen-overlay-btn-icon" aria-hidden>
                   <IconInviteOverlay />
                 </span>
-                Invitar al chat de voz
+                {tr('voiceRoom.inviteVoiceChat')}
               </button>
-              <button type="button" className="voice-screen-overlay-btn voice-screen-overlay-btn--muted" disabled title="Próximamente">
+              <button
+                type="button"
+                className="voice-screen-overlay-btn voice-screen-overlay-btn--muted"
+                disabled
+                title={tr('voiceRoom.activitySoonTitle')}
+              >
                 <span className="voice-screen-overlay-btn-icon" aria-hidden>
                   <IconActivityOverlay />
                 </span>
-                Elegir actividad
+                {tr('voiceRoom.chooseActivity')}
               </button>
             </div>
           </div>
@@ -1794,7 +1813,7 @@ export default function VoiceRoom({
             className={`voice-stage-tile self${hasScreenShareStage && screenFocusId === 'local' ? ' voice-stage-tile--focus' : ''}`}
           >
             {screenSharing && localScreenStream && streamHasScreenShare(localScreenStream) && (
-              <span className="voice-tile-live-badge">EN VIVO</span>
+              <span className="voice-tile-live-badge">{tr('voiceRoom.liveBadge')}</span>
             )}
             {screenSharing && localScreenStream ? (
               screenFocusId === 'local' ? (
@@ -1806,10 +1825,12 @@ export default function VoiceRoom({
                       <img
                         className="voice-stage-avatar"
                         src={resolveImageUrl(user.avatar_url)}
-                        alt={`${user?.username || 'You'} avatar`}
+                        alt={tr('voiceRoom.avatarAlt', { name: user?.username || tr('voiceRoom.you') })}
                       />
                     ) : (
-                      <span className="voice-stage-initial">{getInitial(user?.username || 'You')}</span>
+                      <span className="voice-stage-initial">
+                        {getInitial(user?.username || tr('voiceRoom.you'))}
+                      </span>
                     )}
                   </div>
                 )
@@ -1841,23 +1862,25 @@ export default function VoiceRoom({
                   <img
                     className="voice-stage-avatar"
                     src={resolveImageUrl(user.avatar_url)}
-                    alt={`${user?.username || 'You'} avatar`}
+                    alt={tr('voiceRoom.avatarAlt', { name: user?.username || tr('voiceRoom.you') })}
                   />
                 ) : (
-                  <span className="voice-stage-initial">{getInitial(user?.username || 'You')}</span>
+                  <span className="voice-stage-initial">
+                    {getInitial(user?.username || tr('voiceRoom.you'))}
+                  </span>
                 )}
               </div>
             )}
             <footer className="voice-stage-meta">
-              <span className="voice-stage-name">You</span>
+              <span className="voice-stage-name">{tr('voiceRoom.you')}</span>
               {screenSharing && (
-                <span className="voice-badge screen" title="Compartiendo pantalla">
-                  <IconScreenShare /> <span className="voice-badge-text">Pantalla</span>
+                <span className="voice-badge screen" title={tr('voiceRoom.screenBadgeTitle')}>
+                  <IconScreenShare /> <span className="voice-badge-text">{tr('voiceRoom.screenLabel')}</span>
                 </span>
               )}
               {muted && (
-                <span className="voice-badge muted" title="Micrófono silenciado">
-                  <IconMicMuted /> <span className="voice-badge-text">Mute</span>
+                <span className="voice-badge muted" title={tr('voiceRoom.micMutedTitle')}>
+                  <IconMicMuted /> <span className="voice-badge-text">{tr('voiceRoom.muteLabel')}</span>
                 </span>
               )}
             </footer>
@@ -1872,7 +1895,7 @@ export default function VoiceRoom({
               className={`voice-stage-tile ${speakingMap[p.socketId] ? 'speaking' : ''}${hasScreenShareStage && screenFocusId === p.socketId ? ' voice-stage-tile--focus' : ''}`}
             >
               {streamHasScreenShare(remoteStreams[p.socketId]) && (
-                <span className="voice-tile-live-badge">EN VIVO</span>
+                <span className="voice-tile-live-badge">{tr('voiceRoom.liveBadge')}</span>
               )}
               <RemoteParticipantMedia
                 stream={remoteStreams[p.socketId]}
@@ -1906,32 +1929,37 @@ export default function VoiceRoom({
                 <span className="voice-stage-name">{p.username}</span>
                 <span className="voice-stage-meta-badges">
                   {streamHasScreenShare(remoteStreams[p.socketId]) && (
-                    <span className="voice-badge screen" title="Compartiendo pantalla">
-                      <IconScreenShare /> <span className="voice-badge-text">Pantalla</span>
+                    <span className="voice-badge screen" title={tr('voiceRoom.screenBadgeTitle')}>
+                      <IconScreenShare /> <span className="voice-badge-text">{tr('voiceRoom.screenLabel')}</span>
                     </span>
                   )}
                   {p.mic_muted ? (
-                    <span className="voice-badge muted" title="Micrófono silenciado">
-                      <IconMicMuted /> <span className="voice-badge-text">Mute</span>
+                    <span className="voice-badge muted" title={tr('voiceRoom.micMutedTitle')}>
+                      <IconMicMuted /> <span className="voice-badge-text">{tr('voiceRoom.muteLabel')}</span>
                     </span>
                   ) : null}
                   {p.deafened ? (
-                    <span className="voice-badge voice-badge--deafened" title="Sordina (no oye el canal)">
-                      <IconHeadphonesDeafened /> <span className="voice-badge-text">Sordina</span>
+                    <span className="voice-badge voice-badge--deafened" title={tr('voiceRoom.deafenedTitle')}>
+                      <IconHeadphonesDeafened />{' '}
+                      <span className="voice-badge-text">{tr('voiceRoom.deafenedLabel')}</span>
                     </span>
                   ) : null}
                   <span
                     className={`voice-indicator ${speakingMap[p.socketId] ? 'active' : ''}`}
-                    title={speakingMap[p.socketId] ? 'Hablando' : 'Escuchando'}
+                    title={
+                      speakingMap[p.socketId] ? tr('voiceRoom.speakingTitle') : tr('voiceRoom.listeningTitle')
+                    }
                   >
                     <IconWaveSpeaking />
-                    <span className="voice-indicator-label">{speakingMap[p.socketId] ? 'Habla' : 'Escucha'}</span>
+                    <span className="voice-indicator-label">
+                      {speakingMap[p.socketId] ? tr('voiceRoom.speakingLabel') : tr('voiceRoom.listeningLabel')}
+                    </span>
                   </span>
                 </span>
               </footer>
               <label className="voice-volume">
                 <IconVolume />
-                <span className="sr-only">Volumen de {p.username}</span>
+                <span className="sr-only">{tr('voiceRoom.volumeFor', { name: p.username })}</span>
                 <input
                   id={`voice-remote-vol-${p.userId}`}
                   name={`voice_remote_volume_${p.userId}`}
@@ -1949,13 +1977,13 @@ export default function VoiceRoom({
                     onClick={() => toggleRemoteScreenAudioMute(p.socketId)}
                     title={
                       remoteScreenAudioMuted[p.socketId]
-                        ? 'Activar audio de la pantalla compartida'
-                        : 'Silenciar solo el audio de la pantalla (voz sigue)'
+                        ? tr('voiceRoom.screenAudioUnmuteTitle')
+                        : tr('voiceRoom.screenAudioMuteTitle')
                     }
                     ariaLabel={
                       remoteScreenAudioMuted[p.socketId]
-                        ? 'Activar audio de pantalla'
-                        : 'Silenciar audio de pantalla'
+                        ? tr('voiceRoom.screenAudioUnmuteAria')
+                        : tr('voiceRoom.screenAudioMuteAria')
                     }
                     pressed={Boolean(remoteScreenAudioMuted[p.socketId])}
                   >
@@ -1963,7 +1991,7 @@ export default function VoiceRoom({
                       {remoteScreenAudioMuted[p.socketId] ? '🔇' : '🔊'}
                     </span>
                   </VoiceToolbarBtn>
-                  <span className="muted small">Audio pantalla</span>
+                  <span className="muted small">{tr('voiceRoom.screenAudioLabel')}</span>
                 </div>
               ) : null}
             </article>
@@ -1972,15 +2000,35 @@ export default function VoiceRoom({
 
       {(joined || testingMic) && (
         <div className="mic-status mic-status--with-icon">
-          <div className="mic-status-label" title={testingMic && !joined ? 'Prueba de micrófono' : muted ? 'Micrófono silenciado' : 'Nivel del micrófono'}>
+          <div
+            className="mic-status-label"
+            title={
+              testingMic && !joined
+                ? tr('voiceRoom.micStatusTestTitle')
+                : muted
+                  ? tr('voiceRoom.micStatusMutedTitle')
+                  : tr('voiceRoom.micStatusLevelTitle')
+            }
+          >
             <span className="mic-status-icon" aria-hidden>
               {muted && joined ? <IconMicMuted /> : <IconMic />}
             </span>
             <span className="muted small">
-              {testingMic && !joined ? 'Prueba de micrófono' : muted ? 'Micrófono silenciado' : 'Nivel del micrófono'}
+              {testingMic && !joined
+                ? tr('voiceRoom.micStatusTestLabel')
+                : muted
+                  ? tr('voiceRoom.micStatusMutedLabel')
+                  : tr('voiceRoom.micStatusLevelLabel')}
             </span>
           </div>
-          <div className="mic-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(micLevel * 100)} aria-label="Nivel de entrada del micrófono">
+          <div
+            className="mic-meter"
+            role="meter"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(micLevel * 100)}
+            aria-label={tr('voiceRoom.micMeterAria')}
+          >
             <span
               className={`mic-meter-fill ${muted && joined ? 'muted' : ''}`}
               style={{ width: `${Math.max(6, Math.round(micLevel * 100))}%` }}
@@ -1995,8 +2043,8 @@ export default function VoiceRoom({
         {!joined && (
           <VoiceToolbarBtn
             onClick={testingMic ? stopMicTest : startMicTest}
-            title={testingMic ? 'Detener prueba de micrófono' : 'Probar micrófono'}
-            ariaLabel={testingMic ? 'Detener prueba de micrófono' : 'Probar micrófono'}
+            title={testingMic ? tr('voiceRoom.stopMicTestTitle') : tr('voiceRoom.startMicTestTitle')}
+            ariaLabel={testingMic ? tr('voiceRoom.stopMicTestAria') : tr('voiceRoom.startMicTestAria')}
             active={testingMic}
           >
             <IconTestMic />
@@ -2005,8 +2053,8 @@ export default function VoiceRoom({
         {!joined ? (
           <VoiceToolbarBtn
             onClick={() => joinVoice()}
-            title="Unirse al canal de voz"
-            ariaLabel="Unirse al canal de voz"
+            title={tr('voiceRoom.joinVoiceTitle')}
+            ariaLabel={tr('voiceRoom.joinVoiceAria')}
             active
           >
             <IconJoinCall />
@@ -2015,8 +2063,8 @@ export default function VoiceRoom({
           <>
             <VoiceToolbarBtn
               onClick={toggleMute}
-              title={muted ? 'Activar micrófono' : 'Silenciar micrófono'}
-              ariaLabel={muted ? 'Activar micrófono' : 'Silenciar micrófono'}
+              title={muted ? tr('voiceRoom.unmuteMicTitle') : tr('voiceRoom.muteMicTitle')}
+              ariaLabel={muted ? tr('voiceRoom.unmuteMicAria') : tr('voiceRoom.muteMicAria')}
               pressed={muted}
               active={!muted}
             >
@@ -2024,16 +2072,16 @@ export default function VoiceRoom({
             </VoiceToolbarBtn>
             <VoiceToolbarBtn
               onClick={toggleDeafened}
-              title={deafened ? 'Dejar de silenciar audio (oír a otros)' : 'Silenciar audio (no oír a nadie)'}
-              ariaLabel={deafened ? 'Activar audio entrante' : 'Silenciar audio entrante'}
+              title={deafened ? tr('voiceRoom.undeafenTitle') : tr('voiceRoom.deafenTitle')}
+              ariaLabel={deafened ? tr('voiceRoom.undeafenAria') : tr('voiceRoom.deafenAria')}
               pressed={deafened}
             >
               {deafened ? <IconHeadphonesDeafened /> : <IconHeadphones />}
             </VoiceToolbarBtn>
             <VoiceToolbarBtn
               onClick={toggleCamera}
-              title={cameraOn ? 'Apagar cámara' : 'Encender cámara'}
-              ariaLabel={cameraOn ? 'Apagar cámara' : 'Encender cámara'}
+              title={cameraOn ? tr('voiceRoom.cameraOffTitle') : tr('voiceRoom.cameraOnTitle')}
+              ariaLabel={cameraOn ? tr('voiceRoom.cameraOffAria') : tr('voiceRoom.cameraOnAria')}
               pressed={cameraOn}
               active={cameraOn}
             >
@@ -2041,14 +2089,19 @@ export default function VoiceRoom({
             </VoiceToolbarBtn>
             <VoiceToolbarBtn
               onClick={() => void toggleScreenShare()}
-              title={screenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
-              ariaLabel={screenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
+              title={screenSharing ? tr('voiceRoom.screenStopTitle') : tr('voiceRoom.screenStartTitle')}
+              ariaLabel={screenSharing ? tr('voiceRoom.screenStopAria') : tr('voiceRoom.screenStartAria')}
               pressed={screenSharing}
               active={screenSharing}
             >
               <IconScreenShare />
             </VoiceToolbarBtn>
-            <VoiceToolbarBtn onClick={leaveVoice} title="Salir del canal de voz" ariaLabel="Salir del canal de voz" danger>
+            <VoiceToolbarBtn
+              onClick={leaveVoice}
+              title={tr('voiceRoom.leaveVoiceTitle')}
+              ariaLabel={tr('voiceRoom.leaveVoiceAria')}
+              danger
+            >
               <PhoneHangupIcon />
             </VoiceToolbarBtn>
           </>
@@ -2061,28 +2114,34 @@ export default function VoiceRoom({
             onClick={toggleLocalScreenAudioSend}
             title={
               localScreenAudioSendMuted
-                ? 'Enviar a los demás el audio de la pantalla (vídeo o pestaña)'
-                : 'No enviar el audio de la pantalla (solo imagen)'
+                ? tr('voiceRoom.localScreenSendOnTitle')
+                : tr('voiceRoom.localScreenSendOffTitle')
             }
-            ariaLabel={localScreenAudioSendMuted ? 'Activar envío de audio de pantalla' : 'Silenciar envío de audio de pantalla'}
+            ariaLabel={
+              localScreenAudioSendMuted
+                ? tr('voiceRoom.localScreenSendOnAria')
+                : tr('voiceRoom.localScreenSendOffAria')
+            }
             pressed={localScreenAudioSendMuted}
           >
             <span aria-hidden>{localScreenAudioSendMuted ? '🔇' : '🔊'}</span>
           </VoiceToolbarBtn>
-          <span className="muted small">Audio → otros</span>
+          <span className="muted small">{tr('voiceRoom.audioToOthers')}</span>
           <VoiceToolbarBtn
             onClick={() => setLocalScreenPreviewMuted((v) => !v)}
             title={
               localScreenPreviewMuted
-                ? 'Escuchar aquí el audio de la pestaña/pantalla'
-                : 'No reproducir aquí el audio local (sigue enviándose si está activo)'
+                ? tr('voiceRoom.localPreviewOnTitle')
+                : tr('voiceRoom.localPreviewOffTitle')
             }
-            ariaLabel={localScreenPreviewMuted ? 'Activar escucha local del audio' : 'Silenciar escucha local'}
+            ariaLabel={
+              localScreenPreviewMuted ? tr('voiceRoom.localPreviewOnAria') : tr('voiceRoom.localPreviewOffAria')
+            }
             pressed={localScreenPreviewMuted}
           >
             <span aria-hidden>{localScreenPreviewMuted ? '🔇' : '🔉'}</span>
           </VoiceToolbarBtn>
-          <span className="muted small">Oír aquí</span>
+          <span className="muted small">{tr('voiceRoom.hearHere')}</span>
         </div>
       ) : null}
 

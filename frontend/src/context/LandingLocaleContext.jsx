@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- compatibility barrel for stale HMR URLs */
 /**
  * Re-export hub: keeps old `/src/context/LandingLocaleContext.jsx` URL valid after the split
  * into `landingLocaleContext.js`, `LandingLocaleProvider.jsx`, and `hooks/useLandingLocale.js`

@@ -1,14 +1,14 @@
-import { DAKINIS_SYSTEMS_URL, resolveAuthFooterLocale } from '../lib/landingContent'
+import { clientCopyrightLineParts } from '../lib/copyright'
+import { useLandingLocale } from '../hooks/useLandingLocale'
+import { DAKINIS_SYSTEMS_URL } from '../lib/landingContent'
 
 /**
- * Short © + terms/privacy line for auth pages (locale from browser language).
+ * Short © line for auth pages (follows app language from LandingLocaleProvider / localStorage).
  */
 export default function AuthLegalStrip() {
-  const loc = resolveAuthFooterLocale()
-  const copyrightRest =
-    loc === 'es'
-      ? '(marca comercial de Christian Villar). Todos los derechos reservados.'
-      : '(trading name of Christian Villar). All rights reserved.'
+  const { locale } = useLandingLocale()
+  const { year: copyrightYear, holder: copyrightHolder, suffix: copyrightSuffix } =
+    clientCopyrightLineParts(locale)
 
   return (
     <div className="auth-legal-block">
@@ -18,14 +18,14 @@ export default function AuthLegalStrip() {
         target="_blank"
         rel="noopener noreferrer"
       >
-        <img className="auth-legal-logo" src="/Logo Grande.jpeg" alt="Dakinis Systems" loading="lazy" />
+        <img className="auth-legal-logo" src="/Logo Grande.jpeg" alt={copyrightHolder} loading="lazy" />
       </a>
       <p className="auth-legal-strip muted small">
-        © 2026{' '}
+        © {copyrightYear}{' '}
         <a href={DAKINIS_SYSTEMS_URL} target="_blank" rel="noopener noreferrer">
-          Dakinis Systems
+          {copyrightHolder}
         </a>{' '}
-        {copyrightRest}
+        {copyrightSuffix}
       </p>
     </div>
   )

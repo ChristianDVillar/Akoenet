@@ -12,6 +12,7 @@ import AppChrome from '../components/AppChrome'
 import AppChromeToolbar from '../components/AppChromeToolbar'
 import WelcomeOnboardingModal, { hasSeenOnboarding } from '../components/WelcomeOnboardingModal'
 import DashboardAdmin from './DashboardAdmin'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
@@ -203,9 +204,10 @@ export default function Dashboard() {
         <header className="home-header">
           <div>
             <h1>AkoeNet</h1>
-            <p className="akoenet-tag">AkoeNet · your communities</p>
+            <p className="akoenet-tag">{t('dashboard.home.tagline')}</p>
           </div>
           <div className="home-header-actions">
+            <LanguageSwitcher />
             <AppChromeToolbar />
             <div className="user-bar" ref={userMenuRef}>
             <button
@@ -218,7 +220,7 @@ export default function Dashboard() {
                   <img
                     className="user-avatar-tiny"
                     src={resolveImageUrl(user.avatar_url)}
-                    alt="User avatar"
+                    alt={t('dashboard.home.avatarAlt')}
                     onError={() => setUserAvatarFailed(true)}
                   />
                 ) : (
@@ -226,7 +228,7 @@ export default function Dashboard() {
                     {avatarInitial}
                   </span>
                 )}
-                <span>{user?.username || 'User'}</span>
+                <span>{user?.username || t('dashboard.home.userFallback')}</span>
               </span>
             </button>
             {userMenuOpen && (
@@ -239,7 +241,7 @@ export default function Dashboard() {
                     setUserSettingsOpen(true)
                   }}
                 >
-                  Settings
+                  {t('dashboard.home.userMenuSettings')}
                 </button>
                 {user?.is_admin && (
                   <button
@@ -250,7 +252,7 @@ export default function Dashboard() {
                       navigate('/admin')
                     }}
                   >
-                    Admin dashboard
+                    {t('dashboard.home.userMenuAdmin')}
                   </button>
                 )}
                 <button
@@ -261,7 +263,7 @@ export default function Dashboard() {
                     logout()
                   }}
                 >
-                  Logout
+                  {t('dashboard.home.userMenuLogout')}
                 </button>
               </div>
             )}
@@ -273,79 +275,74 @@ export default function Dashboard() {
         {actionMessage && <div className="info-banner" style={{ marginBottom: '0.85rem' }}>{actionMessage}</div>}
 
         <section className="card scheduler-spotlight" aria-labelledby="scheduler-spotlight-title">
-          <h2 id="scheduler-spotlight-title">Organize and automate your streaming</h2>
-          <p className="muted small">
-            AkoeNet includes a <strong>Streamer Scheduler</strong> integration: in any server text channel, run{' '}
-            <code className="inline-code">!schedule</code> or <code className="inline-code">!next</code>. Set your public
-            Scheduler slug in <strong>User Settings</strong> (Streamer Scheduler username). New servers get a{' '}
-            <strong>📅 upcoming streams</strong> channel plus a welcome message with examples.
-          </p>
+          <h2 id="scheduler-spotlight-title">{t('dashboard.home.schedulerTitle')}</h2>
+          <p className="muted small">{t('dashboard.home.schedulerBody')}</p>
         </section>
 
         <section className="home-grid">
           <div className="card">
-            <h2>Create server</h2>
-            <p className="muted small">Pick a clear name. You can rename and organize channels later.</p>
+            <h2>{t('dashboard.home.createTitle')}</h2>
+            <p className="muted small">{t('dashboard.home.createHint')}</p>
             <form onSubmit={createServer} className="form-inline">
               <input
                 id="dashboard-new-server-name"
                 name="server_name"
-                placeholder="Server name"
+                placeholder={t('dashboard.home.serverNamePh')}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
               />
               <button type="submit" className="btn primary" disabled={creatingServer || !newName.trim()}>
-                {creatingServer ? 'Creating…' : 'Create'}
+                {creatingServer ? t('dashboard.home.creatingServer') : t('dashboard.home.createBtn')}
               </button>
             </form>
           </div>
           <div className="card card-join-server">
-            <h2>Join a server</h2>
+            <h2>{t('dashboard.home.joinTitle')}</h2>
             <p className="muted small join-lead">
-              <strong>Invite link or code</strong> — paste what someone sent you (full URL or short code).
+              {t('dashboard.home.joinLead')}
             </p>
             <form onSubmit={joinByLink} className="form-inline invite-inline">
               <input
                 id="dashboard-join-invite-link"
                 name="invite_link"
-                placeholder="Paste invite link or code"
+                placeholder={t('dashboard.home.joinPh')}
                 value={joinLink}
                 onChange={(e) => setJoinLink(e.target.value)}
                 autoComplete="off"
               />
               <button type="submit" className="btn primary" disabled={joiningByLinkState || !joinLink.trim()}>
-                {joiningByLinkState ? 'Joining…' : 'Join'}
+                {joiningByLinkState ? t('dashboard.home.joining') : t('dashboard.home.joinBtn')}
               </button>
             </form>
             <p className="muted small join-hint">
-              To create invites for your own servers, open a server → <strong>Server settings</strong> (gear).
+              {t('dashboard.home.joinHintFooter')}
             </p>
             <p className="join-or-divider muted small" role="presentation">
-              or join with a numeric ID
+              {t('dashboard.home.orJoinDivider')}
             </p>
             <form onSubmit={joinServer} className="form-inline">
               <input
                 id="dashboard-join-server-id"
                 name="server_id"
-                placeholder="Server ID (number)"
+                placeholder={t('dashboard.home.serverIdPh')}
                 value={joinId}
                 onChange={(e) => setJoinId(e.target.value)}
                 inputMode="numeric"
               />
               <button type="submit" className="btn secondary" disabled={joiningById || !joinId.trim()}>
-                {joiningById ? 'Joining…' : 'Join by ID'}
+                {joiningById ? t('dashboard.home.joining') : t('dashboard.home.joinById')}
               </button>
             </form>
           </div>
         </section>
 
         <section className="server-list-section">
-          <h2>Your servers</h2>
+          <h2>{t('dashboard.home.yourServers')}</h2>
           {loading ? (
-            <p className="muted">Loading…</p>
+            <p className="muted">{t('dashboard.home.serversLoading')}</p>
           ) : servers.length === 0 ? (
             <p className="muted">
-              You are not in any server yet. Join with an invite above, or create your own server.
+              {t('dashboard.home.serversEmpty')}
             </p>
           ) : (
             <ul className="server-tiles">

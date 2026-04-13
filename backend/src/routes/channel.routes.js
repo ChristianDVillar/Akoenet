@@ -1,6 +1,7 @@
 const express = require("express");
 const { z } = require("zod");
 const pool = require("../config/db");
+const logger = require("../lib/logger");
 const auth = require("../middleware/auth");
 const requireTermsAccepted = require("../middleware/require-terms");
 const validate = require("../middleware/validate");
@@ -94,7 +95,7 @@ router.post("/", validate({ body: createChannelSchema }), async (req, res) => {
     );
     res.status(201).json(result.rows[0]);
   } catch (e) {
-    console.error(e);
+    logger.error({ err: e, route: "POST /channels" }, "Could not create channel");
     res.status(500).json({ error: "Could not create channel" });
   }
 });
@@ -214,7 +215,7 @@ router.delete("/categories/:categoryId", validate({ params: categoryIdParamSchem
     res.json({ ok: true, deleted_category_id: categoryId });
   } catch (e) {
     await client.query("ROLLBACK");
-    console.error(e);
+    logger.error({ err: e, route: "DELETE /channels/categories/:categoryId" }, "Could not delete category");
     res.status(500).json({ error: "Could not delete category" });
   } finally {
     client.release();
@@ -279,7 +280,7 @@ router.post("/reorder", validate({ body: reorderChannelSchema }), async (req, re
     res.json({ ok: true });
   } catch (e) {
     await client.query("ROLLBACK");
-    console.error(e);
+    logger.error({ err: e, route: "POST /channels/reorder" }, "Channel reorder failed");
     res.status(500).json({ error: "Reorder failed" });
   } finally {
     client.release();
@@ -333,7 +334,7 @@ router.post("/categories/reorder", validate({ body: reorderCategorySchema }), as
     res.json({ ok: true });
   } catch (e) {
     await client.query("ROLLBACK");
-    console.error(e);
+    logger.error({ err: e, route: "POST /channels/categories/reorder" }, "Category reorder failed");
     res.status(500).json({ error: "Category reorder failed" });
   } finally {
     client.release();

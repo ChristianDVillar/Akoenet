@@ -132,7 +132,7 @@ export function buildVoiceOutgoingGraph(ctx, mediaStreamSource, { micGainPercent
   const disconnect = () => {
     try {
       mediaStreamSource.disconnect()
-    } catch (_) {
+    } catch {
       /* ignore */
     }
     try {
@@ -141,7 +141,7 @@ export function buildVoiceOutgoingGraph(ctx, mediaStreamSource, { micGainPercent
       gain.disconnect()
       analyser.disconnect()
       limiter.disconnect()
-    } catch (_) {
+    } catch {
       /* ignore */
     }
   }
@@ -187,14 +187,14 @@ export function buildRemoteVoicePlaybackGraph(ctx, stream) {
   const disconnect = () => {
     try {
       source.disconnect()
-    } catch (_) {
+    } catch {
       /* ignore */
     }
     try {
       hp.disconnect()
       lp.disconnect()
       limiter.disconnect()
-    } catch (_) {
+    } catch {
       /* ignore */
     }
   }

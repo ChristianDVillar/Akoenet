@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 export default function ServerSidebar({
   servers,
   activeServerId,
@@ -6,6 +8,7 @@ export default function ServerSidebar({
   messagesAction,
   messagesActive = false,
 }) {
+  const { t } = useTranslation()
   return (
     <>
       <aside className="rail">
@@ -14,8 +17,8 @@ export default function ServerSidebar({
             <button
               type="button"
               className="rail-icon home-icon"
-              title="Inicio"
-              aria-label="Inicio"
+              title={t('rail.homeTitle')}
+              aria-label={t('rail.homeAria')}
               onClick={homeAction}
             >
               <span className="rail-active-pill" aria-hidden="true" />
@@ -51,8 +54,8 @@ export default function ServerSidebar({
             <button
               type="button"
               className={`rail-icon rail-icon-message ${messagesActive ? 'active' : ''}`}
-              title="Mensajes directos"
-              aria-label="Mensajes directos"
+              title={t('rail.dmTitle')}
+              aria-label={t('rail.dmAria')}
               onClick={messagesAction}
             >
               <span className="rail-active-pill" aria-hidden="true" />

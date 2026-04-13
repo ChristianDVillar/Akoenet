@@ -7,7 +7,6 @@ function getClient() {
   const url = String(process.env.ELASTICSEARCH_URL || "").trim();
   if (!url) return null;
   try {
-    // eslint-disable-next-line global-require
     const { Client } = require("@elastic/elasticsearch");
     return new Client({ node: url });
   } catch (e) {

@@ -1,3 +1,5 @@
+import { Trans, useTranslation } from 'react-i18next'
+
 const STORAGE_KEY = 'akoenet_onboarding_v1'
 
 export function hasSeenOnboarding() {
@@ -17,6 +19,7 @@ export function dismissOnboarding() {
 }
 
 export default function WelcomeOnboardingModal({ open, onClose }) {
+  const { t } = useTranslation()
   if (!open) return null
   return (
     <div
@@ -32,26 +35,49 @@ export default function WelcomeOnboardingModal({ open, onClose }) {
       }}
     >
       <div className="welcome-onboarding-card card">
-        <h2 id="welcome-onboarding-title">Welcome to AkoeNet</h2>
+        <h2 id="welcome-onboarding-title">{t('onboarding.title')}</h2>
         <p className="muted small">
-          AkoeNet combines Discord-style communities with a built-in <strong>Streamer Scheduler</strong> so you can share
-          upcoming streams without leaving the app.
+          <Trans
+            i18nKey="onboarding.lead"
+            components={{ sched: <strong /> }}
+          />
         </p>
         <ul className="welcome-onboarding-list">
           <li>
-            <strong>Create or join a server</strong> — your home base for channels and voice.
+            <Trans i18nKey="onboarding.bulletServer" components={{ b: <strong /> }} />
           </li>
           <li>
-            <strong>Scheduler:</strong> in any text channel, type <code className="inline-code">!schedule</code> or{' '}
-            <code className="inline-code">!next</code>. Set your public Scheduler slug under <strong>User Settings</strong>.
+            <Trans
+              i18nKey="onboarding.bulletScheduler"
+              components={{
+                sched: <strong />,
+                b2: <strong />,
+                code1: <code className="inline-code" />,
+                code2: <code className="inline-code" />,
+              }}
+            />
           </li>
           <li>
-            <strong>Mentions:</strong> use <code className="inline-code">@username</code> to ping members.{' '}
-            <code className="inline-code">@everyone</code> notifies the whole server (moderators only).
+            <Trans
+              i18nKey="onboarding.bulletMentions"
+              components={{
+                sched: <strong />,
+                codeu: <code className="inline-code" />,
+                codee: <code className="inline-code" />,
+              }}
+            />
           </li>
           <li>
-            <strong>Search everywhere:</strong> press <kbd className="kbd">Ctrl</kbd>+<kbd className="kbd">K</kbd> (or{' '}
-            <kbd className="kbd">⌘</kbd>+<kbd className="kbd">K</kbd>) from the dashboard or a server.
+            <Trans
+              i18nKey="onboarding.bulletSearch"
+              components={{
+                sched: <strong />,
+                kbd1: <kbd className="kbd" />,
+                kbd2: <kbd className="kbd" />,
+                kbd3: <kbd className="kbd" />,
+                kbd4: <kbd className="kbd" />,
+              }}
+            />
           </li>
         </ul>
         <div className="welcome-onboarding-actions">
@@ -63,7 +89,7 @@ export default function WelcomeOnboardingModal({ open, onClose }) {
               onClose()
             }}
           >
-            Got it
+            {t('onboarding.gotIt')}
           </button>
         </div>
       </div>
