@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   buildMicTestMonitorGraph,
   getMicMonitorPlaybackGain,
@@ -61,6 +62,7 @@ export function getSavedVoiceSettings(userId) {
 }
 
 export default function VoiceSettingsModal({ open, onClose, user }) {
+  const { t } = useTranslation()
   const [testing, setTesting] = useState(false)
   const [micLevel, setMicLevel] = useState(0)
   const [micGain, setMicGain] = useState(100)
@@ -157,7 +159,7 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
       streamRef.current = stream
       const Ctx = window.AudioContext || window.webkitAudioContext
       if (!Ctx) {
-        setError('AudioContext is not supported in this browser')
+        setError(t('voiceSettings.errAudioContext'))
         stopTest()
         return
       }
@@ -176,7 +178,7 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
       startLoop()
       setTesting(true)
     } catch {
-      setError('Microphone access is not available for the test')
+      setError(t('voiceSettings.errMicAccess'))
     }
   }
 
@@ -204,18 +206,17 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
-          <h3>Voice settings</h3>
+          <h3>{t('voiceSettings.title')}</h3>
           <button type="button" className="btn ghost small" onClick={onClose}>
-            Close
+            {t('voiceSettings.close')}
           </button>
         </header>
         <p className="muted small">
-          Test your microphone, hear it through your speakers or headphones, and adjust input volume for voice chat.
-          Use headphones to avoid echo or feedback.
+          {t('voiceSettings.intro')}
         </p>
         {error && <div className="error-banner inline">{error}</div>}
         <div className="voice-settings-row">
-          <label>Microphone volume ({micGain}%)</label>
+          <label>{t('voiceSettings.micVolume', { pct: micGain })}</label>
           <input
             id="voice-settings-mic-gain"
             name="mic_gain"
@@ -227,7 +228,7 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
           />
         </div>
         <div className="voice-setting-toggle-row" style={{ marginTop: '0.5rem' }}>
-          <span className="voice-setting-toggle-label">Mic monitor while testing</span>
+          <span className="voice-setting-toggle-label">{t('voiceSettings.micMonitorLabel')}</span>
           <button
             id="voice-settings-monitor-mic"
             name="monitor_mic"
@@ -238,11 +239,11 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
             <span className="voice-setting-toggle-icon" aria-hidden>
               {monitorMic ? '🎧' : '📊'}
             </span>
-            <span>{monitorMic ? 'On - hear mic' : 'Off - meter only'}</span>
+            <span>{monitorMic ? t('voiceSettings.monitorOn') : t('voiceSettings.monitorOff')}</span>
           </button>
         </div>
         <div className="voice-setting-toggle-row">
-          <span className="voice-setting-toggle-label">Start with camera</span>
+          <span className="voice-setting-toggle-label">{t('voiceSettings.startCameraLabel')}</span>
           <button
             id="voice-settings-camera-enabled"
             name="camera_enabled"
@@ -253,11 +254,11 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
             <span className="voice-setting-toggle-icon" aria-hidden>
               {startWithCamera ? '📷' : '🚫'}
             </span>
-            <span>{startWithCamera ? 'Camera on' : 'Camera off'}</span>
+            <span>{startWithCamera ? t('voiceSettings.cameraOn') : t('voiceSettings.cameraOff')}</span>
           </button>
         </div>
         <div className="voice-setting-toggle-row">
-          <span className="voice-setting-toggle-label">Start muted</span>
+          <span className="voice-setting-toggle-label">{t('voiceSettings.startMutedLabel')}</span>
           <button
             id="voice-settings-start-muted"
             name="start_muted"
@@ -274,11 +275,11 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
             <span className="voice-setting-toggle-icon" aria-hidden>
               {startMuted ? '🔇' : '🎙️'}
             </span>
-            <span>{startMuted ? 'Muted' : 'Unmuted'}</span>
+            <span>{startMuted ? t('voiceSettings.muted') : t('voiceSettings.unmuted')}</span>
           </button>
         </div>
         <div className="voice-setting-toggle-row">
-          <span className="voice-setting-toggle-label">Start deafened</span>
+          <span className="voice-setting-toggle-label">{t('voiceSettings.startDeafenedLabel')}</span>
           <button
             id="voice-settings-start-deafened"
             name="start_deafened"
@@ -295,16 +296,16 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
             <span className="voice-setting-toggle-icon" aria-hidden>
               {startDeafened ? '🙉' : '👂'}
             </span>
-            <span>{startDeafened ? 'Deafened' : 'Listening'}</span>
+            <span>{startDeafened ? t('voiceSettings.deafened') : t('voiceSettings.listening')}</span>
           </button>
         </div>
         <div className="mic-status">
           <span className="muted small">
             {testing
               ? monitorMic
-                ? 'Listening to mic — adjust volume; meter shows input level'
-                : 'Meter only — enable “Hear microphone” to listen'
-              : 'Start test to hear the mic and see level'}
+                ? t('voiceSettings.statusListening')
+                : t('voiceSettings.statusMeter')
+              : t('voiceSettings.statusIdle')}
           </span>
           <div className="mic-meter">
             <span className="mic-meter-fill" style={{ width: `${Math.max(6, Math.round(micLevel * 100))}%` }} />
@@ -313,11 +314,11 @@ export default function VoiceSettingsModal({ open, onClose, user }) {
         <div className="voice-controls">
           {!testing ? (
             <button type="button" className="btn secondary" onClick={startTest}>
-              Test microphone
+              {t('voiceSettings.testMic')}
             </button>
           ) : (
             <button type="button" className="btn ghost" onClick={stopTest}>
-              Stop test
+              {t('voiceSettings.stopTest')}
             </button>
           )}
         </div>

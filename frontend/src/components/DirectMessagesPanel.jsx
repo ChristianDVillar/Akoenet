@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { getSocket } from '../services/socket'
 
@@ -26,15 +27,8 @@ function isPresenceOnline(status) {
   return s === 'online' || s === 'idle' || s === 'dnd'
 }
 
-function formatConversationPreview(message) {
-  if (!message) return 'No messages yet'
-  const text = String(message).trim()
-  if (!text) return 'Shared an image'
-  if (text === '(imagen)') return 'Shared an image'
-  return text
-}
-
 export default function DirectMessagesPanel({ user }) {
+  const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const conversationParam = searchParams.get('conversation') ?? ''
   const [conversations, setConversations] = useState([])
@@ -73,6 +67,14 @@ export default function DirectMessagesPanel({ user }) {
   const currentUserIdRef = useRef(null)
   const fileDragDepthRef = useRef(0)
   const [fileDragOver, setFileDragOver] = useState(false)
+
+  function formatConversationPreview(message) {
+    if (!message) return t('dm.previewEmpty')
+    const text = String(message).trim()
+    if (!text) return t('dm.previewImage')
+    if (text === '(imagen)') return t('dm.previewImage')
+    return text
+  }
 
   async function loadConversations() {
     const { data } = await api.get('/dm/conversations')
@@ -138,13 +140,13 @@ export default function DirectMessagesPanel({ user }) {
           setSelectedConversationId((prev) => prev ?? (data[0]?.id ?? null))
         }
       } catch {
-        if (!cancelled) setError('Could not load your direct messages')
+        if (!cancelled) setError(t('dm.errLoad'))
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [conversationParam, setSearchParams])
+  }, [conversationParam, setSearchParams, t])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -352,7 +354,7 @@ export default function DirectMessagesPanel({ user }) {
       const { data } = await api.get('/dm/users', { params: { q: userQuery.trim() } })
       setResults(data)
     } catch {
-      setError('Could not search users')
+      setError(t('dm.errSearchUsers'))
     }
   }
 
@@ -366,7 +368,7 @@ export default function DirectMessagesPanel({ user }) {
       setUserQuery('')
       await loadConversations()
     } catch {
-      setError('Could not open conversation')
+      setError(t('dm.errOpenConversation'))
     }
   }
 
@@ -418,7 +420,7 @@ export default function DirectMessagesPanel({ user }) {
       m.content && m.content !== '(imagen)'
         ? m.content.slice(0, 120)
         : m.image_url
-          ? 'Image'
+          ? t('common.image')
           : ''
     setReplyTo({ id: m.id, username: m.username, snippet })
   }
@@ -436,10 +438,10 @@ export default function DirectMessagesPanel({ user }) {
       setEditHistoryModalOpen(true)
     } catch (err) {
       if (err?.response?.status === 403) {
-        setError('You do not have permission to view edit history.')
+        setError(t('dm.errEditHistory403'))
         return
       }
-      setError('Could not load edit history.')
+      setError(t('dm.errEditHistory'))
     }
   }
 
@@ -452,11 +454,11 @@ export default function DirectMessagesPanel({ user }) {
     if (s) {
       s.emit('edit_direct_message', { dm_message_id: id, content }, (ack) => {
         if (ack?.error === 'blocked_content') {
-          setError('That message contains prohibited language.')
+          setError(t('dm.errBlocked'))
           return
         }
         if (ack?.error === 'forbidden' || ack?.error === 'not_found') {
-          setError("You can't edit that message.")
+          setError(t('dm.errEditForbidden'))
           return
         }
         if (ack?.ok) cancelDmEdit()
@@ -473,8 +475,8 @@ export default function DirectMessagesPanel({ user }) {
         const code = err?.response?.data?.error
         setError(
           code === 'blocked_content'
-            ? err?.response?.data?.message || 'That message contains prohibited language.'
-            : err?.response?.data?.error || 'Could not save edit'
+            ? err?.response?.data?.message || t('dm.errEditSaveBlocked')
+            : err?.response?.data?.error || t('dm.errEditSave')
         )
       })
   }
@@ -523,19 +525,19 @@ export default function DirectMessagesPanel({ user }) {
         (ack) => {
           setMessages((prev) => prev.filter((m) => m._clientId !== clientId))
           if (ack?.error === 'rate_limited') {
-            setError('You are sending direct messages too fast')
+            setError(t('dm.errDmTooFast'))
             setText(content)
             setReplyTo(savedDmReply)
             return
           }
           if (ack?.error === 'blocked_content') {
-            setError('That message contains prohibited language.')
+            setError(t('dm.errBlocked'))
             setText(content)
             setReplyTo(savedDmReply)
             return
           }
           if (ack?.error === 'save_failed') {
-            setError('Message could not be saved. Try again.')
+            setError(t('dm.errSaveFailed'))
             setText(content)
             setReplyTo(savedDmReply)
             return
@@ -566,8 +568,8 @@ export default function DirectMessagesPanel({ user }) {
       const code = err?.response?.data?.error
       setError(
         code === 'blocked_content'
-          ? err?.response?.data?.message || 'That message contains prohibited language.'
-          : err?.response?.data?.error || 'Could not send message'
+          ? err?.response?.data?.message || t('dm.errSendBlocked')
+          : err?.response?.data?.error || t('dm.errSend')
       )
     }
   }
@@ -603,10 +605,10 @@ export default function DirectMessagesPanel({ user }) {
           },
           (ack) => {
             if (ack?.error === 'rate_limited') {
-              setError('You are sending direct messages too fast')
+              setError(t('dm.errDmTooFast'))
             }
             if (ack?.error === 'blocked_content') {
-              setError('That message contains prohibited language.')
+              setError(t('dm.errBlocked'))
             }
           }
         )
@@ -621,7 +623,7 @@ export default function DirectMessagesPanel({ user }) {
         setMessages((prev) => [...prev, message])
       }
     } catch {
-      setError('Could not send image')
+      setError(t('dm.errUploadSend'))
     } finally {
       setUploading(false)
     }
@@ -641,7 +643,7 @@ export default function DirectMessagesPanel({ user }) {
     setFileDragOver(true)
   }
 
-  function onDmDragLeave(e) {
+  function onDmDragLeave(_e) {
     fileDragDepthRef.current -= 1
     if (fileDragDepthRef.current <= 0) {
       fileDragDepthRef.current = 0
@@ -669,28 +671,28 @@ export default function DirectMessagesPanel({ user }) {
 
   async function reportDmMessage(dmMessageId) {
     if (typeof dmMessageId === 'string' && dmMessageId.startsWith('pending-')) return
-    const reason = window.prompt('Why are you reporting this message? (required)')
+    const reason = window.prompt(t('dm.promptReport'))
     if (!reason || !reason.trim()) return
     setReportFeedback('')
     try {
       await api.post(`/dm/messages/${dmMessageId}/report`, { reason: reason.trim() })
-      setReportFeedback('Report sent. Moderators will review it.')
+      setReportFeedback(t('dm.reportSent'))
     } catch (err) {
       const msg =
         err?.response?.status === 429
-          ? 'You are reporting too fast. Try again later.'
-          : err?.response?.data?.error || 'Could not send report'
+          ? t('dm.report429')
+          : err?.response?.data?.error || t('dm.reportFailed')
       setReportFeedback(msg)
     }
   }
 
   function validateUploadFile(file) {
-    if (!file) return 'Please select an image.'
+    if (!file) return t('dm.uploadNoFile')
     if (!ALLOWED_IMAGE_MIME_TYPES.has(String(file.type || '').toLowerCase())) {
-      return 'Invalid file type. Allowed: JPG, PNG, WEBP, GIF, AVIF.'
+      return t('dm.uploadBadType')
     }
     if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-      return 'File is too large. Maximum size is 5MB.'
+      return t('dm.uploadTooBig')
     }
     return ''
   }
@@ -712,31 +714,31 @@ export default function DirectMessagesPanel({ user }) {
         return [...map.values()].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       })
     } catch {
-      setError('Could not refresh messages right now.')
+      setError(t('dm.errRefresh'))
     }
   }
 
   return (
     <section className="card dm-panel">
-      <h2>Direct messages</h2>
-      <p className="muted small">Search users, open a conversation, and chat in real time.</p>
+      <h2>{t('dm.title')}</h2>
+      <p className="muted small">{t('dm.lead')}</p>
       {error && <div className="error-banner inline">{error}</div>}
       {reportFeedback && <div className="error-banner inline">{reportFeedback}</div>}
       <form onSubmit={searchUsers} className="form-inline">
         <input
           id="dm-search-user"
           name="user_query"
-          placeholder="Search user"
+          placeholder={t('dm.searchUserPh')}
           value={userQuery}
           onChange={(e) => setUserQuery(e.target.value)}
         />
         <button type="submit" className="btn secondary">
-          Search users
+          {t('dm.searchUsersBtn')}
         </button>
       </form>
       {results.length > 0 && (
         <div className="dm-search-results">
-          <p className="muted small">Select a user below to start a new chat.</p>
+          <p className="muted small">{t('dm.pickUserHint')}</p>
           {results.map((u) => (
             <button
               key={u.id}
@@ -752,13 +754,13 @@ export default function DirectMessagesPanel({ user }) {
         </div>
       )}
       {userQuery.trim().length > 1 && results.length === 0 && (
-        <p className="muted small">No users found. Try another username or email fragment.</p>
+        <p className="muted small">{t('dm.noUsersFound')}</p>
       )}
 
       <div className="dm-layout">
         <aside className="dm-conversations">
           {conversations.length === 0 ? (
-            <p className="muted small">You do not have direct conversations yet. Search someone to start one.</p>
+            <p className="muted small">{t('dm.noConversations')}</p>
           ) : (
             conversations.map((c) => (
               <button
@@ -786,7 +788,7 @@ export default function DirectMessagesPanel({ user }) {
                   className={`dm-presence-dot ${
                     isPresenceOnline(c?.peer_presence_status) ? 'online' : 'offline'
                   }`}
-                  title={isPresenceOnline(c?.peer_presence_status) ? 'Online' : 'Offline'}
+                  title={isPresenceOnline(c?.peer_presence_status) ? t('common.online') : t('common.offline')}
                 />
               </button>
             ))
@@ -797,7 +799,7 @@ export default function DirectMessagesPanel({ user }) {
           <button
             type="button"
             className="dm-chat-mobile-backdrop"
-            aria-label="Close direct message chat"
+            aria-label={t('dm.closeMobileAria')}
             onClick={closeMobileChat}
           />
         )}
@@ -829,30 +831,30 @@ export default function DirectMessagesPanel({ user }) {
             {selectedConversation ? (
               <>
                 <div className="dm-chat-header-row">
-                  <span>{`Chat with ${selectedConversation.peer_username}`}</span>
+                  <span>{t('dm.chatWith', { name: selectedConversation.peer_username })}</span>
                   <div className="dm-chat-header-actions">
                     <button
                       type="button"
                       className="btn ghost small"
-                      title="Refresh messages"
+                      title={t('dm.refreshTitle')}
                       onClick={refreshLatestDirectMessages}
                     >
-                      Refresh
+                      {t('common.refresh')}
                     </button>
                     {isMobileDm && (
                       <button
                         type="button"
                         className="btn ghost small"
                         onClick={closeMobileChat}
-                        title="Back to conversations"
+                        title={t('dm.backTitle')}
                       >
-                        Back
+                        {t('common.back')}
                       </button>
                     )}
                     <button
                       type="button"
                       className="btn ghost small"
-                      title="Search in this chat"
+                      title={t('dm.searchThisChat')}
                       onClick={() => setDmSearchOpen((o) => !o)}
                       aria-expanded={dmSearchOpen}
                     >
@@ -863,36 +865,38 @@ export default function DirectMessagesPanel({ user }) {
                         isPresenceOnline(selectedConversation?.peer_presence_status) ? 'online' : 'offline'
                       }`}
                     >
-                      {isPresenceOnline(selectedConversation?.peer_presence_status) ? 'Online' : 'Offline'}
+                      {isPresenceOnline(selectedConversation?.peer_presence_status)
+                        ? t('common.online')
+                        : t('common.offline')}
                     </span>
                   </div>
                 </div>
                 {peerTypingName ? (
                   <p className="dm-typing-hint muted small" role="status">
-                    {peerTypingName} is writing…
+                    {t('dm.typing', { name: peerTypingName })}
                   </p>
                 ) : null}
               </>
             ) : (
-              'Select a chat'
+              <span className="muted small">{t('dm.selectChat')}</span>
             )}
           </div>
           {dmSearchOpen && selectedConversationId && (
-            <section className="chat-search-panel dm-inline-search" aria-label="Search in conversation">
+            <section className="chat-search-panel dm-inline-search" aria-label={t('dm.searchInConvAria')}>
               <form className="chat-search-form" onSubmit={runDmSearch}>
                 <input
                   className="composer-input chat-search-input"
                   value={dmSearchQuery}
                   onChange={(e) => setDmSearchQuery(e.target.value)}
-                  placeholder="Search in this chat (2+ characters)"
-                  aria-label="Search direct messages"
+                  placeholder={t('dm.dmSearchPh')}
+                  aria-label={t('dm.dmSearchQueryAria')}
                 />
                 <button
                   type="submit"
                   className="btn secondary small"
                   disabled={dmSearchBusy || dmSearchQuery.trim().length < 2}
                 >
-                  {dmSearchBusy ? '…' : 'Search'}
+                  {dmSearchBusy ? '…' : t('common.search')}
                 </button>
                 <button
                   type="button"
@@ -902,7 +906,7 @@ export default function DirectMessagesPanel({ user }) {
                     setDmSearchResults([])
                   }}
                 >
-                  Close
+                  {t('common.close')}
                 </button>
               </form>
               {dmSearchResults.length > 0 && (
@@ -922,7 +926,7 @@ export default function DirectMessagesPanel({ user }) {
                           {sm.content && sm.content !== '(imagen)'
                             ? sm.content.slice(0, 120)
                             : sm.image_url
-                              ? 'Image'
+                              ? t('common.image')
                               : ''}
                         </span>
                       </button>
@@ -978,15 +982,15 @@ export default function DirectMessagesPanel({ user }) {
                           minute: '2-digit',
                         })}
                       </time>
-                      {m.edited_at && <span className="edited-badge">(edited)</span>}
+                      {m.edited_at && <span className="edited-badge">{t('common.edited')}</span>}
                     </div>
-                    <div className="message-actions dm-message-actions" aria-label="Message actions">
+                    <div className="message-actions dm-message-actions" aria-label={t('chat.messageActionsAria')}>
                       {!m._optimistic && editingMessageId !== m.id && (
                         <button
                           type="button"
                           className="message-action-icon"
-                          title="Reply"
-                          aria-label="Reply to message"
+                          title={t('chat.replyTitle')}
+                          aria-label={t('chat.replyAria')}
                           onClick={() => startDmReply(m)}
                         >
                           ↩
@@ -996,8 +1000,8 @@ export default function DirectMessagesPanel({ user }) {
                         <button
                           type="button"
                           className="message-action-icon"
-                          title="Report"
-                          aria-label="Report message"
+                          title={t('chat.reportTitle')}
+                          aria-label={t('chat.reportAria')}
                           onClick={() => reportDmMessage(m.id)}
                         >
                           🚩
@@ -1012,8 +1016,8 @@ export default function DirectMessagesPanel({ user }) {
                           <button
                             type="button"
                             className="message-action-icon"
-                            title="Edit"
-                            aria-label="Edit message"
+                            title={t('chat.editTitle')}
+                            aria-label={t('chat.editAria')}
                             onClick={() => {
                               setEditingMessageId(m.id)
                               setEditingDraft(m.content || '')
@@ -1028,8 +1032,8 @@ export default function DirectMessagesPanel({ user }) {
                           <button
                             type="button"
                             className="message-action-icon"
-                            title="View edit history"
-                            aria-label="View edit history"
+                            title={t('chat.viewHistoryTitle')}
+                            aria-label={t('chat.viewHistoryAria')}
                             onClick={() => showDmEditHistory(m.id)}
                           >
                             🕘
@@ -1040,7 +1044,9 @@ export default function DirectMessagesPanel({ user }) {
                   {(m.reply_preview_username || m.reply_preview_content) && (
                     <div className="message-reply-preview">
                       <span className="message-reply-preview-label">
-                        Replying to {m.reply_preview_username || 'message'}
+                        {t('chat.replyingTo', {
+                          name: m.reply_preview_username || t('chat.replyingToGeneric'),
+                        })}
                       </span>
                       {m.reply_preview_content && m.reply_preview_content !== '(imagen)' && (
                         <span className="message-reply-preview-snippet">
@@ -1066,10 +1072,10 @@ export default function DirectMessagesPanel({ user }) {
                       />
                       <div className="message-edit-actions">
                         <button type="button" className="btn primary small" onClick={saveDmEdit}>
-                          Save
+                          {t('common.save')}
                         </button>
                         <button type="button" className="btn ghost small" onClick={cancelDmEdit}>
-                          Cancel
+                          {t('common.cancel')}
                         </button>
                       </div>
                     </div>
@@ -1106,14 +1112,14 @@ export default function DirectMessagesPanel({ user }) {
             {replyTo && (
               <div className="reply-context-bar">
                 <div className="reply-context-text">
-                  <span className="reply-context-label">Replying to {replyTo.username}</span>
+                  <span className="reply-context-label">{t('chat.replyingToBar', { name: replyTo.username })}</span>
                   {replyTo.snippet ? <p className="reply-context-snippet">{replyTo.snippet}</p> : null}
                 </div>
                 <button
                   type="button"
                   className="btn ghost small"
                   onClick={() => setReplyTo(null)}
-                  aria-label="Cancel reply"
+                  aria-label={t('chat.cancelReplyAria')}
                 >
                   ✕
                 </button>
@@ -1143,7 +1149,9 @@ export default function DirectMessagesPanel({ user }) {
               name="message"
               className="composer-input"
               placeholder={
-                selectedConversation ? `Direct message to ${selectedConversation.peer_username}` : 'Select a chat'
+                selectedConversation
+                  ? t('dm.composerPh', { name: selectedConversation.peer_username })
+                  : t('dm.selectChat')
               }
               value={text}
               onChange={onComposerChange}
@@ -1175,7 +1183,7 @@ export default function DirectMessagesPanel({ user }) {
               onClick={sendMessage}
               disabled={!selectedConversationId || uploading || !text.trim()}
             >
-              Send
+              {t('chat.send')}
             </button>
             {selectedConversationId && text.trim().length > 0 && composerHistoryMatches.length > 0 && (
               <div
@@ -1184,7 +1192,7 @@ export default function DirectMessagesPanel({ user }) {
                 role="status"
                 aria-live="polite"
               >
-                <span className="composer-history-hint-label">History match</span>
+                <span className="composer-history-hint-label">{t('dm.historyMatch')}</span>
                 <span className="composer-history-hint-meta">
                   {composerHistorySafeIndex + 1} / {composerHistoryMatches.length}
                 </span>
@@ -1205,14 +1213,17 @@ export default function DirectMessagesPanel({ user }) {
       </div>
       <EditHistoryModal
         open={editHistoryModalOpen}
-        title="Direct message edit history"
+        title={t('dm.editHistoryTitle')}
         entries={editHistoryEntries}
         onClose={() => {
           setEditHistoryModalOpen(false)
           setEditHistoryEntries([])
         }}
       />
-      <p className="muted small">Current session: {user?.username}</p>
+      <p className="muted small">
+        {t('dm.sessionLabel')}
+        {user?.username}
+      </p>
     </section>
   )
 }

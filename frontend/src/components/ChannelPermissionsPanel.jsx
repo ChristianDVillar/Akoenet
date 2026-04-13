@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export default function ChannelPermissionsPanel({
-  channelName,
   channelType,
   permissions,
   onTogglePermission,
@@ -14,6 +14,7 @@ export default function ChannelPermissionsPanel({
   activeChannel,
   onUpdateChannel,
 }) {
+  const { t } = useTranslation()
   const [editName, setEditName] = useState('')
   const [editCategoryId, setEditCategoryId] = useState('')
   const [editPrivate, setEditPrivate] = useState(false)
@@ -39,7 +40,7 @@ export default function ChannelPermissionsPanel({
   if (!permissions?.length) {
     return (
       <section className="perm-panel perm-panel--channel-settings">
-        <p className="muted small channel-settings-empty">Select a channel to edit permissions.</p>
+        <p className="muted small channel-settings-empty">{t('channelPerm.selectChannelHint')}</p>
       </section>
     )
   }
@@ -49,15 +50,13 @@ export default function ChannelPermissionsPanel({
   return (
     <section className="perm-panel perm-panel--channel-settings">
       <div className="channel-settings-section">
-        <h4 className="channel-settings-section-title">General</h4>
+        <h4 className="channel-settings-section-title">{t('channelPerm.generalTitle')}</h4>
         <p className="channel-settings-section-desc">
-          {isVoice
-            ? 'Name, category, privacy, and optional cap on simultaneous voice participants.'
-            : 'Name, category, and whether the channel is private.'}
+          {isVoice ? t('channelPerm.generalDescVoice') : t('channelPerm.generalDescText')}
         </p>
         <div className="channel-settings-fields">
           <label className="channel-settings-field">
-            <span className="channel-settings-label">Name</span>
+            <span className="channel-settings-label">{t('channelPerm.name')}</span>
             <input
               id={`ch-settings-name-${cid}`}
               name="channel_name"
@@ -67,7 +66,7 @@ export default function ChannelPermissionsPanel({
             />
           </label>
           <label className="channel-settings-field">
-            <span className="channel-settings-label">Category</span>
+            <span className="channel-settings-label">{t('channelPerm.category')}</span>
             <select
               id={`ch-settings-category-${cid}`}
               name="channel_category_id"
@@ -75,7 +74,7 @@ export default function ChannelPermissionsPanel({
               value={editCategoryId}
               onChange={(e) => setEditCategoryId(e.target.value)}
             >
-              <option value="">Uncategorized</option>
+              <option value="">{t('channelPerm.uncategorized')}</option>
               {(categories || []).map((c) => (
                 <option key={c.id} value={String(c.id)}>
                   {c.name}
@@ -92,15 +91,13 @@ export default function ChannelPermissionsPanel({
               onChange={(e) => setEditPrivate(e.target.checked)}
             />
             <span>
-              <strong>Private channel</strong>
-              <span className="channel-settings-inline-hint">
-                Hidden from members without access; invite or grant per-role / per-user permissions.
-              </span>
+              <strong>{t('channelPerm.privateStrong')}</strong>
+              <span className="channel-settings-inline-hint">{t('channelPerm.privateHint')}</span>
             </span>
           </label>
           {isVoice && (
             <label className="channel-settings-field">
-              <span className="channel-settings-label">Max users in voice</span>
+              <span className="channel-settings-label">{t('channelPerm.maxVoiceUsers')}</span>
               <div className="channel-settings-voice-limit-row">
                 <input
                   id={`ch-settings-voice-limit-${cid}`}
@@ -108,17 +105,17 @@ export default function ChannelPermissionsPanel({
                   type="number"
                   min={1}
                   max={99}
-                  placeholder="No limit"
+                  placeholder={t('channelPerm.noLimitPlaceholder')}
                   aria-describedby={voiceLimitHintId}
                   value={editVoiceUserLimit}
                   onChange={(e) => setEditVoiceUserLimit(e.target.value.replace(/[^\d]/g, ''))}
                 />
                 <span className="channel-settings-voice-limit-suffix" aria-hidden>
-                  users
+                  {t('channelPerm.usersSuffix')}
                 </span>
               </div>
               <p id={voiceLimitHintId} className="channel-settings-hint">
-                Empty = unlimited. Admins and moderators can always adjust this cap.
+                {t('channelPerm.voiceLimitHint')}
               </p>
             </label>
           )}
@@ -137,8 +134,8 @@ export default function ChannelPermissionsPanel({
                     is_private: editPrivate,
                   }
                   if (isVoice) {
-                    const t = editVoiceUserLimit.trim()
-                    payload.voice_user_limit = t === '' ? null : Number(t)
+                    const trimmedLimit = editVoiceUserLimit.trim()
+                    payload.voice_user_limit = trimmedLimit === '' ? null : Number(trimmedLimit)
                   }
                   await onUpdateChannel?.(activeChannel.id, payload)
                 } finally {
@@ -146,23 +143,21 @@ export default function ChannelPermissionsPanel({
                 }
               }}
             >
-              {savingSettings ? 'Saving…' : 'Save channel'}
+              {savingSettings ? t('channelPerm.saving') : t('channelPerm.saveChannel')}
             </button>
           </div>
         </div>
       </div>
 
       <div className="channel-settings-section">
-        <h4 className="channel-settings-section-title">Role permissions</h4>
-        <p className="channel-settings-section-desc">
-          Default access for each server role. Members get the highest role they have.
-        </p>
+        <h4 className="channel-settings-section-title">{t('channelPerm.rolePermTitle')}</h4>
+        <p className="channel-settings-section-desc">{t('channelPerm.rolePermDesc')}</p>
         <div className={`perm-matrix${isVoice ? ' perm-matrix--voice' : ' perm-matrix--text'}`}>
           <div className={`perm-matrix-head${isVoice ? ' perm-matrix-head--voice' : ' perm-matrix-head--text'}`}>
-            <span className="perm-matrix-corner">Role</span>
-            <span>View</span>
-            <span>Send</span>
-            {isVoice ? <span>Connect</span> : null}
+            <span className="perm-matrix-corner">{t('channelPerm.colRole')}</span>
+            <span>{t('channelPerm.colView')}</span>
+            <span>{t('channelPerm.colSend')}</span>
+            {isVoice ? <span>{t('channelPerm.colConnect')}</span> : null}
           </div>
           <div className="perm-matrix-body">
             {permissions.map((role) => (
@@ -181,7 +176,9 @@ export default function ChannelPermissionsPanel({
                       })
                     }
                   />
-                  <span className="sr-only">{role.name}: view</span>
+                  <span className="sr-only">
+                    {t('channelPerm.srRoleAction', { role: role.name, action: t('channelPerm.colView') })}
+                  </span>
                 </label>
                 <label className="perm-cell">
                   <input
@@ -196,7 +193,9 @@ export default function ChannelPermissionsPanel({
                       })
                     }
                   />
-                  <span className="sr-only">{role.name}: send</span>
+                  <span className="sr-only">
+                    {t('channelPerm.srRoleAction', { role: role.name, action: t('channelPerm.colSend') })}
+                  </span>
                 </label>
                 {isVoice ? (
                   <label className="perm-cell">
@@ -212,7 +211,9 @@ export default function ChannelPermissionsPanel({
                         })
                       }
                     />
-                    <span className="sr-only">{role.name}: connect</span>
+                    <span className="sr-only">
+                      {t('channelPerm.srRoleAction', { role: role.name, action: t('channelPerm.colConnect') })}
+                    </span>
                   </label>
                 ) : null}
               </div>
@@ -222,12 +223,10 @@ export default function ChannelPermissionsPanel({
       </div>
 
       <div className="channel-settings-section">
-        <h4 className="channel-settings-section-title">Per-member overrides</h4>
-        <p className="channel-settings-section-desc">
-          Optional. Change access for one member without editing roles. Overrides apply on top of roles.
-        </p>
+        <h4 className="channel-settings-section-title">{t('channelPerm.memberOverridesTitle')}</h4>
+        <p className="channel-settings-section-desc">{t('channelPerm.memberOverridesDesc')}</p>
         <label className="channel-settings-field">
-          <span className="channel-settings-label">Member</span>
+          <span className="channel-settings-label">{t('channelPerm.memberLabel')}</span>
           <select
             id={`ch-perm-member-select-${cid}`}
             name="channel_perm_member"
@@ -235,7 +234,7 @@ export default function ChannelPermissionsPanel({
             value={selectedMemberId}
             onChange={(e) => setSelectedMemberId(e.target.value)}
           >
-            <option value="">Choose a member…</option>
+            <option value="">{t('channelPerm.chooseMember')}</option>
             {members.map((m) => (
               <option key={m.id} value={String(m.id)}>
                 {m.username}
@@ -246,15 +245,16 @@ export default function ChannelPermissionsPanel({
         {selectedMemberId ? (
           <div className={`perm-matrix perm-matrix--member${isVoice ? ' perm-matrix--voice' : ' perm-matrix--text'}`}>
             <div className={`perm-matrix-head${isVoice ? ' perm-matrix-head--voice' : ' perm-matrix-head--text'}`}>
-              <span className="perm-matrix-corner">Member</span>
-              <span>View</span>
-              <span>Send</span>
-              {isVoice ? <span>Connect</span> : null}
+              <span className="perm-matrix-corner">{t('channelPerm.colMember')}</span>
+              <span>{t('channelPerm.colView')}</span>
+              <span>{t('channelPerm.colSend')}</span>
+              {isVoice ? <span>{t('channelPerm.colConnect')}</span> : null}
             </div>
             <div className="perm-matrix-body">
               <div className={`perm-row${isVoice ? ' perm-row--voice' : ' perm-row--text'}`}>
                 <div className="perm-role">
-                  {members.find((m) => String(m.id) === String(selectedMemberId))?.username ?? '—'}
+                  {members.find((m) => String(m.id) === String(selectedMemberId))?.username ??
+                    t('channelPerm.dash')}
                 </div>
                 {(() => {
                   const selected =
@@ -278,7 +278,7 @@ export default function ChannelPermissionsPanel({
                             })
                           }
                         />
-                        <span className="sr-only">View</span>
+                        <span className="sr-only">{t('channelPerm.colView')}</span>
                       </label>
                       <label className="perm-cell">
                         <input
@@ -293,7 +293,7 @@ export default function ChannelPermissionsPanel({
                             })
                           }
                         />
-                        <span className="sr-only">Send</span>
+                        <span className="sr-only">{t('channelPerm.colSend')}</span>
                       </label>
                       {isVoice ? (
                         <label className="perm-cell">
@@ -309,7 +309,7 @@ export default function ChannelPermissionsPanel({
                               })
                             }
                           />
-                          <span className="sr-only">Connect</span>
+                          <span className="sr-only">{t('channelPerm.colConnect')}</span>
                         </label>
                       ) : null}
                     </>
@@ -320,7 +320,9 @@ export default function ChannelPermissionsPanel({
           </div>
         ) : (
           <p className="channel-settings-hint channel-settings-hint--spaced">
-            Pick a member to set individual view, send{isVoice ? ', and connect' : ''} flags.
+            {t('channelPerm.pickMemberHintText')}
+            {isVoice ? t('channelPerm.pickMemberHintVoice') : ''}
+            {t('channelPerm.pickMemberHintEnd')}
           </p>
         )}
       </div>

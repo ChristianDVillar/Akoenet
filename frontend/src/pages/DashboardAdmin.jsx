@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 
 function StatusBadge({ ok, label }) {
@@ -7,7 +8,8 @@ function StatusBadge({ ok, label }) {
 }
 
 function Latency({ ms }) {
-  if (ms === null || ms === undefined) return <span className="muted small">n/a</span>
+  const { t } = useTranslation()
+  if (ms === null || ms === undefined) return <span className="muted small">{t('admin.na')}</span>
   return <span className="status-latency">{ms} ms</span>
 }
 
@@ -50,6 +52,7 @@ function KpiCard({ icon, title, value, delta, deltaLabel, sub }) {
 }
 
 export default function DashboardAdmin({ embedded = false }) {
+  const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [health, setHealth] = useState(null)
@@ -57,7 +60,7 @@ export default function DashboardAdmin({ embedded = false }) {
   const [history, setHistory] = useState([])
   const [auditLogs, setAuditLogs] = useState([])
   const [auditTotal, setAuditTotal] = useState(0)
-  const [auditLimit, setAuditLimit] = useState(20)
+  const [auditLimit] = useState(20)
   const [auditOffset, setAuditOffset] = useState(0)
   const [auditAction, setAuditAction] = useState('')
   const [auditServerId, setAuditServerId] = useState('')
@@ -65,7 +68,7 @@ export default function DashboardAdmin({ embedded = false }) {
   const [auditTo, setAuditTo] = useState('')
   const [reportItems, setReportItems] = useState([])
   const [reportTotal, setReportTotal] = useState(0)
-  const [reportLimit, setReportLimit] = useState(20)
+  const [reportLimit] = useState(20)
   const [reportOffset, setReportOffset] = useState(0)
   const [reportStatus, setReportStatus] = useState('open')
   const [reportServerId, setReportServerId] = useState('')
@@ -114,7 +117,7 @@ export default function DashboardAdmin({ embedded = false }) {
       const healthRes = await api.get('/health')
       setHealth(healthRes.data)
     } catch {
-      setError('Could not reach API /health. Is the backend running and VITE_API_URL correct?')
+      setError(t('admin.errHealth'))
       setLoading(false)
       return
     }
@@ -142,13 +145,11 @@ export default function DashboardAdmin({ embedded = false }) {
       } else {
         setDeps(null)
         if (depsRes.status === 404) {
-          warnings.push(
-            'GET /admin/health/deps → 404. This process does not expose admin routes (outdated backend image or wrong service on this port). Redeploy the API from the current repo.'
-          )
+          warnings.push(t('admin.warnDeps404'))
         } else if (depsRes.status === 401 || depsRes.status === 403) {
-          warnings.push('Admin health denied (401/403). Sign out and sign in again with an admin account.')
+          warnings.push(t('admin.warnDeps403'))
         } else {
-          warnings.push(`GET /admin/health/deps → HTTP ${depsRes.status}. Check server logs.`)
+          warnings.push(t('admin.warnDepsHttp', { status: depsRes.status }))
         }
       }
 
@@ -159,9 +160,9 @@ export default function DashboardAdmin({ embedded = false }) {
         setAuditLogs([])
         setAuditTotal(0)
         if (auditRes.status === 404) {
-          warnings.push('GET /admin/audit-logs → 404. Backend build likely predates admin.routes.')
+          warnings.push(t('admin.warnAudit404'))
         } else if (auditRes.status && auditRes.status !== 200) {
-          warnings.push(`GET /admin/audit-logs → HTTP ${auditRes.status}.`)
+          warnings.push(t('admin.warnAuditHttp', { status: auditRes.status }))
         }
       }
 
@@ -174,11 +175,9 @@ export default function DashboardAdmin({ embedded = false }) {
         setReportTotal(0)
         if (reportRes.status === 404) {
           if (reportsEndpointAvailable) setReportsEndpointAvailable(false)
-          warnings.push(
-            'GET /admin/reports/messages → 404. Update the backend so admin message reports exist, or confirm requests hit this app (not another server on :3000).'
-          )
+          warnings.push(t('admin.warnReports404'))
         } else if (reportRes.status && reportRes.status !== 200) {
-          warnings.push(`GET /admin/reports/messages → HTTP ${reportRes.status}.`)
+          warnings.push(t('admin.warnReportsHttp', { status: reportRes.status }))
         }
       }
 
@@ -189,7 +188,7 @@ export default function DashboardAdmin({ embedded = false }) {
         setMetrics(null)
         if (metricsRes.status === 404) {
           if (metricsEndpointAvailable) setMetricsEndpointAvailable(false)
-          warnings.push('GET /admin/metrics → 404. Same fix as other /admin/* 404s (redeploy current backend).')
+          warnings.push(t('admin.warnMetrics404'))
         }
       }
 
@@ -200,17 +199,15 @@ export default function DashboardAdmin({ embedded = false }) {
         setOverview(null)
         if (overviewRes.status === 404) {
           if (overviewEndpointAvailable) setOverviewEndpointAvailable(false)
-          warnings.push(
-            'GET /admin/overview → 404. Redeploy backend with latest admin routes to see KPI aggregates.'
-          )
+          warnings.push(t('admin.warnOverview404'))
         } else if (overviewRes.status && overviewRes.status !== 200) {
-          warnings.push(`GET /admin/overview → HTTP ${overviewRes.status}.`)
+          warnings.push(t('admin.warnOverviewHttp', { status: overviewRes.status }))
         }
       }
 
       setLoadWarnings(warnings)
     } catch {
-      setError('Could not load admin endpoints (network error).')
+      setError(t('admin.errAdminLoad'))
       setLoadWarnings(warnings)
     } finally {
       setLoading(false)
@@ -231,6 +228,7 @@ export default function DashboardAdmin({ embedded = false }) {
     reportOffset,
     reportStatus,
     reportServerId,
+    t,
   ])
 
   function applyAuditFilters(e) {
@@ -249,18 +247,18 @@ export default function DashboardAdmin({ embedded = false }) {
 
   function reportStatusLabel(metadata) {
     const status = String(metadata?.status || 'open').toLowerCase()
-    if (status === 'resolved') return 'resolved'
-    if (status === 'rejected') return 'rejected'
-    return 'open'
+    if (status === 'resolved') return t('admin.reportTagResolved')
+    if (status === 'rejected') return t('admin.reportTagRejected')
+    return t('admin.reportTagOpen')
   }
 
   async function updateReportStatus(auditId, status) {
-    const note = window.prompt('Optional moderator note')
+    const note = window.prompt(t('admin.promptModeratorNote'))
     try {
       await api.patch(`/admin/reports/messages/${auditId}`, { status, note: note || undefined })
       await load()
     } catch {
-      setError('Could not update report status')
+      setError(t('admin.errUpdateReport'))
     }
   }
 
@@ -288,44 +286,51 @@ export default function DashboardAdmin({ embedded = false }) {
 
       <div className="admin-overview">
         <div className="admin-overview-top">
-          <h1 className="admin-overview-title">📊 Admin overview</h1>
+          <h1 className="admin-overview-title">📊 {t('admin.title')}</h1>
           <div className="status-actions" style={{ marginTop: 0 }}>
             <button type="button" className="btn secondary" onClick={load} disabled={loading}>
-              Refrescar 🔄
+              {t('admin.refresh')} 🔄
             </button>
             {!embedded ? (
               <Link to="/" className="btn ghost">
-                Back
+                {t('admin.back')}
               </Link>
             ) : null}
           </div>
         </div>
 
         {loading ? (
-          <p className="muted">Checking services…</p>
+          <p className="muted">{t('admin.checking')}</p>
         ) : (
           <>
             <div className="admin-kpi-grid">
               <KpiCard
                 icon="👥"
-                title="Usuarios"
+                title={t('admin.kpiUsers')}
                 value={kpis ? formatNum(kpis.users.total) : '—'}
                 delta={kpis?.users?.delta_pct_24h}
-                deltaLabel="nuevos vs 24h previos"
-                sub={kpis ? `${formatNum(kpis.users.new_today)} nuevos hoy (calendario)` : 'Actualiza el backend para KPIs'}
-              />
-              <KpiCard icon="🎫" title="Licencias" value="—" sub="No integrado en AkoeNet" />
-              <KpiCard icon="💰" title="Ingresos" value="—" sub="No integrado en AkoeNet" />
-              <KpiCard
-                icon="💬"
-                title="Mensajes"
-                value={kpis ? formatNum(kpis.messages.total_in_db) : '—'}
-                delta={kpis?.messages?.delta_pct_hour_vs_prior}
-                deltaLabel="últ. hora vs hora anterior (DB)"
+                deltaLabel={t('admin.kpiUsersDelta')}
                 sub={
                   kpis
-                    ? `Canal ${formatNum(kpis.messages.channel_total)} · DM ${formatNum(kpis.messages.dm_total)}`
-                    : 'Total en base de datos'
+                    ? t('admin.kpiUsersSubNew', { count: formatNum(kpis.users.new_today) })
+                    : t('admin.kpiUsersSubFallback')
+                }
+              />
+              <KpiCard icon="🎫" title={t('admin.kpiLicenses')} value="—" sub={t('admin.kpiLicensesSub')} />
+              <KpiCard icon="💰" title={t('admin.kpiRevenue')} value="—" sub={t('admin.kpiRevenueSub')} />
+              <KpiCard
+                icon="💬"
+                title={t('admin.kpiMessages')}
+                value={kpis ? formatNum(kpis.messages.total_in_db) : '—'}
+                delta={kpis?.messages?.delta_pct_hour_vs_prior}
+                deltaLabel={t('admin.kpiMessagesDelta')}
+                sub={
+                  kpis
+                    ? t('admin.kpiMessagesSub', {
+                        ch: formatNum(kpis.messages.channel_total),
+                        dm: formatNum(kpis.messages.dm_total),
+                      })
+                    : t('admin.kpiMessagesSubTotal')
                 }
               />
             </div>
@@ -333,85 +338,89 @@ export default function DashboardAdmin({ embedded = false }) {
             {deps?.deps ? (
               <div className="admin-health-strip">
                 <h3>
-                  <span>🟢 Health status</span>
+                  <span>🟢 {t('admin.healthTitle')}</span>
                   <span className="muted small">
-                    Última comprobación:{' '}
+                    {t('admin.healthLastCheck')}{' '}
                     {deps.checked_at ? new Date(deps.checked_at).toLocaleString() : '—'}
                   </span>
                 </h3>
                 <div className="admin-health-line">
                   <span>
-                    <strong>API</strong> {health?.ok ? '✅' : '❌'}{' '}
+                    <strong>{t('admin.healthApi')}</strong> {health?.ok ? '✅' : '❌'}{' '}
                     <Latency ms={deps.deps.api?.latency_ms} />
                   </span>
                   <span>
-                    <strong>DB</strong> {deps.deps.db?.ok ? '✅' : '❌'}{' '}
+                    <strong>{t('admin.healthDb')}</strong> {deps.deps.db?.ok ? '✅' : '❌'}{' '}
                     <Latency ms={deps.deps.db?.latency_ms} />
                   </span>
                   <span>
-                    <strong>Redis</strong>{' '}
+                    <strong>{t('admin.healthRedis')}</strong>{' '}
                     {deps.deps.redis?.enabled ? (deps.deps.redis?.ok ? '✅' : '❌') : '⚪'}{' '}
                     <Latency ms={deps.deps.redis?.latency_ms} />
                   </span>
                   <span>
-                    <strong>Storage</strong> {deps.deps.storage?.ok ? '✅' : '❌'} ({deps.deps.storage?.driver || 'local'})
+                    <strong>{t('admin.healthStorage')}</strong> {deps.deps.storage?.ok ? '✅' : '❌'} (
+                    {deps.deps.storage?.driver || 'local'})
                   </span>
                   <span>
-                    <strong>Scheduler API</strong>{' '}
-                    {!sch?.configured ? '⚪ no configurado' : sch?.ok ? '✅' : '❌'}
+                    <strong>{t('admin.healthScheduler')}</strong>{' '}
+                    {!sch?.configured ? `⚪ ${t('admin.schedulerNotConfigured')}` : sch?.ok ? '✅' : '❌'}
                     {sch?.configured && sch?.version
-                      ? ` v${sch.version}${sch?.legacy ? ' (legacy)' : ''}`
+                      ? ` v${sch.version}${sch?.legacy ? ` ${t('admin.schedulerLegacy')}` : ''}`
                       : ''}
                   </span>
                 </div>
                 <p className="muted small" style={{ margin: '0.55rem 0 0' }}>
-                  Uptime proceso: {formatUptimeMs(deps.uptime_ms)} · App <code className="inline-code">{deps.version || 'unknown'}</code> ·
-                  chequeo total <Latency ms={deps.total_latency_ms} />
+                  {t('admin.healthFooterProcess')} {formatUptimeMs(deps.uptime_ms)} · {t('admin.healthFooterApp')}{' '}
+                  <code className="inline-code">{deps.version || 'unknown'}</code> · {t('admin.healthFooterCheck')}{' '}
+                  <Latency ms={deps.total_latency_ms} />
                 </p>
               </div>
             ) : null}
 
             <div className="admin-overview-columns">
               <div className="admin-overview-panel">
-                <h3>📈 Actividad reciente</h3>
+                <h3>📈 {t('admin.activityTitle')}</h3>
                 <ul>
                   <li>
-                    Mensajes última hora (canal):{' '}
+                    {t('admin.actMsgHourCh')}{' '}
                     {act?.messages_last_hour ? formatNum(act.messages_last_hour.channel) : '—'}
                   </li>
                   <li>
-                    DMs última hora: {act?.messages_last_hour ? formatNum(act.messages_last_hour.dm) : '—'}
+                    {t('admin.actMsgHourDm')} {act?.messages_last_hour ? formatNum(act.messages_last_hour.dm) : '—'}
                   </li>
                   <li>
-                    Usuarios activos (24h, enviaron mensaje/DM):{' '}
+                    {t('admin.actUsers24h')}{' '}
                     {act?.users_active_24h != null ? formatNum(act.users_active_24h) : '—'}
                   </li>
                   <li>
-                    Nuevos usuarios hoy: {act?.users_new_today != null ? formatNum(act.users_new_today) : '—'}
+                    {t('admin.actNewUsersToday')} {act?.users_new_today != null ? formatNum(act.users_new_today) : '—'}
                   </li>
                   {kpis ? (
-                    <li>Servidores totales: {formatNum(kpis.servers_total)}</li>
+                    <li>
+                      {t('admin.actServersTotal')} {formatNum(kpis.servers_total)}
+                    </li>
                   ) : null}
                   {metrics ? (
                     <li className="muted small" style={{ listStyle: 'none', paddingLeft: 0 }}>
-                      Proceso (no persistente): últimos ~60s canal {metrics.messages_last_60s?.channel ?? 0} · DM{' '}
-                      {metrics.messages_last_60s?.dm ?? 0}
+                      {t('admin.actMetricsProcess', {
+                        ch: metrics.messages_last_60s?.channel ?? 0,
+                        dm: metrics.messages_last_60s?.dm ?? 0,
+                      })}
                     </li>
                   ) : null}
                 </ul>
               </div>
               <div className="admin-overview-panel">
-                <h3>⚠️ Alertas y pendientes</h3>
+                <h3>⚠️ {t('admin.alertsTitle')}</h3>
                 <ul>
-                  <li>Licencias por vencer: no aplica (producto sin licencias)</li>
+                  <li>{t('admin.alertLicenses')}</li>
                   <li>
-                    Reportes de mensajes pendientes:{' '}
+                    {t('admin.alertReportsPending')}{' '}
                     {pendingFromOverview != null ? formatNum(pendingFromOverview) : '—'}
                   </li>
-                  <li>Usuarios con contraseña débil: no comprobado</li>
-                  {sch?.configured && sch?.legacy ? (
-                    <li>Scheduler API en modo legacy (discovery ausente o antiguo)</li>
-                  ) : null}
+                  <li>{t('admin.alertWeakPw')}</li>
+                  {sch?.configured && sch?.legacy ? <li>{t('admin.alertSchedulerLegacy')}</li> : null}
                   {sch?.configured && sch?.hint ? <li>{sch.hint}</li> : null}
                 </ul>
               </div>
@@ -423,78 +432,85 @@ export default function DashboardAdmin({ embedded = false }) {
       {!loading && (
         <>
             <p className="muted small" style={{ marginTop: '1rem' }}>
-              Use this panel to verify dependencies, audit logs, and message reports. Licencias e ingresos son placeholders
-              hasta que exista integración comercial.
+              {t('admin.footerHint')}
             </p>
             <div className="status-meta">
               <span>
-                <strong>Version:</strong> {deps?.version || 'unknown'}
+                <strong>{t('admin.metaVersion')}</strong> {deps?.version || 'unknown'}
               </span>
               <span>
-                <strong>Uptime:</strong> {deps?.uptime_ms ?? 0} ms
+                <strong>{t('admin.metaUptime')}</strong> {deps?.uptime_ms ?? 0} ms
               </span>
               <span>
-                <strong>Total check:</strong> {deps?.total_latency_ms ?? 0} ms
+                <strong>{t('admin.metaTotalCheck')}</strong> {deps?.total_latency_ms ?? 0} ms
               </span>
             </div>
             {metrics && (
               <div className="status-meta" style={{ marginTop: '0.5rem', flexWrap: 'wrap' }}>
                 <span>
-                  <strong>Msgs (total):</strong> ch {metrics.messages_total?.channel ?? 0} · dm{' '}
+                  <strong>{t('admin.metaMsgsTotal')}</strong> ch {metrics.messages_total?.channel ?? 0} · dm{' '}
                   {metrics.messages_total?.dm ?? 0}
                 </span>
                 <span>
-                  <strong>Msgs (last ~60s):</strong> ch {metrics.messages_last_60s?.channel ?? 0} · dm{' '}
+                  <strong>{t('admin.metaMsgs60')}</strong> ch {metrics.messages_last_60s?.channel ?? 0} · dm{' '}
                   {metrics.messages_last_60s?.dm ?? 0}
                 </span>
                 <span className="muted small">
-                  Process uptime: {Math.round((metrics.uptime_ms || 0) / 1000)}s (resets on deploy)
+                  {t('admin.metaProcessUptime', { sec: Math.round((metrics.uptime_ms || 0) / 1000) })}
                 </span>
               </div>
             )}
             <div className="status-grid">
               <div className="status-item">
-                <strong>API</strong>
+                <strong>{t('admin.healthApi')}</strong>
                 <div className="status-right">
-                  <StatusBadge ok={Boolean(health?.ok)} label={health?.ok ? 'OK' : 'ERROR'} />
+                  <StatusBadge
+                    ok={Boolean(health?.ok)}
+                    label={health?.ok ? t('admin.statusOk') : t('admin.statusError')}
+                  />
                   <Latency ms={deps?.deps?.api?.latency_ms} />
                 </div>
               </div>
               <div className="status-item">
-                <strong>Database</strong>
+                <strong>{t('admin.healthDb')}</strong>
                 <div className="status-right">
-                  <StatusBadge ok={Boolean(deps?.deps?.db?.ok)} label={deps?.deps?.db?.ok ? 'OK' : 'ERROR'} />
+                  <StatusBadge
+                    ok={Boolean(deps?.deps?.db?.ok)}
+                    label={deps?.deps?.db?.ok ? t('admin.statusOk') : t('admin.statusError')}
+                  />
                   <Latency ms={deps?.deps?.db?.latency_ms} />
                 </div>
               </div>
               <div className="status-item">
-                <strong>Redis</strong>
+                <strong>{t('admin.healthRedis')}</strong>
                 <div className="status-right">
                   <StatusBadge
                     ok={Boolean(deps?.deps?.redis?.ok)}
                     label={
                       deps?.deps?.redis?.enabled
                         ? deps?.deps?.redis?.ok
-                          ? 'OK'
-                          : 'ERROR'
-                        : 'NO CONFIG'
+                          ? t('admin.statusOk')
+                          : t('admin.statusError')
+                        : t('admin.statusNoConfig')
                     }
                   />
                   <Latency ms={deps?.deps?.redis?.latency_ms} />
                 </div>
               </div>
               <div className="status-item">
-                <strong>Storage ({deps?.deps?.storage?.driver || 'local'})</strong>
+                <strong>
+                  {t('admin.healthStorage')} ({deps?.deps?.storage?.driver || 'local'})
+                </strong>
                 <div className="status-right">
                   <StatusBadge
                     ok={Boolean(deps?.deps?.storage?.ok)}
-                    label={deps?.deps?.storage?.ok ? 'OK' : 'ERROR'}
+                    label={deps?.deps?.storage?.ok ? t('admin.statusOk') : t('admin.statusError')}
                   />
                   <Latency ms={deps?.deps?.storage?.latency_ms} />
                 </div>
               </div>
               <div className="status-item">
-                <strong>Streamer Scheduler API</strong>
+                <strong>{t('admin.healthScheduler')}</strong>
                 <div className="status-right">
                   <StatusBadge
                     ok={
@@ -503,17 +519,17 @@ export default function DashboardAdmin({ embedded = false }) {
                     }
                     label={
                       !deps?.deps?.scheduler?.configured
-                        ? 'NOT SET'
+                        ? t('admin.statusNotSet')
                         : deps?.deps?.scheduler?.ok
-                          ? 'OK'
-                          : 'ERROR'
+                          ? t('admin.statusOk')
+                          : t('admin.statusError')
                     }
                   />
                   <Latency ms={deps?.deps?.scheduler?.latency_ms} />
                   {deps?.deps?.scheduler?.version ? (
                     <span className="muted small" style={{ marginLeft: '0.35rem' }}>
-                      {deps.deps.scheduler.service || 'scheduler'} v{deps.deps.scheduler.version}
-                      {deps?.deps?.scheduler?.legacy ? ' (legacy API)' : ''}
+                      {deps.deps.scheduler.service || t('admin.schedulerFallback')} v{deps.deps.scheduler.version}
+                      {deps?.deps?.scheduler?.legacy ? ` ${t('admin.legacyApi')}` : ''}
                     </span>
                   ) : null}
                 </div>
@@ -527,10 +543,10 @@ export default function DashboardAdmin({ embedded = false }) {
 
             <div className="status-actions">
               <button type="button" className="btn secondary" onClick={load}>
-                Retry
+                {t('admin.retry')}
               </button>
               <a href={docsUrl} target="_blank" rel="noreferrer" className="btn ghost">
-                API Docs
+                {t('admin.apiDocs')}
               </a>
               {deps?.deps?.scheduler?.admin_url ? (
                 <a
@@ -539,22 +555,22 @@ export default function DashboardAdmin({ embedded = false }) {
                   rel="noreferrer"
                   className="btn ghost"
                 >
-                  Scheduler Admin
+                  {t('admin.schedulerAdmin')}
                 </a>
               ) : null}
             </div>
 
             <div className="status-history">
-              <h3>Recent checks history</h3>
+              <h3>{t('admin.historyChecksTitle')}</h3>
               {history.length === 0 ? (
-                <p className="muted small">No history yet.</p>
+                <p className="muted small">{t('admin.historyEmpty')}</p>
               ) : (
                 <ul>
                   {history.map((h, i) => (
                     <li key={`${h.at}-${i}`}>
                       <span>{new Date(h.at).toLocaleTimeString()}</span>
-                      <span>{h.ok ? 'OK' : 'ERROR'}</span>
-                      <span>{h.total ?? 'n/a'} ms</span>
+                      <span>{h.ok ? t('admin.statusOk') : t('admin.statusError')}</span>
+                      <span>{h.total ?? t('admin.na')} ms</span>
                     </li>
                   ))}
                 </ul>
@@ -562,16 +578,16 @@ export default function DashboardAdmin({ embedded = false }) {
             </div>
 
             <div className="status-history">
-              <h3>Recent moderation audit logs</h3>
+              <h3>{t('admin.auditTitle')}</h3>
               <form onSubmit={applyAuditFilters} className="form-inline" style={{ marginBottom: '0.6rem', gap: '0.4rem', flexWrap: 'wrap' }}>
                 <input
-                  placeholder="Action (e.g. message_pin)"
+                  placeholder={t('admin.auditActionPh')}
                   value={auditAction}
                   onChange={(e) => setAuditAction(e.target.value)}
                   style={{ minWidth: '180px' }}
                 />
                 <input
-                  placeholder="Server ID"
+                  placeholder={t('admin.auditServerIdPh')}
                   value={auditServerId}
                   onChange={(e) => setAuditServerId(e.target.value)}
                   style={{ width: '120px' }}
@@ -580,19 +596,23 @@ export default function DashboardAdmin({ embedded = false }) {
                   type="datetime-local"
                   value={auditFrom}
                   onChange={(e) => setAuditFrom(e.target.value)}
-                  title="From"
+                  title={t('admin.auditFromTitle')}
                 />
                 <input
                   type="datetime-local"
                   value={auditTo}
                   onChange={(e) => setAuditTo(e.target.value)}
-                  title="To"
+                  title={t('admin.auditToTitle')}
                 />
-                <button type="submit" className="btn secondary">Apply</button>
-                <button type="button" className="btn ghost" onClick={clearAuditFilters}>Clear</button>
+                <button type="submit" className="btn secondary">
+                  {t('admin.apply')}
+                </button>
+                <button type="button" className="btn ghost" onClick={clearAuditFilters}>
+                  {t('admin.clear')}
+                </button>
               </form>
               {auditLogs.length === 0 ? (
-                <p className="muted small">No audit logs yet.</p>
+                <p className="muted small">{t('admin.auditEmpty')}</p>
               ) : (
                 <ul>
                   {auditLogs.map((log) => (
@@ -611,7 +631,7 @@ export default function DashboardAdmin({ embedded = false }) {
                   disabled={!canPrev}
                   onClick={() => setAuditOffset((v) => Math.max(0, v - auditLimit))}
                 >
-                  Previous
+                  {t('admin.previous')}
                 </button>
                 <button
                   type="button"
@@ -619,52 +639,65 @@ export default function DashboardAdmin({ embedded = false }) {
                   disabled={!canNext}
                   onClick={() => setAuditOffset((v) => v + auditLimit)}
                 >
-                  Next
+                  {t('admin.next')}
                 </button>
                 <span className="muted small" style={{ margin: 0 }}>
-                  Showing {auditTotal === 0 ? 0 : auditOffset + 1}-{Math.min(auditOffset + auditLimit, auditTotal)} of {auditTotal}
+                  {t('admin.showingRange', {
+                    from: auditTotal === 0 ? 0 : auditOffset + 1,
+                    to: Math.min(auditOffset + auditLimit, auditTotal),
+                    total: auditTotal,
+                  })}
                 </span>
               </div>
             </div>
             <div className="status-history">
-              <h3>Message reports moderation</h3>
+              <h3>{t('admin.reportsTitle')}</h3>
               {!reportsEndpointAvailable ? (
-                <p className="muted small">
-                  Message reports endpoint is not available in this backend build (`/admin/reports/messages` returns
-                  404).
-                </p>
+                <p className="muted small">{t('admin.reports404')}</p>
               ) : null}
               <form onSubmit={(e) => e.preventDefault()} className="form-inline" style={{ marginBottom: '0.6rem', gap: '0.4rem', flexWrap: 'wrap' }}>
                 <select value={reportStatus} onChange={(e) => { setReportStatus(e.target.value); setReportOffset(0) }}>
-                  <option value="open">Open</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="all">All</option>
+                  <option value="open">{t('admin.reportStatusOpen')}</option>
+                  <option value="resolved">{t('admin.reportStatusResolved')}</option>
+                  <option value="rejected">{t('admin.reportStatusRejected')}</option>
+                  <option value="all">{t('admin.reportStatusAll')}</option>
                 </select>
                 <input
-                  placeholder="Server ID"
+                  placeholder={t('admin.auditServerIdPh')}
                   value={reportServerId}
                   onChange={(e) => { setReportServerId(e.target.value); setReportOffset(0) }}
                   style={{ width: '120px' }}
                 />
-                <button type="button" className="btn ghost" onClick={load}>Refresh</button>
+                <button type="button" className="btn ghost" onClick={load}>
+                  {t('common.refresh')}
+                </button>
               </form>
               {reportItems.length === 0 ? (
-                <p className="muted small">No reports found.</p>
+                <p className="muted small">{t('admin.reportsEmpty')}</p>
               ) : (
                 <ul>
                   {reportItems.map((r) => (
                     <li key={`report-${r.id}`}>
                       <span>{new Date(r.created_at).toLocaleTimeString()}</span>
                       <span>
-                        {r.report_action === 'dm_message_report_user' ? 'DM' : 'Channel'} · #{r.id} · msg:
-                        {r.target_message_id ?? 'n/a'} · by {r.reporter_username || `user:${r.reporter_user_id}`}
+                        {r.report_action === 'dm_message_report_user'
+                          ? t('admin.reportLineDm')
+                          : t('admin.reportLineChannel')}{' '}
+                        · #{r.id} · {t('admin.reportLineMsg')}
+                        {r.target_message_id ?? t('admin.reportLineNa')} · {t('admin.reportLineBy')}{' '}
+                        {r.reporter_username || `user:${r.reporter_user_id}`}
                       </span>
                       <span>{reportStatusLabel(r.metadata)}</span>
                       <span style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'resolved')}>Resolve</button>
-                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'rejected')}>Reject</button>
-                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'open')}>Reopen</button>
+                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'resolved')}>
+                          {t('admin.resolve')}
+                        </button>
+                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'rejected')}>
+                          {t('admin.reject')}
+                        </button>
+                        <button type="button" className="btn ghost small" onClick={() => updateReportStatus(r.id, 'open')}>
+                          {t('admin.reopen')}
+                        </button>
                       </span>
                     </li>
                   ))}
@@ -677,7 +710,7 @@ export default function DashboardAdmin({ embedded = false }) {
                   disabled={!canPrevReports}
                   onClick={() => setReportOffset((v) => Math.max(0, v - reportLimit))}
                 >
-                  Previous
+                  {t('admin.previous')}
                 </button>
                 <button
                   type="button"
@@ -685,10 +718,14 @@ export default function DashboardAdmin({ embedded = false }) {
                   disabled={!canNextReports}
                   onClick={() => setReportOffset((v) => v + reportLimit)}
                 >
-                  Next
+                  {t('admin.next')}
                 </button>
                 <span className="muted small" style={{ margin: 0 }}>
-                  Showing {reportTotal === 0 ? 0 : reportOffset + 1}-{Math.min(reportOffset + reportLimit, reportTotal)} of {reportTotal}
+                  {t('admin.showingRange', {
+                    from: reportTotal === 0 ? 0 : reportOffset + 1,
+                    to: Math.min(reportOffset + reportLimit, reportTotal),
+                    total: reportTotal,
+                  })}
                 </span>
               </div>
             </div>

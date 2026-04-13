@@ -1,9 +1,10 @@
+import { useTranslation } from 'react-i18next'
 import ChannelPermissionsPanel from './ChannelPermissionsPanel'
 
-function channelTypeLabel(type) {
-  if (type === 'voice') return 'Voice'
-  if (type === 'text') return 'Text'
-  return 'Channel'
+function channelTypeLabel(type, t) {
+  if (type === 'voice') return t('channelSettings.typeVoice')
+  if (type === 'text') return t('channelSettings.typeText')
+  return t('channelSettings.typeChannel')
 }
 
 export default function ChannelSettingsModal({
@@ -20,9 +21,10 @@ export default function ChannelSettingsModal({
   categories,
   onUpdateChannel,
 }) {
+  const { t } = useTranslation()
   if (!open) return null
 
-  const t = activeChannel?.type
+  const channelType = activeChannel?.type
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -35,23 +37,24 @@ export default function ChannelSettingsModal({
       >
         <header className="modal-header channel-settings-modal-header">
           <div className="channel-settings-modal-header-text">
-            <p className="channel-settings-modal-kicker">Channel settings</p>
+            <p className="channel-settings-modal-kicker">{t('channelSettings.kicker')}</p>
             <h3 id="channel-settings-title" className="channel-settings-modal-title">
-              <span className="channel-settings-modal-name">{activeChannel?.name || 'Channel'}</span>
+              <span className="channel-settings-modal-name">
+                {activeChannel?.name || t('channelSettings.fallbackName')}
+              </span>
               <span
-                className={`channel-settings-type-badge${t === 'voice' ? ' channel-settings-type-badge--voice' : ''}`}
+                className={`channel-settings-type-badge${channelType === 'voice' ? ' channel-settings-type-badge--voice' : ''}`}
               >
-                {channelTypeLabel(t)}
+                {channelTypeLabel(channelType, t)}
               </span>
             </h3>
           </div>
           <button type="button" className="btn ghost small" onClick={onClose}>
-            Close
+            {t('common.close')}
           </button>
         </header>
 
         <ChannelPermissionsPanel
-          channelName={activeChannel?.name}
           channelType={activeChannel?.type}
           permissions={permissions}
           onTogglePermission={onTogglePermission}

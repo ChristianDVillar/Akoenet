@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
 import { postAuthDestination } from '../lib/postAuthDestination'
 import AuthLegalStrip from '../components/AuthLegalStrip'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
 export default function RegisterComplete() {
+  const { t } = useTranslation()
   const { registerComplete, user, loading } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -36,7 +39,7 @@ export default function RegisterComplete() {
     async function load() {
       if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
         setPendingLoading(false)
-        setLoadError('Invalid or missing link. Request a new registration email.')
+        setLoadError(t('registerComplete.invalidToken'))
         return
       }
       setLoadError('')
@@ -50,8 +53,8 @@ export default function RegisterComplete() {
         if (cancelled) return
         setLoadError(
           err.response?.data?.error === 'invalid_or_expired_token'
-            ? 'This link is invalid or has expired. Start again from Sign up.'
-            : 'Could not verify this link.'
+            ? t('registerComplete.tokenExpired')
+            : t('registerComplete.tokenVerifyFailed')
         )
       } finally {
         if (!cancelled) setPendingLoading(false)
@@ -61,16 +64,16 @@ export default function RegisterComplete() {
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [token, t])
 
   async function onSubmit(e) {
     e.preventDefault()
     if (!acceptLegal) {
-      setError('You must accept the terms and privacy policy to register.')
+      setError(t('registerComplete.acceptRequired'))
       return
     }
     if (!birthDate) {
-      setError('Date of birth is required')
+      setError(t('registerComplete.birthRequired'))
       return
     }
     setError('')
@@ -114,12 +117,12 @@ export default function RegisterComplete() {
       }
       const msg =
         code === 'Email already registered'
-          ? 'That email is already registered'
+          ? t('registerComplete.errEmailTaken')
           : code === 'invalid_or_expired_token'
-            ? 'This link is invalid or has expired. Request a new email from Sign up.'
+            ? t('registerComplete.errToken')
             : code === 'blocked_content'
-              ? err.response?.data?.message || 'That username is not allowed.'
-              : 'Could not complete registration'
+              ? err.response?.data?.message || t('registerComplete.errBlocked')
+              : t('registerComplete.errGeneric')
       setError(msg)
     } finally {
       setBusy(false)
@@ -129,7 +132,7 @@ export default function RegisterComplete() {
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('registerComplete.loading')}</p>
       </div>
     )
   }
@@ -137,31 +140,34 @@ export default function RegisterComplete() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="brand-block">
-          <span className="brand-akoenet">AkoeNet</span>
-          <span className="brand-sub">Community</span>
+        <div className="auth-card-top-row">
+          <div className="brand-block">
+            <span className="brand-akoenet">AkoeNet</span>
+            <span className="brand-sub">{t('common.community')}</span>
+          </div>
+          <LanguageSwitcher />
         </div>
         <p className="muted small" style={{ marginBottom: '0.75rem' }}>
-          <Link to="/">← Home</Link>
+          <Link to="/">{t('registerComplete.homeLink')}</Link>
         </p>
-        <h1>Finish sign up</h1>
+        <h1>{t('registerComplete.title')}</h1>
         <p className="muted">
           {emailMasked
-            ? `Confirming address ${emailMasked}. Choose your username and password.`
-            : 'Choose your username and password to activate your account.'}
+            ? t('registerComplete.leadMasked', { email: emailMasked })
+            : t('registerComplete.leadDefault')}
         </p>
-        {pendingLoading && <p className="muted">Checking your link…</p>}
+        {pendingLoading && <p className="muted">{t('registerComplete.checkingLink')}</p>}
         {loadError && <div className="error-banner">{loadError}</div>}
         {loadError && (
           <p className="muted small">
-            <Link to="/register">← Back to sign up</Link>
+            <Link to="/register">{t('registerComplete.backSignUp')}</Link>
           </p>
         )}
         {!pendingLoading && !loadError && (
           <form onSubmit={onSubmit} className="form-stack">
             {error && <div className="error-banner">{error}</div>}
             <label>
-              Username
+              {t('registerComplete.username')}
               <input
                 id="register-complete-username"
                 name="username"
@@ -173,7 +179,7 @@ export default function RegisterComplete() {
               />
             </label>
             <label>
-              Password
+              {t('registerComplete.password')}
               <input
                 id="register-complete-password"
                 name="password"
@@ -186,7 +192,7 @@ export default function RegisterComplete() {
               />
             </label>
             <label>
-              Date of birth
+              {t('registerComplete.birthDate')}
               <input
                 id="register-complete-birth-date"
                 name="birth_date"
@@ -195,19 +201,19 @@ export default function RegisterComplete() {
                 onChange={(e) => setBirthDate(e.target.value)}
                 required
                 max={(() => {
-                  const t = new Date()
-                  t.setFullYear(t.getFullYear() - 13)
-                  return t.toISOString().slice(0, 10)
+                  const d = new Date()
+                  d.setFullYear(d.getFullYear() - 13)
+                  return d.toISOString().slice(0, 10)
                 })()}
                 min={(() => {
-                  const t = new Date()
-                  t.setFullYear(t.getFullYear() - 120)
-                  return t.toISOString().slice(0, 10)
+                  const d = new Date()
+                  d.setFullYear(d.getFullYear() - 120)
+                  return d.toISOString().slice(0, 10)
                 })()}
                 autoComplete="bday"
               />
               <span className="muted small" style={{ display: 'block', marginTop: 4 }}>
-                You must be at least 13 years old. We use this only for age verification.
+                {t('registerComplete.birthHint')}
               </span>
             </label>
             <label className="invite-toggle">
@@ -220,21 +226,23 @@ export default function RegisterComplete() {
                 required
               />
               <span>
-                I accept the <Link to="/legal/terminos">terms</Link> and{' '}
-                <Link to="/legal/privacidad">privacy policy</Link>.
+                {t('registerComplete.acceptLegalPrefix')}{' '}
+                <Link to="/legal/terminos">{t('common.termsShort')}</Link> {t('registerComplete.acceptLegalMid')}{' '}
+                <Link to="/legal/privacidad">{t('common.privacyShort')}</Link>.
               </span>
             </label>
             <button type="submit" className="btn primary" disabled={busy}>
-              {busy ? 'Creating…' : 'Create account'}
+              {busy ? t('registerComplete.creating') : t('registerComplete.createAccount')}
             </button>
           </form>
         )}
         <p className="muted small legal-register-note">
-          By signing up you agree to the <Link to="/legal/terminos">terms</Link> and{' '}
-          <Link to="/legal/privacidad">privacy policy</Link>.
+          {t('registerComplete.legalFooterPrefix')}{' '}
+          <Link to="/legal/terminos">{t('common.termsShort')}</Link> {t('registerComplete.legalFooterMid')}{' '}
+          <Link to="/legal/privacidad">{t('common.privacyShort')}</Link>.
         </p>
         <p className="muted small">
-          Already have an account? <Link to="/login">Sign in</Link>
+          {t('registerComplete.haveAccount')} <Link to="/login">{t('registerComplete.signIn')}</Link>
         </p>
         <AuthLegalStrip />
       </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -6,9 +7,9 @@ import { useAuth } from '../context/AuthContext'
  * Maps backend /integrations/scheduler/upcoming errors to UI hints.
  * 502 = proxy OK but Scheduler unreachable or returned an error (see response body `error`, `httpStatus`).
  */
-function schedulerEventTitle(e) {
-  if (!e || typeof e !== 'object') return 'Stream'
-  return String(e.title || e.name || e.summary || 'Stream').trim()
+function schedulerEventTitle(e, tr) {
+  if (!e || typeof e !== 'object') return tr('schedulerWidget.streamFallback')
+  return String(e.title || e.name || e.summary || tr('schedulerWidget.streamFallback')).trim()
 }
 
 function schedulerEventLink(ev) {
@@ -38,47 +39,42 @@ function schedulerEventStart(ev) {
   )
 }
 
-function describeSchedulerError(data) {
+function describeSchedulerError(data, tr) {
   const err = data?.error
   const http = data?.httpStatus
   if (err === 'scheduler_api_invalid_response') {
     return {
-      title: 'Scheduler URL returned a web page, not JSON',
-      body:
-        'SCHEDULER_API_BASE_URL is probably the app/dashboard host. The backend must call the Scheduler HTTP API that returns JSON (often a different origin or path). Check your Scheduler docs for the public API base URL and set SCHEDULER_API_BASE_URL (and SCHEDULER_UPCOMING_PATH or SCHEDULER_UPCOMING_URL_TEMPLATE) accordingly.',
+      title: tr('schedulerWidget.errInvalidJsonTitle'),
+      body: tr('schedulerWidget.errInvalidJsonBody'),
     }
   }
   if (err === 'scheduler_api_fetch_failed') {
     return {
-      title: 'Cannot reach the Scheduler',
-      body:
-        'The backend could not connect to the Scheduler (timeout, DNS, or connection refused). Check SCHEDULER_API_BASE_URL, that the Scheduler is running, and from Docker use a URL the backend container can reach (e.g. host.docker.internal, not only localhost from the host).',
+      title: tr('schedulerWidget.errCannotReachTitle'),
+      body: tr('schedulerWidget.errCannotReachBody'),
     }
   }
   if (err === 'scheduler_api_http_error' && http === 404) {
     return {
-      title: 'Scheduler: streamer not found',
-      body:
-        'The Scheduler API returned 404 for this username. In User settings, set “Streamer Scheduler username” to your public /streamer/… slug if it differs from Twitch. Or use SCHEDULER_DEFAULT_STREAMER_USERNAME / ?username= with the Scheduler slug. Path default: /api/streamer/{username}/events.',
+      title: tr('schedulerWidget.errStreamer404Title'),
+      body: tr('schedulerWidget.errStreamer404Body'),
     }
   }
   if (err === 'scheduler_api_http_error' && (http === 401 || http === 403)) {
     return {
-      title: 'Scheduler: unauthorized',
-      body:
-        'The Scheduler rejected the request. If your API requires a token, set SCHEDULER_API_TOKEN (or SCHEDULER_API_EXTRA_HEADER / VALUE) in the backend .env.',
+      title: tr('schedulerWidget.errUnauthorizedTitle'),
+      body: tr('schedulerWidget.errUnauthorizedBody'),
     }
   }
   if (err === 'scheduler_api_http_error') {
     return {
-      title: `Scheduler returned HTTP ${http ?? 'error'}`,
-      body:
-        'The Scheduler responded with an error. Check Scheduler logs and that SCHEDULER_API_BASE_URL and path template are correct.',
+      title: tr('schedulerWidget.errHttpTitle', { http: http ?? 'error' }),
+      body: tr('schedulerWidget.errHttpBody'),
     }
   }
   return {
-    title: 'Could not load the schedule',
-    body: 'See the Network tab for the response body from /integrations/scheduler/upcoming.',
+    title: tr('schedulerWidget.errGenericTitle'),
+    body: tr('schedulerWidget.errGenericBody'),
   }
 }
 
@@ -87,6 +83,7 @@ function describeSchedulerError(data) {
  * @param {string} [props.streamerUsername] Optional override (e.g. VITE_SCHEDULER_STREAMER_USERNAME). Otherwise the backend uses the signed-in user's Twitch login.
  */
 export default function SchedulerUpcomingWidget({ streamerUsername: streamerUsernameOverride }) {
+  const { t } = useTranslation()
   const { loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   const [formatted, setFormatted] = useState('')
@@ -126,14 +123,14 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
         setError('scheduler_api_not_configured')
       } else if (status === 502) {
         setError('scheduler_proxy_failed')
-        setSchedulerErrorDetail(describeSchedulerError(resData))
+        setSchedulerErrorDetail(describeSchedulerError(resData, t))
       } else {
         setError('fetch_failed')
       }
     } finally {
       setLoading(false)
     }
-  }, [authLoading, streamerUsernameOverride])
+  }, [authLoading, streamerUsernameOverride, t])
 
   useEffect(() => {
     load()
@@ -141,38 +138,32 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
 
   if (authLoading) {
     return (
-      <section className="scheduler-widget scheduler-widget--muted" aria-label="Streams">
-        <div className="scheduler-widget-head">📅 Streams</div>
-        <p className="scheduler-widget-hint muted">Loading…</p>
+      <section className="scheduler-widget scheduler-widget--muted" aria-label={t('schedulerWidget.ariaStreams')}>
+        <div className="scheduler-widget-head">{t('schedulerWidget.headStreams')}</div>
+        <p className="scheduler-widget-hint muted">{t('schedulerWidget.loading')}</p>
       </section>
     )
   }
 
   if (error === 'missing_streamer' && !String(streamerUsernameOverride || '').trim()) {
     return (
-      <section className="scheduler-widget scheduler-widget--muted" aria-label="Streams">
-        <div className="scheduler-widget-head">📅 Streams</div>
-        <p className="scheduler-widget-hint">
-          Sign in with Twitch to link your channel and show your schedule here. You can also set{' '}
-          <code>SCHEDULER_DEFAULT_STREAMER_USERNAME</code> on the server or{' '}
-          <code>VITE_SCHEDULER_STREAMER_USERNAME</code> as a frontend override.
-        </p>
+      <section className="scheduler-widget scheduler-widget--muted" aria-label={t('schedulerWidget.ariaStreams')}>
+        <div className="scheduler-widget-head">{t('schedulerWidget.headStreams')}</div>
+        <p className="scheduler-widget-hint">{t('schedulerWidget.missingStreamerHint')}</p>
       </section>
     )
   }
 
   return (
-    <section className="scheduler-widget" aria-label="Upcoming streams">
+    <section className="scheduler-widget" aria-label={t('schedulerWidget.ariaUpcoming')}>
       <div className="scheduler-widget-head">
-        <span>📅 Upcoming streams</span>
+        <span>{t('schedulerWidget.headUpcoming')}</span>
         <button type="button" className="btn ghost small scheduler-widget-refresh" onClick={load} disabled={loading}>
           {loading ? '…' : '↻'}
         </button>
       </div>
       {error === 'scheduler_api_not_configured' && (
-        <p className="scheduler-widget-hint">
-          Set <code>SCHEDULER_API_BASE_URL</code> in the backend environment.
-        </p>
+        <p className="scheduler-widget-hint">{t('schedulerWidget.notConfiguredHint')}</p>
       )}
       {error === 'scheduler_proxy_failed' && !loading && schedulerErrorDetail && (
         <div className="scheduler-widget-hint">
@@ -183,12 +174,12 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
         </div>
       )}
       {error === 'fetch_failed' && !loading && (
-        <p className="scheduler-widget-hint">Could not load the schedule.</p>
+        <p className="scheduler-widget-hint">{t('schedulerWidget.fetchFailed')}</p>
       )}
       {!error && !loading && events.length > 0 && (
         <ul className="scheduler-widget-events">
           {events.slice(0, 10).map((ev, i) => {
-            const title = schedulerEventTitle(ev)
+            const title = schedulerEventTitle(ev, t)
             const link = schedulerEventLink(ev)
             const start = schedulerEventStart(ev)
             const when = start
@@ -209,7 +200,7 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
                         )
                       }}
                     >
-                      Insert link in chat
+                      {t('schedulerWidget.insertLink')}
                     </button>
                   </div>
                 ) : null}
@@ -222,7 +213,7 @@ export default function SchedulerUpcomingWidget({ streamerUsername: streamerUser
         <pre className="scheduler-widget-body">{formatted}</pre>
       )}
       {!error && !loading && events.length === 0 && !formatted && (
-        <p className="scheduler-widget-hint muted">No upcoming events.</p>
+        <p className="scheduler-widget-hint muted">{t('schedulerWidget.noEvents')}</p>
       )}
     </section>
   )

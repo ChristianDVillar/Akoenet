@@ -2,15 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const rawData = window.atob(base64)
-  const outputArray = new Uint8Array(rawData.length)
-  for (let i = 0; i < rawData.length; i += 1) outputArray[i] = rawData.charCodeAt(i)
-  return outputArray
-}
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import {
   buildMicTestMonitorGraph,
@@ -27,6 +18,16 @@ import {
   saveTheme,
 } from '../lib/themePreferences'
 import { isTauri } from '../lib/isTauri'
+import LanguageSwitcher from './LanguageSwitcher'
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; i += 1) outputArray[i] = rawData.charCodeAt(i)
+  return outputArray
+}
 
 function toNullable(value) {
   const trimmed = value.trim()
@@ -125,8 +126,8 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   useEffect(() => {
     if (!open || !themeReady) return
     if (activeSection === 'appearance') {
-      const t = saveTheme(user?.id, uiTheme)
-      applyTheme(t, { accentColor: accentColor || user?.accent_color })
+      const appliedTheme = saveTheme(user?.id, uiTheme)
+      applyTheme(appliedTheme, { accentColor: accentColor || user?.accent_color })
     } else {
       applyTheme(loadTheme(user?.id), { accentColor: accentColor || user?.accent_color })
     }
@@ -205,9 +206,9 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       a.download = `akoenet-user-${user?.id}-export.json`
       a.click()
       window.URL.revokeObjectURL(url)
-      setInfo('Data export downloaded.')
+      setInfo(t('userSettings.account.exportDone'))
     } catch {
-      setError('Could not download your data export.')
+      setError(t('userSettings.account.exportFail'))
     } finally {
       setExportBusy(false)
     }
@@ -215,7 +216,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
 
   async function eraseMyAccount() {
     if (eraseConfirm.trim().toUpperCase() !== 'DELETE') {
-      setError('Type DELETE in the box to confirm account erasure.')
+      setError(t('userSettings.account.eraseConfirmError'))
       return
     }
     setEraseBusy(true)
@@ -226,7 +227,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       onClose()
       logout()
     } catch {
-      setError('Could not erase account. Try again or contact support.')
+      setError(t('userSettings.account.eraseFail'))
     } finally {
       setEraseBusy(false)
     }
@@ -323,11 +324,11 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
 
   async function saveUserSettings() {
     if (!username.trim()) {
-      setError('Username is required')
+      setError(t('userSettings.errors.usernameRequired'))
       return
     }
     if (newPassword && !currentPassword) {
-      setError('Current password is required to set a new password')
+      setError(t('userSettings.errors.passwordRequired'))
       return
     }
     setSaving(true)
@@ -349,13 +350,13 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       await refreshUser()
       setCurrentPassword('')
       setNewPassword('')
-      setInfo('Settings saved')
+      setInfo(t('userSettings.errors.settingsSaved'))
     } catch (err) {
       const code = err.response?.data?.error
       setError(
         code === 'blocked_content'
-          ? err.response?.data?.message || 'That text is not allowed.'
-          : err.response?.data?.error || 'Could not save settings'
+          ? err.response?.data?.message || t('userSettings.errors.notAllowed')
+          : err.response?.data?.error || t('userSettings.errors.saveFailed')
       )
     } finally {
       setSaving(false)
@@ -397,7 +398,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       streamRef.current = stream
       const Ctx = window.AudioContext || window.webkitAudioContext
       if (!Ctx) {
-        setError('AudioContext is not supported in this browser')
+        setError(t('voiceSettings.errAudioContext'))
         stopMicTest()
         return
       }
@@ -416,13 +417,13 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
       startLoop()
       setTesting(true)
     } catch {
-      setError('Microphone access is not available for the test')
+      setError(t('voiceSettings.errMicAccess'))
     }
   }
 
   function stopMicTest() {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop())
+      streamRef.current.getTracks().forEach((track) => track.stop())
       streamRef.current = null
     }
     if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
@@ -444,9 +445,9 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div className="modal-card user-settings-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
-          <h3>User settings</h3>
+          <h3>{t('userSettings.modalTitle')}</h3>
           <button type="button" className="btn ghost small" onClick={onClose}>
-            Close
+            {t('userSettings.close')}
           </button>
         </header>
 
@@ -455,14 +456,22 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
 
         <div className="settings-split-layout">
           <aside className="settings-split-nav">
-            <button type="button" className={`settings-split-nav-btn ${activeSection === 'profile' ? 'active' : ''}`} onClick={() => setActiveSection('profile')}>Profile</button>
-            <button type="button" className={`settings-split-nav-btn ${activeSection === 'appearance' ? 'active' : ''}`} onClick={() => setActiveSection('appearance')}>Appearance</button>
+            <button type="button" className={`settings-split-nav-btn ${activeSection === 'profile' ? 'active' : ''}`} onClick={() => setActiveSection('profile')}>{t('userSettings.navProfile')}</button>
+            <button type="button" className={`settings-split-nav-btn ${activeSection === 'language' ? 'active' : ''}`} onClick={() => setActiveSection('language')}>{t('userSettings.navLanguage')}</button>
+            <button type="button" className={`settings-split-nav-btn ${activeSection === 'appearance' ? 'active' : ''}`} onClick={() => setActiveSection('appearance')}>{t('userSettings.navAppearance')}</button>
             <button type="button" className={`settings-split-nav-btn ${activeSection === 'activity' ? 'active' : ''}`} onClick={() => setActiveSection('activity')}>{t('userSettings.activity.navTab')}</button>
-            <button type="button" className={`settings-split-nav-btn ${activeSection === 'account' ? 'active' : ''}`} onClick={() => setActiveSection('account')}>Account</button>
-            <button type="button" className={`settings-split-nav-btn ${activeSection === 'voice' ? 'active' : ''}`} onClick={() => setActiveSection('voice')}>Voice</button>
+            <button type="button" className={`settings-split-nav-btn ${activeSection === 'account' ? 'active' : ''}`} onClick={() => setActiveSection('account')}>{t('userSettings.navAccount')}</button>
+            <button type="button" className={`settings-split-nav-btn ${activeSection === 'voice' ? 'active' : ''}`} onClick={() => setActiveSection('voice')}>{t('userSettings.navVoice')}</button>
           </aside>
 
           <section className="settings-split-content">
+            {activeSection === 'language' && (
+              <div className="form-stack">
+                <h4 style={{ margin: '0 0 0.35rem', fontSize: '1rem' }}>{t('userSettings.languageTitle')}</h4>
+                <p className="muted small">{t('userSettings.languageHint')}</p>
+                <LanguageSwitcher />
+              </div>
+            )}
             {activeSection === 'profile' && (
               <form onSubmit={(e) => { e.preventDefault(); saveUserSettings() }} className="form-stack">
                 <div style={previewStyle}>
@@ -471,7 +480,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                     {avatarUrl && !avatarPreviewFailed ? (
                       <img
                         src={resolveImageUrl(avatarUrl)}
-                        alt="avatar preview"
+                        alt={t('userSettings.profile.avatarPreviewAlt')}
                         style={{ width: 42, height: 42, borderRadius: '999px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.2)' }}
                         onError={() => setAvatarPreviewFailed(true)}
                       />
@@ -487,34 +496,71 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 8, height: 8, borderRadius: '999px', display: 'inline-block', background: presenceStatus === 'online' ? '#22c55e' : presenceStatus === 'idle' ? '#f59e0b' : presenceStatus === 'dnd' ? '#ef4444' : '#6b7280' }} />
-                        {username || 'User'}
+                        {username || t('channelList.userFallback')}
                       </div>
-                      <div className="muted small" style={{ margin: 0 }}>{customStatus || bio || 'No bio/status set'}</div>
+                      <div className="muted small" style={{ margin: 0 }}>
+                        {customStatus || bio || t('userSettings.profile.noBio')}
+                      </div>
                     </div>
                   </div>
                 </div>
-                <label>Username<input id="settings-username" name="username" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={40} /></label>
-                <label>Avatar URL<input id="settings-avatar-url" name="avatar_url" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://..." /></label>
-                <label>Banner URL<input id="settings-banner-url" name="banner_url" value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} placeholder="https://..." /></label>
-                <label>Accent color<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input id="settings-accent-color-picker" name="accent_color_picker" type="color" value={/^#([0-9a-fA-F]{6})$/.test(accentColor || '') ? accentColor : '#7c3aed'} onChange={(e) => setAccentColor(e.target.value)} style={{ width: 48, height: 34, padding: 2 }} /><input id="settings-accent-color-text" name="accent_color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} placeholder="#7c3aed" maxLength={7} /></div></label>
-                <label>Presence<select id="settings-presence-status" name="presence_status" value={presenceStatus} onChange={(e) => setPresenceStatus(e.target.value)} className="select-inline"><option value="online">Online</option><option value="idle">Idle</option><option value="dnd">Do Not Disturb</option><option value="invisible">Invisible</option></select></label>
-                <label>Custom status<input id="settings-custom-status" name="custom_status" value={customStatus} onChange={(e) => setCustomStatus(e.target.value)} maxLength={120} placeholder="What are you up to?" /></label>
-                <label>Bio<input id="settings-bio" name="bio" value={bio} onChange={(e) => setBio(e.target.value)} maxLength={240} placeholder="About you..." /></label>
-                <label>Streamer Scheduler username (public slug)<input id="settings-scheduler-slug" name="scheduler_streamer_username" value={schedulerStreamerUsername} onChange={(e) => setSchedulerStreamerUsername(e.target.value)} maxLength={80} placeholder="e.g. Test — must match /streamer/… on Streamer Scheduler" autoComplete="off" /><span className="muted small" style={{ display: 'block', marginTop: 4 }}>If your Twitch login differs from your Scheduler profile URL, set the Scheduler account name here so the sidebar schedule and !schedule use the correct API.</span></label>
-                <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save profile'}</button>
+                <label>
+                  {t('userSettings.profile.username')}
+                  <input id="settings-username" name="username" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={40} />
+                </label>
+                <label>
+                  {t('userSettings.profile.avatarUrl')}
+                  <input id="settings-avatar-url" name="avatar_url" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder={t('userSettings.profile.urlPlaceholder')} />
+                </label>
+                <label>
+                  {t('userSettings.profile.bannerUrl')}
+                  <input id="settings-banner-url" name="banner_url" value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} placeholder={t('userSettings.profile.urlPlaceholder')} />
+                </label>
+                <label>
+                  {t('userSettings.profile.accentColor')}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input id="settings-accent-color-picker" name="accent_color_picker" type="color" value={/^#([0-9a-fA-F]{6})$/.test(accentColor || '') ? accentColor : '#7c3aed'} onChange={(e) => setAccentColor(e.target.value)} style={{ width: 48, height: 34, padding: 2 }} />
+                    <input id="settings-accent-color-text" name="accent_color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} placeholder={t('userSettings.profile.accentHexPlaceholder')} maxLength={7} />
+                  </div>
+                </label>
+                <label>
+                  {t('userSettings.profile.presence')}
+                  <select id="settings-presence-status" name="presence_status" value={presenceStatus} onChange={(e) => setPresenceStatus(e.target.value)} className="select-inline">
+                    <option value="online">{t('userSettings.profile.presenceOnline')}</option>
+                    <option value="idle">{t('userSettings.profile.presenceIdle')}</option>
+                    <option value="dnd">{t('userSettings.profile.presenceDnd')}</option>
+                    <option value="invisible">{t('userSettings.profile.presenceInvisible')}</option>
+                  </select>
+                </label>
+                <label>
+                  {t('userSettings.profile.customStatus')}
+                  <input id="settings-custom-status" name="custom_status" value={customStatus} onChange={(e) => setCustomStatus(e.target.value)} maxLength={120} placeholder={t('userSettings.profile.customStatusPh')} />
+                </label>
+                <label>
+                  {t('userSettings.profile.bio')}
+                  <input id="settings-bio" name="bio" value={bio} onChange={(e) => setBio(e.target.value)} maxLength={240} placeholder={t('userSettings.profile.bioPh')} />
+                </label>
+                <label>
+                  {t('userSettings.profile.schedulerSlug')}
+                  <input id="settings-scheduler-slug" name="scheduler_streamer_username" value={schedulerStreamerUsername} onChange={(e) => setSchedulerStreamerUsername(e.target.value)} maxLength={80} placeholder={t('userSettings.profile.schedulerSlugPh')} autoComplete="off" />
+                  <span className="muted small" style={{ display: 'block', marginTop: 4 }}>{t('userSettings.profile.schedulerSlugHint')}</span>
+                </label>
+                <button type="submit" className="btn primary" disabled={saving}>
+                  {saving ? t('userSettings.profile.saving') : t('userSettings.profile.saveProfile')}
+                </button>
               </form>
             )}
 
             {activeSection === 'appearance' && (
               <div className="form-stack appearance-theme-panel">
                 <p className="muted small" style={{ margin: '0 0 0.5rem' }}>
-                  Choose light or dark appearance, or match your system. Custom colors apply only when Dark or Light is selected. Accent for buttons is saved on your profile (Profile tab).
+                  {t('userSettings.appearance.panelIntro')}
                 </p>
-                <div className="theme-mode-row" role="group" aria-label="Appearance mode">
+                <div className="theme-mode-row" role="group" aria-label={t('userSettings.appearance.modeAria')}>
                   {[
-                    { id: 'system', label: 'System' },
-                    { id: 'light', label: 'Light' },
-                    { id: 'dark', label: 'Dark' },
+                    { id: 'system', label: t('userSettings.appearance.modeSystem') },
+                    { id: 'light', label: t('userSettings.appearance.modeLight') },
+                    { id: 'dark', label: t('userSettings.appearance.modeDark') },
                   ].map(({ id, label }) => (
                     <button
                       key={id}
@@ -538,27 +584,28 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                 </div>
                 {uiTheme.colorMode === 'system' && (
                   <p className="info-banner inline" style={{ marginBottom: '0.65rem' }}>
-                    Interface follows your OS light/dark setting. Pick Light or Dark above to customize colors below.
+                    {t('userSettings.appearance.systemPickModeHint')}
                   </p>
                 )}
                 {[
-                  { key: 'bg', label: 'Page background' },
-                  { key: 'panel', label: 'Panels & cards' },
-                  { key: 'rail', label: 'Sidebar rail' },
-                  { key: 'text', label: 'Main text' },
-                  { key: 'muted', label: 'Muted text' },
-                  { key: 'echonet', label: 'Secondary accent (links, focus)' },
-                  { key: 'danger', label: 'Danger / errors' },
-                ].map(({ key, label }) => {
+                  { key: 'bg', labelKey: 'labelBg' },
+                  { key: 'panel', labelKey: 'labelPanel' },
+                  { key: 'rail', labelKey: 'labelRail' },
+                  { key: 'text', labelKey: 'labelText' },
+                  { key: 'muted', labelKey: 'labelMuted' },
+                  { key: 'echonet', labelKey: 'labelEchonet' },
+                  { key: 'danger', labelKey: 'labelDanger' },
+                ].map(({ key, labelKey }) => {
                   const hex = uiTheme[key]
                   const ok = /^#([0-9a-fA-F]{6})$/.test(hex || '')
+                  const label = t(`userSettings.appearance.${labelKey}`)
                   return (
                     <label key={key} className="theme-color-row">
                       <span className="theme-color-label">{label}</span>
                       <div className="theme-color-inputs">
                         <input
                           type="color"
-                          aria-label={`${label} color`}
+                          aria-label={t('userSettings.appearance.colorPickerAria', { label })}
                           value={ok ? hex : '#000000'}
                           disabled={uiTheme.colorMode === 'system'}
                           onChange={(e) => setUiTheme((prev) => ({ ...prev, [key]: e.target.value }))}
@@ -570,7 +617,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                           disabled={uiTheme.colorMode === 'system'}
                           onChange={(e) => setUiTheme((prev) => ({ ...prev, [key]: e.target.value }))}
                           maxLength={7}
-                          placeholder="#000000"
+                          placeholder={t('userSettings.appearance.hexPlaceholder')}
                           className="theme-color-hex"
                           spellCheck={false}
                           autoComplete="off"
@@ -580,11 +627,11 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                   )
                 })}
                 <label className="theme-color-row">
-                  <span className="theme-color-label">Border tint</span>
+                  <span className="theme-color-label">{t('userSettings.appearance.labelBorder')}</span>
                   <div className="theme-color-inputs">
                     <input
                       type="color"
-                      aria-label="Border color"
+                      aria-label={t('userSettings.appearance.borderColorAria')}
                       value={/^#([0-9a-fA-F]{6})$/.test(uiTheme.borderColor || '') ? uiTheme.borderColor : '#ffffff'}
                       disabled={uiTheme.colorMode === 'system'}
                       onChange={(e) => setUiTheme((prev) => ({ ...prev, borderColor: e.target.value }))}
@@ -596,6 +643,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                       disabled={uiTheme.colorMode === 'system'}
                       onChange={(e) => setUiTheme((prev) => ({ ...prev, borderColor: e.target.value }))}
                       maxLength={7}
+                      placeholder={t('userSettings.appearance.hexPlaceholder')}
                       className="theme-color-hex"
                       spellCheck={false}
                       autoComplete="off"
@@ -603,7 +651,9 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                   </div>
                 </label>
                 <div className="theme-border-opacity-row">
-                  <label htmlFor="theme-border-opacity">Border visibility ({uiTheme.borderOpacity}%)</label>
+                  <label htmlFor="theme-border-opacity">
+                    {t('userSettings.appearance.borderVisibility', { pct: uiTheme.borderOpacity })}
+                  </label>
                   <input
                     id="theme-border-opacity"
                     type="range"
@@ -632,10 +682,10 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                       setUiTheme(next)
                       saveTheme(user?.id, next)
                       applyTheme(next, { accentColor: accentColor || user?.accent_color })
-                      setInfo('Theme reset to defaults')
+                      setInfo(t('userSettings.appearance.themeResetToast'))
                     }}
                   >
-                    Reset to defaults
+                    {t('userSettings.appearance.resetButton')}
                   </button>
                 </div>
               </div>
@@ -644,14 +694,22 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
             {activeSection === 'account' && (
               <div className="form-stack">
                 <form onSubmit={(e) => { e.preventDefault(); saveUserSettings() }} className="form-stack">
-                  <label>Current password (required only to change password)<input id="settings-current-password" name="current_password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
-                  <label>New password<input id="settings-new-password" name="new_password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
-                  <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save account settings'}</button>
+                  <label>
+                    {t('userSettings.account.currentPasswordHint')}
+                    <input id="settings-current-password" name="current_password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                  </label>
+                  <label>
+                    {t('userSettings.account.newPassword')}
+                    <input id="settings-new-password" name="new_password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                  </label>
+                  <button type="submit" className="btn primary" disabled={saving}>
+                    {saving ? t('userSettings.profile.saving') : t('userSettings.account.saveAccountSettings')}
+                  </button>
                 </form>
                 <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>Sessions</h4>
+                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>{t('userSettings.account.sessions')}</h4>
                   <p className="muted small" style={{ margin: '0 0 0.5rem' }}>
-                    Sign out everywhere. Other devices lose refresh access; this browser session ends now.
+                    {t('userSettings.account.sessionsDetail')}
                   </p>
                   <button
                     type="button"
@@ -665,22 +723,22 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                         await logoutAllDevices()
                         onClose()
                       } catch {
-                        setError('Could not sign out all devices.')
+                        setError(t('userSettings.account.logoutAllError'))
                       } finally {
                         setLogoutAllBusy(false)
                       }
                     }}
                   >
-                    {logoutAllBusy ? 'Signing out…' : 'Sign out all devices'}
+                    {logoutAllBusy ? t('userSettings.account.signingOutAll') : t('userSettings.account.signOutAllCta')}
                   </button>
                 </div>
                 <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>Two-factor authentication</h4>
+                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>{t('userSettings.account.twofaHeading')}</h4>
                   {user?.totp_enabled ? (
                     <div className="form-stack">
-                      <p className="muted small">2FA is enabled.</p>
+                      <p className="muted small">{t('userSettings.account.twofaEnabledLine')}</p>
                       <label>
-                        Current password
+                        {t('userSettings.account.currentPassword')}
                         <input
                           type="password"
                           value={disable2faPassword}
@@ -689,7 +747,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                         />
                       </label>
                       <label>
-                        Authenticator code
+                        {t('userSettings.account.authenticatorCode')}
                         <input value={disable2faCode} onChange={(e) => setDisable2faCode(e.target.value)} />
                       </label>
                       <button
@@ -705,13 +763,13 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                             setDisable2faPassword('')
                             setDisable2faCode('')
                             await refreshUser()
-                            setInfo('2FA disabled.')
+                            setInfo(t('userSettings.account.info2faDisabled'))
                           } catch {
-                            setError('Could not disable 2FA.')
+                            setError(t('userSettings.account.errDisable2fa'))
                           }
                         }}
                       >
-                        Disable 2FA
+                        {t('userSettings.account.disable2fa')}
                       </button>
                     </div>
                   ) : (
@@ -725,21 +783,21 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                             try {
                               const { data } = await api.post('/auth/2fa/setup')
                               setTotpSetupSecret(data.secret)
-                              setInfo('Enter the secret in your authenticator app, then confirm with a code.')
+                              setInfo(t('userSettings.account.info2faSetup'))
                             } catch {
-                              setError('Could not start 2FA setup.')
+                              setError(t('userSettings.account.err2faSetup'))
                             }
                           }}
                         >
-                          Set up authenticator
+                          {t('userSettings.account.setupAuthenticator')}
                         </button>
                       ) : (
                         <>
                           <p className="muted small" style={{ wordBreak: 'break-all' }}>
-                            Secret: {totpSetupSecret}
+                            {t('userSettings.account.secretPrefix')} {totpSetupSecret}
                           </p>
                           <label>
-                            6-digit code
+                            {t('userSettings.account.code6')}
                             <input value={totpEnableCode} onChange={(e) => setTotpEnableCode(e.target.value)} />
                           </label>
                           <button
@@ -752,19 +810,19 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                                 setTotpSetupSecret('')
                                 setTotpEnableCode('')
                                 await refreshUser()
-                                setInfo('2FA enabled.')
+                                setInfo(t('userSettings.account.info2faEnabled'))
                               } catch {
-                                setError('Invalid code.')
+                                setError(t('userSettings.account.invalid2faCode'))
                               }
                             }}
                           >
-                            Enable 2FA
+                            {t('userSettings.account.enable2fa')}
                           </button>
                         </>
                       )}
                     </div>
                   )}
-                  <h4 className="muted small" style={{ margin: '1rem 0 0.5rem' }}>Browser notifications</h4>
+                  <h4 className="muted small" style={{ margin: '1rem 0 0.5rem' }}>{t('userSettings.account.browserNotif')}</h4>
                   <button
                     type="button"
                     className="btn secondary small"
@@ -773,7 +831,7 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                       try {
                         const { data } = await api.get('/auth/push/vapid-public-key')
                         if (!data?.publicKey) {
-                          setError('Push not configured (set VAPID keys on server).')
+                          setError(t('userSettings.account.errPushNotConfigured'))
                           return
                         }
                         const reg = await navigator.serviceWorker.register('/sw.js')
@@ -786,43 +844,45 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                           endpoint: j.endpoint,
                           keys: { p256dh: j.keys.p256dh, auth: j.keys.auth },
                         })
-                        setInfo('Push notifications enabled for this browser.')
+                        setInfo(t('userSettings.account.infoPushEnabled'))
                       } catch {
-                        setError('Could not enable push (HTTPS + VAPID required).')
+                        setError(t('userSettings.account.errPushEnable'))
                       }
                     }}
                   >
-                    Enable push notifications
+                    {t('userSettings.account.enablePush')}
                   </button>
                 </div>
                 <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>Data & privacy</h4>
+                  <h4 className="muted small" style={{ margin: '0 0 0.5rem' }}>{t('userSettings.account.dataPrivacy')}</h4>
                   <p className="muted small" style={{ margin: '0 0 0.75rem' }}>
-                    Download a JSON copy of your profile, memberships, and messages you sent (portability). Account deletion anonymizes your account per our retention policy.
+                    {t('userSettings.account.dataPrivacyDesc')}
                   </p>
                   <button type="button" className="btn secondary" disabled={exportBusy} onClick={downloadMyData}>
-                    {exportBusy ? 'Preparing…' : 'Download my data'}
+                    {exportBusy ? t('userSettings.account.preparingExport') : t('userSettings.account.downloadMyData')}
                   </button>
                 </div>
                 <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(239,68,68,0.25)' }}>
-                  <h4 className="muted small" style={{ margin: '0 0 0.5rem', color: '#fca5a5' }}>Delete account</h4>
+                  <h4 className="muted small" style={{ margin: '0 0 0.5rem', color: '#fca5a5' }}>{t('userSettings.account.deleteAccount')}</h4>
                   <p className="muted small" style={{ margin: '0 0 0.75rem' }}>
-                    This cannot be undone. Type <strong>DELETE</strong> to confirm, then erase your account.
+                    {t('userSettings.account.deleteWarnBefore')}
+                    <strong>DELETE</strong>
+                    {t('userSettings.account.deleteWarnAfter')}
                   </p>
                   <label>
-                    Confirmation
+                    {t('userSettings.account.confirmationLabel')}
                     <input
                       id="settings-erase-confirm"
                       name="erase_confirm"
                       type="text"
                       value={eraseConfirm}
                       onChange={(e) => setEraseConfirm(e.target.value)}
-                      placeholder="DELETE"
+                      placeholder={t('userSettings.account.deletePlaceholder')}
                       autoComplete="off"
                     />
                   </label>
                   <button type="button" className="btn danger" disabled={eraseBusy} onClick={eraseMyAccount}>
-                    {eraseBusy ? 'Erasing…' : 'Erase my account'}
+                    {eraseBusy ? t('userSettings.account.erasing') : t('userSettings.account.eraseMyAccount')}
                   </button>
                 </div>
               </div>
@@ -974,14 +1034,106 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
 
             {activeSection === 'voice' && (
               <>
-                <p className="muted small">Choose how voice starts by default and test your microphone without leaving this modal.</p>
-                <div className="voice-settings-row"><label>Microphone volume ({micGain}%)</label><input id="voice-settings-mic-gain" name="mic_gain" type="range" min="0" max="200" value={micGain} onChange={(e) => setMicGain(Number(e.target.value))} /></div>
-                <div className="voice-setting-toggle-row" style={{ marginTop: '0.5rem' }}><span className="voice-setting-toggle-label">Mic monitor while testing</span><button id="voice-settings-monitor-mic" name="monitor_mic" type="button" className={`voice-setting-toggle-btn ${monitorMic ? 'is-active' : ''}`} onClick={() => setMonitorMic((prev) => !prev)}><span className="voice-setting-toggle-icon" aria-hidden>{monitorMic ? '🎧' : '📊'}</span><span>{monitorMic ? 'On - hear mic' : 'Off - meter only'}</span></button></div>
-                <div className="voice-setting-toggle-row"><span className="voice-setting-toggle-label">Start with camera</span><button id="voice-settings-camera-enabled" name="camera_enabled" type="button" className={`voice-setting-toggle-btn ${startWithCamera ? 'is-active' : ''}`} onClick={() => setStartWithCamera((prev) => !prev)}><span className="voice-setting-toggle-icon" aria-hidden>{startWithCamera ? '📷' : '🚫'}</span><span>{startWithCamera ? 'Camera on' : 'Camera off'}</span></button></div>
-                <div className="voice-setting-toggle-row"><span className="voice-setting-toggle-label">Start muted</span><button id="voice-settings-start-muted" name="start_muted" type="button" className={`voice-setting-toggle-btn ${startMuted ? 'is-active' : ''}`} onClick={() => setStartMuted((prev) => { const next = !prev; if (!next) setStartDeafened(false); return next })}><span className="voice-setting-toggle-icon" aria-hidden>{startMuted ? '🔇' : '🎙️'}</span><span>{startMuted ? 'Muted' : 'Unmuted'}</span></button></div>
-                <div className="voice-setting-toggle-row"><span className="voice-setting-toggle-label">Start deafened</span><button id="voice-settings-start-deafened" name="start_deafened" type="button" className={`voice-setting-toggle-btn ${startDeafened ? 'is-active' : ''}`} onClick={() => setStartDeafened((prev) => { const next = !prev; if (next) setStartMuted(true); return next })}><span className="voice-setting-toggle-icon" aria-hidden>{startDeafened ? '🙉' : '👂'}</span><span>{startDeafened ? 'Deafened' : 'Listening'}</span></button></div>
-                <div className="mic-status"><span className="muted small">{testing ? monitorMic ? 'Listening to mic — adjust volume; meter shows input level' : 'Meter only — enable “Hear microphone” to listen' : 'Start test to hear the mic and see level'}</span><div className="mic-meter"><span className="mic-meter-fill" style={{ width: `${Math.max(6, Math.round(micLevel * 100))}%` }} /></div></div>
-                <div className="voice-controls">{!testing ? <button type="button" className="btn secondary" onClick={startMicTest}>Test microphone</button> : <button type="button" className="btn ghost" onClick={stopMicTest}>Stop test</button>}</div>
+                <p className="muted small">{t('userSettings.voice.tabLead')}</p>
+                <div className="voice-settings-row">
+                  <label>{t('voiceSettings.micVolume', { pct: micGain })}</label>
+                  <input
+                    id="voice-settings-mic-gain"
+                    name="mic_gain"
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={micGain}
+                    onChange={(e) => setMicGain(Number(e.target.value))}
+                  />
+                </div>
+                <div className="voice-setting-toggle-row" style={{ marginTop: '0.5rem' }}>
+                  <span className="voice-setting-toggle-label">{t('voiceSettings.micMonitorLabel')}</span>
+                  <button
+                    id="voice-settings-monitor-mic"
+                    name="monitor_mic"
+                    type="button"
+                    className={`voice-setting-toggle-btn ${monitorMic ? 'is-active' : ''}`}
+                    onClick={() => setMonitorMic((prev) => !prev)}
+                  >
+                    <span className="voice-setting-toggle-icon" aria-hidden>{monitorMic ? '🎧' : '📊'}</span>
+                    <span>{monitorMic ? t('voiceSettings.monitorOn') : t('voiceSettings.monitorOff')}</span>
+                  </button>
+                </div>
+                <div className="voice-setting-toggle-row">
+                  <span className="voice-setting-toggle-label">{t('voiceSettings.startCameraLabel')}</span>
+                  <button
+                    id="voice-settings-camera-enabled"
+                    name="camera_enabled"
+                    type="button"
+                    className={`voice-setting-toggle-btn ${startWithCamera ? 'is-active' : ''}`}
+                    onClick={() => setStartWithCamera((prev) => !prev)}
+                  >
+                    <span className="voice-setting-toggle-icon" aria-hidden>{startWithCamera ? '📷' : '🚫'}</span>
+                    <span>{startWithCamera ? t('voiceSettings.cameraOn') : t('voiceSettings.cameraOff')}</span>
+                  </button>
+                </div>
+                <div className="voice-setting-toggle-row">
+                  <span className="voice-setting-toggle-label">{t('voiceSettings.startMutedLabel')}</span>
+                  <button
+                    id="voice-settings-start-muted"
+                    name="start_muted"
+                    type="button"
+                    className={`voice-setting-toggle-btn ${startMuted ? 'is-active' : ''}`}
+                    onClick={() =>
+                      setStartMuted((prev) => {
+                        const next = !prev
+                        if (!next) setStartDeafened(false)
+                        return next
+                      })
+                    }
+                  >
+                    <span className="voice-setting-toggle-icon" aria-hidden>{startMuted ? '🔇' : '🎙️'}</span>
+                    <span>{startMuted ? t('voiceSettings.muted') : t('voiceSettings.unmuted')}</span>
+                  </button>
+                </div>
+                <div className="voice-setting-toggle-row">
+                  <span className="voice-setting-toggle-label">{t('voiceSettings.startDeafenedLabel')}</span>
+                  <button
+                    id="voice-settings-start-deafened"
+                    name="start_deafened"
+                    type="button"
+                    className={`voice-setting-toggle-btn ${startDeafened ? 'is-active' : ''}`}
+                    onClick={() =>
+                      setStartDeafened((prev) => {
+                        const next = !prev
+                        if (next) setStartMuted(true)
+                        return next
+                      })
+                    }
+                  >
+                    <span className="voice-setting-toggle-icon" aria-hidden>{startDeafened ? '🙉' : '👂'}</span>
+                    <span>{startDeafened ? t('voiceSettings.deafened') : t('voiceSettings.listening')}</span>
+                  </button>
+                </div>
+                <div className="mic-status">
+                  <span className="muted small">
+                    {testing
+                      ? monitorMic
+                        ? t('voiceSettings.statusListening')
+                        : t('voiceSettings.statusMeter')
+                      : t('voiceSettings.statusIdle')}
+                  </span>
+                  <div className="mic-meter">
+                    <span className="mic-meter-fill" style={{ width: `${Math.max(6, Math.round(micLevel * 100))}%` }} />
+                  </div>
+                </div>
+                <div className="voice-controls">
+                  {!testing ? (
+                    <button type="button" className="btn secondary" onClick={startMicTest}>
+                      {t('voiceSettings.testMic')}
+                    </button>
+                  ) : (
+                    <button type="button" className="btn ghost" onClick={stopMicTest}>
+                      {t('voiceSettings.stopTest')}
+                    </button>
+                  )}
+                </div>
               </>
             )}
           </section>

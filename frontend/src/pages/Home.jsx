@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import LegalTermsGate from '../components/LegalTermsGate'
@@ -7,6 +8,7 @@ import InvitePage from './InvitePage'
 import { INVITE_QUERY_PARAM } from '../lib/invites'
 
 export default function Home() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const inviteFromQuery = searchParams.get(INVITE_QUERY_PARAM)
   const { user, loading, serverUnreachable, refreshUser } = useAuth()
@@ -14,7 +16,7 @@ export default function Home() {
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Loading AkoeNet…</p>
+        <p className="muted">{t('app.loadingAkoeNet')}</p>
       </div>
     )
   }

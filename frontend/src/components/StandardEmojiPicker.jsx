@@ -1,5 +1,18 @@
-import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import 'emoji-picker-element'
+import { createElement, forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
+
+const EmojiPickerCustomElement = forwardRef(function EmojiPickerCustomElement(_props, ref) {
+  return createElement('emoji-picker', { ref })
+})
+
+let emojiPickerElementPromise = null
+let emojiPickerLibLoaded = false
+
+function loadEmojiPickerElement() {
+  if (!emojiPickerElementPromise) {
+    emojiPickerElementPromise = import('emoji-picker-element')
+  }
+  return emojiPickerElementPromise
+}
 
 /**
  * Unicode emoji picker (emoji-picker-element, Apache-2.0).
@@ -7,12 +20,31 @@ import 'emoji-picker-element'
  */
 export default function StandardEmojiPicker({ inputRef, text, setText, disabled }) {
   const [open, setOpen] = useState(false)
+  const [pickerLibReady, setPickerLibReady] = useState(false)
   const wrapRef = useRef(null)
   const pickerRef = useRef(null)
   const rangeRef = useRef({ start: 0, end: 0 })
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!open) return
+    if (emojiPickerLibLoaded) {
+      setPickerLibReady(true)
+      return
+    }
+    let cancelled = false
+    loadEmojiPickerElement().then(() => {
+      if (!cancelled) {
+        emojiPickerLibLoaded = true
+        setPickerLibReady(true)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  useLayoutEffect(() => {
+    if (!open || !pickerLibReady) return
     const picker = pickerRef.current
     if (!picker) return
     picker.classList.add('dark')
@@ -40,7 +72,7 @@ export default function StandardEmojiPicker({ inputRef, text, setText, disabled 
     }
     picker.addEventListener('emoji-click', onPick)
     return () => picker.removeEventListener('emoji-click', onPick)
-  }, [open, setText, inputRef])
+  }, [open, pickerLibReady, setText, inputRef])
 
   useEffect(() => {
     if (!open) return
@@ -97,7 +129,7 @@ export default function StandardEmojiPicker({ inputRef, text, setText, disabled 
       </button>
       {open && (
         <div className="standard-emoji-picker-panel" role="dialog" aria-label="Emoji picker">
-          {createElement('emoji-picker', { ref: pickerRef })}
+          {pickerLibReady ? <EmojiPickerCustomElement ref={pickerRef} /> : <p className="muted small">Loading…</p>}
         </div>
       )}
     </div>

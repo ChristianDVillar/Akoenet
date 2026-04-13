@@ -22,7 +22,7 @@ const {
 } = require("../sockets/chat.socket");
 const { postJoinWelcomeMessage } = require("../lib/join-welcome-message");
 
-const { sanitizeUserMediaFields, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
+const { sanitizeImageUrlField } = require("../lib/sanitize-media-url");
 const { shapeMemberRowForPublicApi } = require("../lib/game-activity");
 const { cacheGet, cacheSet } = require("../lib/redis-cache");
 const { appEvents } = require("../lib/app-events");

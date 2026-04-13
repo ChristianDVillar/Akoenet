@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { INVITE_QUERY_PARAM, inviteLandingPath } from '../lib/invites'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const PENDING_INVITE_KEY = 'akoenet_pending_invite'
 
 export default function InvitePage() {
+  const { t } = useTranslation()
   const { token: pathToken } = useParams()
   const [searchParams] = useSearchParams()
   const token = String(pathToken || searchParams.get(INVITE_QUERY_PARAM) || '').trim()
   const navigate = useNavigate()
 
-  /** If user opened /invite/:token (e.g. old link) and SPA loaded, normalize to /?invite= for a share-safe URL. */
   useEffect(() => {
     const q = searchParams.get(INVITE_QUERY_PARAM)
     if (pathToken && !q) {
@@ -28,13 +30,13 @@ export default function InvitePage() {
   const loadPreview = useCallback(async () => {
     setFetchError(null)
     setPreview(null)
-    const t = String(token || '').trim()
-    if (!t) {
+    const tok = String(token || '').trim()
+    if (!tok) {
       setFetchError('invalid')
       return
     }
     try {
-      const { data } = await api.get(`/servers/invite/${encodeURIComponent(t)}/preview`)
+      const { data } = await api.get(`/servers/invite/${encodeURIComponent(tok)}/preview`)
       setPreview(data)
     } catch (e) {
       const status = e.response?.status
@@ -47,10 +49,10 @@ export default function InvitePage() {
   }, [loadPreview])
 
   useEffect(() => {
-    const t = String(token || '').trim()
-    if (t && !user) {
+    const tok = String(token || '').trim()
+    if (tok && !user) {
       try {
-        sessionStorage.setItem(PENDING_INVITE_KEY, t)
+        sessionStorage.setItem(PENDING_INVITE_KEY, tok)
       } catch {
         /* ignore */
       }
@@ -58,12 +60,12 @@ export default function InvitePage() {
   }, [token, user])
 
   async function join() {
-    const t = String(token || '').trim()
-    if (!t || !user) return
+    const tok = String(token || '').trim()
+    if (!tok || !user) return
     setJoinError('')
     setJoinBusy(true)
     try {
-      const { data } = await api.post(`/servers/invite/${encodeURIComponent(t)}/join`)
+      const { data } = await api.post(`/servers/invite/${encodeURIComponent(tok)}/join`)
       const sid = data?.server_id
       if (sid != null) {
         try {
@@ -74,17 +76,17 @@ export default function InvitePage() {
         navigate(`/server/${sid}`, { replace: true })
         return
       }
-      setJoinError('Unexpected response')
+      setJoinError(t('invite.errUnexpected'))
     } catch (err) {
       const status = err.response?.status
       const msg =
         status === 409
-          ? 'You are already in this server.'
+          ? t('invite.errAlreadyIn')
           : status === 404
-            ? 'This invite is no longer valid.'
+            ? t('invite.errInvalid')
             : status === 410
-              ? 'This invite has expired or reached its use limit.'
-              : 'Could not join. Try again.'
+              ? t('invite.errGone')
+              : t('invite.errJoin')
       setJoinError(msg)
     } finally {
       setJoinBusy(false)
@@ -94,7 +96,7 @@ export default function InvitePage() {
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('invite.loading')}</p>
       </div>
     )
   }
@@ -103,16 +105,16 @@ export default function InvitePage() {
     return (
       <div className="auth-page">
         <div className="auth-card invite-landing-card">
+          <div className="auth-card-top-row" style={{ justifyContent: 'flex-end' }}>
+            <LanguageSwitcher />
+          </div>
           <div className="brand-block" style={{ justifyContent: 'center' }}>
             <span className="brand-akoenet">AkoeNet</span>
           </div>
-          <h1>Missing invite</h1>
-          <p className="muted">
-            Open the invite link you were sent. You can also paste an invite on the home page before signing in, or use{' '}
-            <strong>Join a server</strong> on your dashboard after you sign in.
-          </p>
+          <h1>{t('invite.missingTitle')}</h1>
+          <p className="muted">{t('invite.missingBody')}</p>
           <Link to="/" className="btn primary" style={{ display: 'inline-block', marginTop: '0.75rem' }}>
-            Go to AkoeNet
+            {t('common.goHome')}
           </Link>
         </div>
       </div>
@@ -123,17 +125,18 @@ export default function InvitePage() {
     return (
       <div className="auth-page">
         <div className="auth-card invite-landing-card">
+          <div className="auth-card-top-row" style={{ justifyContent: 'flex-end' }}>
+            <LanguageSwitcher />
+          </div>
           <div className="brand-block">
             <span className="brand-akoenet">AkoeNet</span>
           </div>
-          <h1>Invite not available</h1>
+          <h1>{t('invite.unavailableTitle')}</h1>
           <p className="muted">
-            {fetchError === 'not_found'
-              ? 'This link may be wrong, expired, or no longer valid.'
-              : 'We could not load this invite. Check your connection and try again.'}
+            {fetchError === 'not_found' ? t('invite.notFoundBody') : t('invite.failedBody')}
           </p>
           <Link to="/" className="btn primary" style={{ display: 'inline-block', marginTop: '0.75rem' }}>
-            Go to AkoeNet
+            {t('common.goHome')}
           </Link>
         </div>
       </div>
@@ -144,26 +147,30 @@ export default function InvitePage() {
     return (
       <div className="auth-page">
         <div className="auth-card invite-landing-card">
-          <p className="muted">Loading invite…</p>
+          <div className="auth-card-top-row" style={{ justifyContent: 'flex-end' }}>
+            <LanguageSwitcher />
+          </div>
+          <p className="muted">{t('invite.loadingInvite')}</p>
         </div>
       </div>
     )
   }
 
-  const name = preview?.server_name || 'a server'
+  const name = preview?.server_name || t('invite.serverFallback')
 
   return (
     <div className="auth-page">
       <div className="auth-card invite-landing-card">
-        <div className="brand-block">
-          <span className="brand-akoenet">AkoeNet</span>
-          <span className="brand-sub">Community</span>
+        <div className="auth-card-top-row">
+          <div className="brand-block" style={{ marginBottom: 0 }}>
+            <span className="brand-akoenet">AkoeNet</span>
+            <span className="brand-sub">{t('common.community')}</span>
+          </div>
+          <LanguageSwitcher />
         </div>
-        <p className="invite-landing-kicker">You’re invited</p>
+        <p className="invite-landing-kicker">{t('invite.kicker')}</p>
         <h1 className="invite-landing-title">{name}</h1>
-        <p className="muted invite-landing-sub">
-          Join this community on AkoeNet — chat, voice, and more in one place.
-        </p>
+        <p className="muted invite-landing-sub">{t('invite.sub')}</p>
 
         {user ? (
           <>
@@ -173,36 +180,36 @@ export default function InvitePage() {
               </div>
             )}
             <button type="button" className="btn primary invite-landing-cta" disabled={joinBusy} onClick={join}>
-              {joinBusy ? 'Joining…' : `Join ${name}`}
+              {joinBusy ? t('invite.joinBusy') : t('invite.joinCta', { name })}
             </button>
             <p className="muted small" style={{ marginTop: '1rem' }}>
-              Signed in as <strong>{user.username}</strong>
+              {t('invite.signedInAs', { username: user.username })}
             </p>
           </>
         ) : (
           <>
             <p className="muted small" style={{ marginTop: '0.5rem' }}>
-              Use the same email you normally use — after you sign in or sign up, you will land in this server.
+              {t('invite.guestHint')}
             </p>
             <div className="invite-landing-actions">
               <Link
                 to={`/register?${INVITE_QUERY_PARAM}=${encodeURIComponent(String(token || ''))}`}
                 className="btn primary"
               >
-                Create account & join
+                {t('invite.createJoin')}
               </Link>
               <Link
                 to={`/login?${INVITE_QUERY_PARAM}=${encodeURIComponent(String(token || ''))}`}
                 className="btn ghost"
               >
-                I already have an account
+                {t('invite.haveAccount')}
               </Link>
             </div>
           </>
         )}
 
         <p className="muted small" style={{ marginTop: '1.5rem' }}>
-          <Link to="/">← Home</Link>
+          <Link to="/">{t('invite.homeLink')}</Link>
         </p>
       </div>
     </div>

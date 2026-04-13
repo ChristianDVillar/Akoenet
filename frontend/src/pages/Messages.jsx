@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import ServerSidebar from '../components/ServerSidebar'
@@ -8,6 +9,7 @@ import AppChrome from '../components/AppChrome'
 import AppChromeToolbar from '../components/AppChromeToolbar'
 
 export default function Messages() {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const navigate = useNavigate()
   const [servers, setServers] = useState([])
@@ -41,8 +43,8 @@ export default function Messages() {
       <div className="main-panel home-panel">
         <header className="home-header">
           <div>
-            <h1>Messages</h1>
-            <p className="akoenet-tag">Direct messages</p>
+            <h1>{t('messagesPage.title')}</h1>
+            <p className="akoenet-tag">{t('messagesPage.subtitle')}</p>
           </div>
           <div className="home-header-actions">
             <AppChromeToolbar />

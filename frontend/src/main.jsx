@@ -1,8 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, HashRouter } from 'react-router-dom'
-
-const AppRouter = __SPA_HASH_ROUTER__ ? HashRouter : BrowserRouter
 import './i18n.js'
 import './index.css'
 import { applyTheme, loadTheme } from './lib/themePreferences.js'
@@ -11,6 +9,8 @@ import { runDesktopUpdateCheck } from './lib/desktopUpdates.js'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { LandingLocaleProvider } from './context/LandingLocaleProvider.jsx'
+
+const AppRouter = __SPA_HASH_ROUTER__ ? HashRouter : BrowserRouter
 
 const TWITCH_OAUTH_ERR_KEY = 'akoenet_twitch_oauth_error'
 

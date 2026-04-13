@@ -21,6 +21,7 @@ import ServerSettingsModal from '../components/ServerSettingsModal'
 import ChannelSettingsModal from '../components/ChannelSettingsModal'
 import AppChrome from '../components/AppChrome'
 import { useDesktopGameActivity } from '../hooks/useDesktopGameActivity'
+import { useTranslation } from 'react-i18next'
 
 function normalizeVoicePresencePayload(presence) {
   if (!presence || typeof presence !== 'object') return {}
@@ -61,6 +62,7 @@ function useShowInlineMembersPanel() {
 }
 
 export default function ServerView() {
+  const { t } = useTranslation()
   const { serverId } = useParams()
   const id = parseInt(serverId, 10)
   const navigate = useNavigate()
@@ -407,14 +409,14 @@ export default function ServerView() {
   }
 
   async function deleteCategory(categoryId) {
-    if (!window.confirm('Delete this category? Its channels will become uncategorized.')) return
+    if (!window.confirm(t('serverView.confirmDeleteCategory'))) return
     try {
       await api.delete(`/channels/categories/${categoryId}`)
     } catch (err) {
       if (err.response?.status !== 404) {
         setToast({
-          username: 'System',
-          snippet: 'Could not delete category',
+          username: t('serverView.toastSystem'),
+          snippet: t('serverView.toastDeleteCategoryFailed'),
           at: Date.now(),
         })
         return
@@ -435,7 +437,7 @@ export default function ServerView() {
   }
 
   async function deleteChannel(channelId) {
-    if (!window.confirm('Delete this channel?')) return
+    if (!window.confirm(t('serverView.confirmDeleteChannel'))) return
     await api.delete(`/channels/${channelId}`)
     const { data } = await api.get(`/channels/server/${id}`)
     setChannels(data)
@@ -543,8 +545,8 @@ export default function ServerView() {
     } catch {
       updateCurrentUser?.({ presence_status: previousPresence })
       setToast({
-        username: 'System',
-        snippet: 'Could not update your online status',
+        username: t('serverView.toastSystem'),
+        snippet: t('serverView.toastOnlineStatusFailed'),
         at: Date.now(),
       })
     }
@@ -612,27 +614,27 @@ export default function ServerView() {
     return (
       <AppChrome>
         <section className="card" style={{ maxWidth: 680, margin: '2rem auto' }}>
-          <h2>Banned from this server</h2>
+          <h2>{t('serverView.banTitle')}</h2>
           <p className="muted">
-            You cannot access this server while the ban is active.
+            {t('serverView.banBody')}
           </p>
           {banStatus.reason ? (
             <p>
-              <strong>Reason:</strong> {banStatus.reason}
+              <strong>{t('serverView.reason')}</strong> {banStatus.reason}
             </p>
           ) : null}
           {banStatus.expires_at ? (
             <p>
-              <strong>Expires:</strong> {new Date(banStatus.expires_at).toLocaleString()}
+              <strong>{t('serverView.expires')}</strong> {new Date(banStatus.expires_at).toLocaleString()}
             </p>
           ) : (
             <p>
-              <strong>Duration:</strong> Permanent
+              <strong>{t('serverView.duration')}</strong> {t('serverView.permanent')}
             </p>
           )}
           <div style={{ marginTop: '1rem' }}>
             <button type="button" className="btn secondary" onClick={() => navigate('/')}>
-              Back to home
+              {t('serverView.backHome')}
             </button>
           </div>
         </section>
@@ -723,7 +725,7 @@ export default function ServerView() {
               />
               <div className="members-drawer-panel">
                 <p className="members-drawer-hint muted small">
-                  Toca fuera, ✕ o Esc para cerrar.
+                  {t('serverView.membersDrawerHint')}
                 </p>
                 <MembersPanel
                   members={members}
