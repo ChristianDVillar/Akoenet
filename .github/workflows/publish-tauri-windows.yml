@@ -41,9 +41,11 @@ on:
 permissions:
   contents: write
 
+# Mismo tag re-empujado mientras el job anterior sigue en marcha: con cancel-in-progress: true
+# el nuevo run cancelaba el anterior (p. ej. durante rust-toolchain) → "The operation was canceled".
 concurrency:
   group: publish-tauri-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish-tauri:
