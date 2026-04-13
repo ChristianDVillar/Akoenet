@@ -65,6 +65,16 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Comprobar secreto TAURI_SIGNING_PRIVATE_KEY (firma updater / NSIS)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]; then
+            echo "::error::Falta el secreto del repositorio TAURI_SIGNING_PRIVATE_KEY (contenido del fichero .key de minisign, varias líneas). Sin él el build de Tauri con createUpdaterArtifacts falla y no se crea el Release. Añádelo en: Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
       - name: Comprobar que el tag coincide con package.json, tauri.conf y Cargo.toml
         working-directory: frontend
         env:

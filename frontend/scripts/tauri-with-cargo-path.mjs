@@ -46,8 +46,13 @@ function ensureUpdaterPrivateKeyForBuild() {
   if (!inlineSet && !pathSet) {
     const found = candidates.find((p) => existsSync(p))
     if (!found) {
+      const ciHint =
+        process.env.GITHUB_ACTIONS === 'true'
+          ? '\n  GitHub Actions: añade el secreto del repo TAURI_SIGNING_PRIVATE_KEY (contenido del .key minisign, tal cual) en Settings → Secrets and variables → Actions. Opcional: TAURI_SIGNING_PRIVATE_KEY_PASSWORD.\n'
+          : ''
       console.error(
         '[tauri] Falta la clave privada para firmar artefactos del updater (hay pubkey en tauri.conf.json).\n' +
+          ciHint +
           '  Rutas que se buscan automáticamente:\n' +
           `${candidates.map((p) => `    - ${p}`).join('\n')}\n` +
           '  PowerShell (Windows: no uses ~ en -w; usa USERPROFILE):\n' +
