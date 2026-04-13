@@ -159,6 +159,10 @@ La clave privada (`TAURI_SIGNING_PRIVATE_KEY` / tu `.key`) y **`plugins.updater.
 
   (ajusta la ruta al `.pub` que va junto a tu `.key`). Pega la línea que imprime en `plugins.updater.pubkey`. Si cambias `pubkey` en el repo, actualiza también el secreto `TAURI_SIGNING_PRIVATE_KEY` en GitHub para que CI siga coincidiendo.
 
+### Error: «Wrong password for that key» (CI o build local)
+
+La `.key` está **cifrada** y la contraseña no coincide. En GitHub: el secreto **`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`** debe ser exactamente la misma que usaste al generar la clave (sin comillas ni espacios de más). Si generaste la clave **sin** contraseña, borra ese secreto en el repo o déjalo vacío. Si no recuerdas la contraseña, genera un par nuevo con `tauri signer generate`, actualiza `pubkey` en `tauri.conf.json` y los secretos en GitHub.
+
 ### Varias claves en `%USERPROFILE%\.tauri\`
 
 Si existen **`akonet.key`** y **`akonet-desktop.key`**, el script prioriza `akonet.key` (y la ruta `frontend/~/.tauri/akonet.key`) antes que `akonet-desktop.key`. La **`pubkey` en `tauri.conf.json` debe ser la pareja del fichero `.key` que uses**; si cambiaste de par, elimina o renombra la clave antigua para no firmar con el par equivocado.
