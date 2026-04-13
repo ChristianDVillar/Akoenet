@@ -17,7 +17,7 @@
 # windows-latest y tauri-action sube el .exe, .sig y latest.json al Release.
 #
 # Secretos en GitHub: Settings → Secrets and variables → Actions
-#   TAURI_SIGNING_PRIVATE_KEY — contenido de la clave minisign (.key), una línea
+#   TAURI_SIGNING_PRIVATE_KEY — contenido completo del fichero .key de minisign (varias líneas)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — si la clave tiene contraseña (opcional)
 #
 # Permisos: Settings → Actions → General → Workflow permissions →
@@ -89,7 +89,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: frontend
-          tauriScript: tauri
+          # Debe coincidir con el script en package.json ("tauri": "node …"). No incluir "build" aquí.
+          tauriScript: npm run tauri
           tagName: ${{ github.ref_name }}
           releaseName: AkoeNet ${{ github.ref_name }}
           releaseBody: |
@@ -98,7 +99,7 @@ jobs:
             Descarga el `.exe` desde los assets de abajo. La app instalada comprobará actualizaciones según `tauri.conf.json`.
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
           updaterJsonPreferNsis: true
 
       - name: Subir alias estable akonet-desktop.exe (mismo binario, URL fija /latest/download/)
