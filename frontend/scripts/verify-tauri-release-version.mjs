@@ -21,8 +21,15 @@ const cargoToml = fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.toml'), 'u
 const cargoMatch = cargoToml.match(/^version\s*=\s*"([^"]+)"/m)
 const cargo = cargoMatch ? cargoMatch[1] : null
 
-if (pkg !== tag) throw new Error(`package.json ${pkg} != tag ${tag}`)
-if (conf !== tag) throw new Error(`tauri.conf.json ${conf} != tag ${tag}`)
-if (cargo && cargo !== tag) throw new Error(`Cargo.toml ${cargo} != tag ${tag}`)
+const hint =
+  ' El tag debe apuntar al commit donde package.json, tauri.conf.json y Cargo.toml ya tienen esa versión. ' +
+  'Sube el bump y mueve el tag: git tag -f v' +
+  tag +
+  ' && git push -f origin v' +
+  tag
+
+if (pkg !== tag) throw new Error(`package.json ${pkg} != tag ${tag}.${hint}`)
+if (conf !== tag) throw new Error(`tauri.conf.json ${conf} != tag ${tag}.${hint}`)
+if (cargo && cargo !== tag) throw new Error(`Cargo.toml ${cargo} != tag ${tag}.${hint}`)
 
 console.log('OK: versión', tag, '=', tagRaw)
