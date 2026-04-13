@@ -69,8 +69,7 @@ jobs:
         working-directory: frontend
         env:
           TAG: ${{ github.ref_name }}
-        run: |
-          node -e "const fs=require('fs'); const tag=process.env.TAG.replace(/^v/i,''); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')).version; const conf=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')).version; const m=fs.readFileSync('src-tauri/Cargo.toml','utf8').match(/^version\s*=\s*\"([^\"]+)\"/m); const cargo=m?m[1]:null; if(pkg!==tag) throw new Error('package.json '+pkg+' != tag '+tag); if(conf!==tag) throw new Error('tauri.conf.json '+conf+' != tag '+tag); if(cargo&&cargo!==tag) throw new Error('Cargo.toml '+cargo+' != tag '+tag); console.log('OK: versión',tag,'=',process.env.TAG);"
+        run: node scripts/verify-tauri-release-version.mjs
 
       - name: Build Tauri and upload release + latest.json
         uses: tauri-apps/tauri-action@v0.6
