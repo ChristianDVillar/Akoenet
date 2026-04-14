@@ -98,6 +98,16 @@ if (process.env.TAURI_SIGNING_PRIVATE_KEY?.trim()) {
     process.env.TAURI_SIGNING_PRIVATE_KEY
   )
 }
+// El CLI puede leer `TAURI_SIGNING_PRIVATE_KEY_PATH` directamente del disco sin el mismo
+// tratamiento que `normalizeTauriUpdaterKeyMaterialForEnv` (GitHub: .key multilínea en fichero).
+// Forzar solo la variable inline ya normalizada (base64 del material minisign), como espera
+// `updater_signature::decode_key` → `secret_key`.
+if (process.env.TAURI_SIGNING_PRIVATE_KEY?.trim()) {
+  delete process.env.TAURI_SIGNING_PRIVATE_KEY_PATH
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.info('[tauri] TAURI_SIGNING_PRIVATE_KEY_PATH omitido; el CLI usa la clave normalizada en TAURI_SIGNING_PRIVATE_KEY.')
+  }
+}
 // Clave sin contraseña: una cadena vacía en el env a veces hace que el CLI intente descifrar con "".
 // Quitar la variable equivale a "sin contraseña" (mismo efecto que no definir el secreto en GitHub).
 if (!process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD?.trim()) {
