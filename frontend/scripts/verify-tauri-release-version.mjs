@@ -1,7 +1,7 @@
 /**
- * Comprueba que TAG (p. ej. v0.7.4 desde GitHub Actions) coincide con
+ * Comprueba que TAG (p. ej. v0.7.5 desde GitHub Actions) coincide con
  * package.json, src-tauri/tauri.conf.json y src-tauri/Cargo.toml.
- * Uso: TAG=v0.7.4 node scripts/verify-tauri-release-version.mjs
+ * Uso: TAG=v0.7.5 node scripts/verify-tauri-release-version.mjs
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -11,7 +11,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const tagRaw = process.env.TAG || ''
 const tag = tagRaw.replace(/^v/i, '')
 if (!tag) {
-  console.error('Missing env TAG (e.g. v0.7.4)')
+  console.error('Missing env TAG (e.g. v0.7.5)')
   process.exit(1)
 }
 
