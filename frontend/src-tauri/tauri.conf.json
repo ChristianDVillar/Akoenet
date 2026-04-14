@@ -48,7 +48,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMxOTY4OEE2NUFENzkyNjgKUldSb2t0ZGFwb2lXd1RyckZJWElCdEVzeVNCdTFNdDFsZnJJeXdKMGNkeDZWZUd1UTN1YjJGSEUK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdEOTU5NUQ3QkUwODI5MTMKUldRVEtRaSsxNVdWZlZlKzdzeTEwbmV1amhEbCtUWDA0MHdDcEpxbUlhcTR5bGN4OWZBcGl2OHMK",
       "endpoints": [
         "https://github.com/ChristianDVillar/Akoenet/releases/latest/download/latest.json"
       ],

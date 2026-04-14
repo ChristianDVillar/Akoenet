@@ -108,10 +108,16 @@ if (process.env.TAURI_SIGNING_PRIVATE_KEY?.trim()) {
     console.info('[tauri] TAURI_SIGNING_PRIVATE_KEY_PATH omitido; el CLI usa la clave normalizada en TAURI_SIGNING_PRIVATE_KEY.')
   }
 }
-// Clave sin contraseña: una cadena vacía en el env a veces hace que el CLI intente descifrar con "".
-// Quitar la variable equivale a "sin contraseña" (mismo efecto que no definir el secreto en GitHub).
-if (!process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD?.trim()) {
-  delete process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+// Tauri `sign_updaters` usa `std::env::var("TAURI_SIGNING_PRIVATE_KEY_PASSWORD").ok()`; si la variable
+// no existe → `None` y en build local (sin `CI`) no se aplica el fallback `Some("")` del CLI. Minisign
+// entonces no descifra bien claves cifradas con contraseña vacía. Un string vacío explícito fuerza
+// `Some("")` (véase tests en `updater_signature.rs`). Si tu `.key` tiene contraseña real, define
+// `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` en la sesión antes de `npm run tauri:build`.
+{
+  const raw = process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
+  }
 }
 const r = spawnSync(process.execPath, [tauriJs, ...args], {
   stdio: 'inherit',
