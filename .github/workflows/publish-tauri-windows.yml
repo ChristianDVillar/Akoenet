@@ -19,8 +19,8 @@
 # Secretos en GitHub: Settings → Secrets and variables → Actions
 #   TAURI_SIGNING_PRIVATE_KEY — fichero .key completo (multilínea) o la línea base64 de `tauri signer generate`
 #     (el script tauri-with-cargo-path.mjs adapta el formato al que espera el CLI de Tauri)
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — obligatorio si generaste la .key *con* contraseña; debe coincidir
-#     exactamente (sin comillas de más). Si la clave es *sin* contraseña, no definas este secreto o déjalo vacío.
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — solo si la .key está cifrada; debe coincidir exactamente.
+#     Si usas clave *sin* contraseña: elimina este secreto del repo (no lo dejes creado vacío: puede fallar el build).
 #     Error típico: "Wrong password for that key" → contraseña distinta o secreto mal pegado en GitHub.
 #
 # Permisos: Settings → Actions → General → Workflow permissions →
