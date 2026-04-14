@@ -6,7 +6,11 @@ const { sanitizeMediaUrl } = require("./sanitize-media-url");
  * @param {import("socket.io").Server | null | undefined} io
  * @param {import("pg").Pool} pool
  */
-async function broadcastChannelMessage(io, pool, { channelId, userId, content }) {
+async function broadcastChannelMessage(
+  io,
+  pool,
+  { channelId, userId, content, overrideUsername = null, overrideAvatarUrl = null }
+) {
   const insertResult = await pool.query(
     `INSERT INTO messages (channel_id, user_id, content, image_url, thread_root_message_id)
      VALUES ($1, $2, $3, NULL, NULL)
@@ -16,8 +20,16 @@ async function broadcastChannelMessage(io, pool, { channelId, userId, content })
   const u = await pool.query("SELECT username, avatar_url FROM users WHERE id = $1", [userId]);
   const message = {
     ...insertResult.rows[0],
-    username: u.rows[0]?.username,
-    avatar_url: u.rows[0]?.avatar_url ? sanitizeMediaUrl(u.rows[0].avatar_url) : null,
+    username:
+      typeof overrideUsername === "string" && overrideUsername.trim()
+        ? overrideUsername.trim()
+        : u.rows[0]?.username,
+    avatar_url:
+      typeof overrideAvatarUrl === "string" && overrideAvatarUrl.trim()
+        ? sanitizeMediaUrl(overrideAvatarUrl)
+        : u.rows[0]?.avatar_url
+          ? sanitizeMediaUrl(u.rows[0].avatar_url)
+          : null,
     reactions: [],
   };
   const serverId = await getChannelServerId(channelId);

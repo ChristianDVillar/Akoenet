@@ -51,6 +51,13 @@ function initSocket(io) {
   const schedulerCommandLimitPerWindow = Number(process.env.SCHEDULER_SOCKET_RATE_LIMIT_MAX || 15);
   const customServerCommandLimitPerWindow = Number(process.env.CUSTOM_SERVER_COMMAND_RATE_LIMIT_MAX || 20);
   const gameActivityAutoLimitPerWindow = Number(process.env.GAME_ACTIVITY_SOCKET_RATE_LIMIT_MAX || 24);
+  const schedulerBotAvatarUrl = String(
+    process.env.SCHEDULER_BOT_AVATAR_URL ||
+      (process.env.FRONTEND_URL
+        ? `${String(process.env.FRONTEND_URL).replace(/\/+$/, "")}/RoundLogoBlack.png`
+        : "") ||
+      "https://akoenet-frontend.onrender.com/RoundLogoBlack.png"
+  ).trim();
   const socketRateState = new Map();
   const typingLastEmit = new Map();
   /** serverId -> Map<userId, socketCount> */
@@ -506,6 +513,8 @@ function initSocket(io) {
             channelId,
             userId: replyUserId,
             content: replyBody,
+            overrideUsername: "Scheduler",
+            overrideAvatarUrl: schedulerBotAvatarUrl || null,
           });
 
           appEvents.emit("message.created", {

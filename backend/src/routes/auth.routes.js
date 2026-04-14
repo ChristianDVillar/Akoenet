@@ -916,6 +916,30 @@ router.get("/steam/callback", authRateLimiter, async (req, res) => {
   const expectedCallbackUrl = `${publicApiBase}${steamCallbackPathname}`;
   const returnTo = String(openid["openid.return_to"] || "");
   const realm = String(openid["openid.realm"] || "");
+  const mode = String(openid["openid.mode"] || "").trim();
+
+  if (Object.keys(openid).length === 0) {
+    logger.warn({ uid, queryKeys: Object.keys(req.query || {}) }, "Steam OpenID params missing");
+    return res.redirect(steamLinkErrorUrl("missing_openid_params"));
+  }
+  const requiredOpenIdKeys = [
+    "openid.return_to",
+    "openid.signed",
+    "openid.sig",
+    "openid.assoc_handle",
+    "openid.response_nonce",
+    "openid.claimed_id",
+    "openid.identity",
+  ];
+  const missingOpenIdKeys = requiredOpenIdKeys.filter((k) => !String(openid[k] || "").trim());
+  if (missingOpenIdKeys.length) {
+    logger.warn({ uid, missingOpenIdKeys, openidKeys: Object.keys(openid) }, "Steam OpenID required keys missing");
+    return res.redirect(steamLinkErrorUrl("missing_openid_keys"));
+  }
+  if (mode && mode !== "id_res") {
+    logger.warn({ uid, mode }, "Steam OpenID mode unexpected");
+    return res.redirect(steamLinkErrorUrl("invalid_openid_mode"));
+  }
 
   // Fail fast with explicit reason when callback host/protocol/path do not match
   // what the backend used when creating the OpenID request.

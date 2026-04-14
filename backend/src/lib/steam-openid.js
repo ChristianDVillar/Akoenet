@@ -73,6 +73,11 @@ async function verifySteamOpenIdAssertion(openidParams) {
     err.steamOpenIdBodyPreview = text.slice(0, 200);
     throw err;
   }
+  if (!/\bis_valid\s*:/i.test(text)) {
+    const err = new Error("Steam OpenID unexpected response");
+    err.steamOpenIdBodyPreview = text.slice(0, 200);
+    throw err;
+  }
   if (/\bis_valid\s*:\s*false\b/i.test(text)) return null;
   if (!/\bis_valid\s*:\s*true\b/i.test(text)) return null;
 
