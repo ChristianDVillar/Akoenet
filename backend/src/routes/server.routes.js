@@ -13,7 +13,16 @@ const {
   isServerMember,
   getActiveServerBan,
   isUserBannedInServer,
+  getUserServerPermissionKeys,
 } = require("../lib/membership");
+const {
+  PERMISSION_KEYS,
+  SYSTEM_SLUGS,
+  sanitizePermissionList,
+  replaceRolePermissionsForRole,
+  seedBuiltinRolePermissions,
+  isSystemSlug,
+} = require("../lib/server-permissions");
 const { broadcastChannelMessage } = require("../lib/channel-message-broadcast");
 const { textContainsBlockedLanguage } = require("../lib/blocked-content");
 const { isReservedServerCommandName } = require("../lib/custom-server-command");
@@ -87,6 +96,26 @@ const serverRoleIdParamSchema = z.object({
 const patchRoleDisplayNameSchema = z.object({
   name: z.string().trim().min(1).max(64),
 });
+const createServerRoleSchema = z.object({
+  name: z.string().trim().min(2).max(64),
+  slug: z.string().trim().min(2).max(32).regex(/^[a-z0-9_]+$/).optional(),
+  permissions: z.array(z.string().trim()).max(32).optional(),
+});
+const putRolePermissionsSchema = z.object({
+  permissions: z.array(z.string().trim()).max(32),
+});
+
+function slugFromRoleName(name) {
+  let s = String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+  if (s.length < 2) {
+    s = `role_${Date.now().toString(36)}`;
+  }
+  return s.slice(0, 32);
+}
 const customCommandIdParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
   commandId: z.coerce.number().int().positive(),
@@ -213,6 +242,7 @@ router.post("/", validate({ body: createServerSchema }), async (req, res) => {
         [server.id, roleName, roleName]
       );
       roleIds[roleName] = rr.rows[0].id;
+      await seedBuiltinRolePermissions(client, roleIds[roleName], roleName);
     }
     await client.query(
       `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
@@ -647,6 +677,15 @@ router.delete(
   }
 );
 
+/** Catálogo de claves de permiso (i18n en cliente). */
+router.get("/:serverId/server-permission-catalog", validate({ params: serverIdParamSchema }), async (req, res) => {
+  const serverId = req.params.serverId;
+  if (!(await isServerMember(req.user.id, serverId))) {
+    return res.status(403).json({ error: "Not a member" });
+  }
+  res.json({ keys: [...PERMISSION_KEYS] });
+});
+
 /** Roles for a server (member only) */
 router.get("/:serverId/roles", validate({ params: serverIdParamSchema }), async (req, res) => {
   const serverId = req.params.serverId;
@@ -655,11 +694,132 @@ router.get("/:serverId/roles", validate({ params: serverIdParamSchema }), async 
     return res.status(403).json({ error: "Not a member" });
   }
   const result = await pool.query(
-    `SELECT r.id, r.name, r.slug FROM roles r WHERE r.server_id = $1 ORDER BY r.id`,
+    `SELECT r.id, r.name, r.slug,
+            COALESCE(p.permissions, ARRAY[]::text[]) AS permissions
+     FROM roles r
+     LEFT JOIN LATERAL (
+       SELECT ARRAY_AGG(permission_key ORDER BY permission_key) AS permissions
+       FROM role_server_permissions WHERE role_id = r.id
+     ) p ON TRUE
+     WHERE r.server_id = $1
+     ORDER BY r.id`,
     [serverId]
   );
-  res.json(result.rows);
+  res.json(
+    result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      is_system: isSystemSlug(row.slug),
+      permissions: Array.isArray(row.permissions) ? row.permissions : [],
+    }))
+  );
 });
+
+router.post(
+  "/:serverId/roles",
+  validate({ params: serverIdParamSchema, body: createServerRoleSchema }),
+  async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    if (!(await canManageMemberRoles(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to create roles" });
+    }
+    const name = String(req.body.name || "").trim();
+    let slug = req.body.slug ? String(req.body.slug).trim().toLowerCase() : slugFromRoleName(name);
+    if (SYSTEM_SLUGS.has(slug)) {
+      return res.status(400).json({ error: "reserved_slug" });
+    }
+    const dupSlug = await pool.query(`SELECT 1 FROM roles WHERE server_id = $1 AND slug = $2`, [serverId, slug]);
+    if (dupSlug.rows.length) {
+      return res.status(400).json({ error: "role_slug_taken" });
+    }
+    const dupName = await pool.query(
+      `SELECT 1 FROM roles WHERE server_id = $1 AND LOWER(TRIM(name)) = LOWER($2)`,
+      [serverId, name]
+    );
+    if (dupName.rows.length) {
+      return res.status(400).json({ error: "role_name_taken" });
+    }
+    try {
+      const ins = await pool.query(
+        `INSERT INTO roles (server_id, name, slug) VALUES ($1, $2, $3) RETURNING id, name, slug`,
+        [serverId, name, slug]
+      );
+      const role = ins.rows[0];
+      const keys = sanitizePermissionList(req.body.permissions || []);
+      await replaceRolePermissionsForRole(role.id, keys);
+      const permRes = await pool.query(
+        `SELECT ARRAY_AGG(permission_key ORDER BY permission_key) AS permissions
+         FROM role_server_permissions WHERE role_id = $1`,
+        [role.id]
+      );
+      const permissions = permRes.rows[0]?.permissions || [];
+      res.status(201).json({
+        ...role,
+        is_system: false,
+        permissions: Array.isArray(permissions) ? permissions : [],
+      });
+    } catch (e) {
+      logger.error({ err: e }, "Create server role failed");
+      res.status(500).json({ error: "Could not create role" });
+    }
+  }
+);
+
+router.delete(
+  "/:serverId/roles/:roleId",
+  validate({ params: serverRoleIdParamSchema }),
+  async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const roleId = Number(req.params.roleId);
+    if (!(await canManageMemberRoles(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to delete roles" });
+    }
+    const existing = await pool.query(`SELECT id, slug FROM roles WHERE id = $1 AND server_id = $2`, [
+      roleId,
+      serverId,
+    ]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ error: "role_not_found" });
+    }
+    if (isSystemSlug(existing.rows[0].slug)) {
+      return res.status(400).json({ error: "cannot_delete_system_role" });
+    }
+    const used = await pool.query(
+      `SELECT 1 FROM user_roles ur
+       INNER JOIN roles r ON r.id = ur.role_id
+       WHERE r.server_id = $1 AND ur.role_id = $2 LIMIT 1`,
+      [serverId, roleId]
+    );
+    if (used.rows.length) {
+      return res.status(400).json({ error: "role_in_use" });
+    }
+    await pool.query(`DELETE FROM roles WHERE id = $1 AND server_id = $2`, [roleId, serverId]);
+    res.json({ ok: true });
+  }
+);
+
+router.put(
+  "/:serverId/roles/:roleId/permissions",
+  validate({
+    params: serverRoleIdParamSchema,
+    body: putRolePermissionsSchema,
+  }),
+  async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const roleId = Number(req.params.roleId);
+    if (!(await canManageMemberRoles(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to edit role permissions" });
+    }
+    const existing = await pool.query(`SELECT id FROM roles WHERE id = $1 AND server_id = $2`, [roleId, serverId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ error: "role_not_found" });
+    }
+    const keys = sanitizePermissionList(req.body.permissions);
+    await replaceRolePermissionsForRole(roleId, keys);
+    res.json({ ok: true, permissions: keys });
+  }
+);
 
 router.patch(
   "/:serverId/roles/:roleId",
@@ -816,7 +976,12 @@ router.get("/:serverId/my-permissions", validate({ params: serverIdParamSchema }
   }
   const can = await canManageChannels(req.user.id, serverId);
   const canRoles = await canManageMemberRoles(req.user.id, serverId);
-  res.json({ can_manage_channels: can, can_manage_member_roles: canRoles });
+  const serverPermissions = Array.from(await getUserServerPermissionKeys(req.user.id, serverId)).sort();
+  res.json({
+    can_manage_channels: can,
+    can_manage_member_roles: canRoles,
+    server_permissions: serverPermissions,
+  });
 });
 
 router.get("/:serverId/custom-commands", validate({ params: serverIdParamSchema }), async (req, res) => {

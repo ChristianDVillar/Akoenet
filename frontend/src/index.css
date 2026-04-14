@@ -993,6 +993,90 @@ textarea {
   border-bottom: 1px solid rgba(124, 58, 237, 0.12);
 }
 
+.server-roles-create-form {
+  margin: 0 0 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.12);
+}
+
+.server-roles-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.server-roles-create-field input {
+  min-width: 10rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--nexora-text);
+}
+
+.server-roles-role-cards {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.server-roles-role-card {
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.15);
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.server-roles-role-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.server-roles-delete-btn {
+  flex-shrink: 0;
+}
+
+.server-roles-perm-fieldset {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.server-roles-perm-legend {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--nexora-muted);
+  margin-bottom: 0.35rem;
+}
+
+.server-roles-perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+
+.server-roles-perm-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--nexora-text);
+}
+
+.server-roles-perm-item input {
+  margin-top: 0.15rem;
+}
+
 .server-roles-subheading {
   margin: 0 0 0.35rem;
   font-size: 0.92rem;

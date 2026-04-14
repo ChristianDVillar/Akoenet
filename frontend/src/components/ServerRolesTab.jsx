@@ -4,6 +4,10 @@ import api from '../services/api'
 import { resolveDisplayRole, sortServerRoleNames } from '../lib/serverRoles'
 
 /**
+ * @typedef {{ id: number, name: string, slug: string, is_system?: boolean, permissions?: string[] }} ServerRoleDef
+ */
+
+/**
  * @param {{
  *   serverId: number | string | null
  *   members?: Array<Record<string, unknown>>
@@ -20,12 +24,31 @@ export default function ServerRolesTab({
   onMembersRefresh = null,
 }) {
   const { t } = useTranslation()
+  /** @type {[ServerRoleDef[], React.Dispatch<React.SetStateAction<ServerRoleDef[]>>]} */
   const [roleDefinitions, setRoleDefinitions] = useState([])
+  const [catalogKeys, setCatalogKeys] = useState([])
   const [roleNameBusyId, setRoleNameBusyId] = useState(null)
   const [roleNameNotice, setRoleNameNotice] = useState(null)
   const [roleNotice, setRoleNotice] = useState(null)
   const [roleBusyId, setRoleBusyId] = useState(null)
+  const [permBusyId, setPermBusyId] = useState(null)
+  const [deleteBusyId, setDeleteBusyId] = useState(null)
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createNotice, setCreateNotice] = useState(null)
+  const [newRoleName, setNewRoleName] = useState('')
+  const [newRoleSlug, setNewRoleSlug] = useState('')
   const [query, setQuery] = useState('')
+
+  const loadCatalog = useCallback(async () => {
+    if (!serverId) return
+    try {
+      const { data } = await api.get(`/servers/${serverId}/server-permission-catalog`)
+      const keys = Array.isArray(data?.keys) ? data.keys : []
+      setCatalogKeys(keys.map(String))
+    } catch {
+      setCatalogKeys([])
+    }
+  }, [serverId])
 
   const loadRoles = useCallback(async () => {
     if (!serverId) return
@@ -38,6 +61,8 @@ export default function ServerRolesTab({
           slug: String(r.slug || r.name || '')
             .trim()
             .toLowerCase(),
+          is_system: Boolean(r.is_system),
+          permissions: Array.isArray(r.permissions) ? r.permissions.map(String) : [],
         }))
       )
     } catch {
@@ -46,8 +71,9 @@ export default function ServerRolesTab({
   }, [serverId])
 
   useEffect(() => {
+    loadCatalog()
     loadRoles()
-  }, [loadRoles])
+  }, [loadCatalog, loadRoles])
 
   const roleLabels = useMemo(() => {
     const m = {}
@@ -82,6 +108,81 @@ export default function ServerRolesTab({
       }
     } finally {
       setRoleNameBusyId(null)
+    }
+  }
+
+  async function saveRolePermissions(roleId, nextKeys) {
+    if (!serverId || !canManageMemberRoles) return
+    setPermBusyId(roleId)
+    try {
+      await api.put(`/servers/${serverId}/roles/${roleId}/permissions`, { permissions: nextKeys })
+      await loadRoles()
+      setRoleNameNotice({ type: 'ok', text: t('serverModal.rolesPermissionsSaved') })
+    } catch {
+      await loadRoles()
+      setRoleNameNotice({ type: 'err', text: t('serverModal.rolesPermissionsErr') })
+    } finally {
+      setPermBusyId(null)
+    }
+  }
+
+  async function togglePermission(def, key, checked) {
+    const set = new Set(def.permissions || [])
+    if (checked) set.add(key)
+    else set.delete(key)
+    const next = [...set].sort()
+    await saveRolePermissions(def.id, next)
+  }
+
+  async function handleCreateRole(e) {
+    e.preventDefault()
+    if (!serverId || !canManageMemberRoles) return
+    const name = newRoleName.trim()
+    if (name.length < 2) {
+      setCreateNotice({ type: 'err', text: t('serverModal.rolesCreateNameShort') })
+      return
+    }
+    setCreateNotice(null)
+    setCreateBusy(true)
+    try {
+      const body = { name }
+      const slug = newRoleSlug.trim()
+      if (slug) body.slug = slug.toLowerCase()
+      await api.post(`/servers/${serverId}/roles`, body)
+      setNewRoleName('')
+      setNewRoleSlug('')
+      await loadRoles()
+      setCreateNotice({ type: 'ok', text: t('serverModal.rolesCreateOk') })
+    } catch (err) {
+      const code = err.response?.data?.error
+      if (code === 'reserved_slug') setCreateNotice({ type: 'err', text: t('serverModal.rolesErrReservedSlug') })
+      else if (code === 'role_slug_taken') setCreateNotice({ type: 'err', text: t('serverModal.rolesErrSlugTaken') })
+      else if (code === 'role_name_taken') setCreateNotice({ type: 'err', text: t('serverModal.rolesErrNameTaken') })
+      else setCreateNotice({ type: 'err', text: t('serverModal.rolesCreateErr') })
+    } finally {
+      setCreateBusy(false)
+    }
+  }
+
+  async function handleDeleteRole(def) {
+    if (!serverId || !canManageMemberRoles || def.is_system) return
+    if (!window.confirm(t('serverModal.rolesDeleteConfirm', { name: def.name }))) return
+    setDeleteBusyId(def.id)
+    setCreateNotice(null)
+    try {
+      await api.delete(`/servers/${serverId}/roles/${def.id}`)
+      await loadRoles()
+      await onMembersRefresh?.()
+      setRoleNameNotice({ type: 'ok', text: t('serverModal.rolesDeleted') })
+    } catch (err) {
+      const code = err.response?.data?.error
+      if (code === 'role_in_use') {
+        setRoleNameNotice({ type: 'err', text: t('serverModal.rolesErrInUse') })
+      } else {
+        setRoleNameNotice({ type: 'err', text: t('serverModal.rolesDeleteErr') })
+      }
+    } finally {
+      setDeleteBusyId(null)
     }
   }
 
@@ -147,9 +248,53 @@ export default function ServerRolesTab({
         <p className="muted small server-roles-view-only">{t('serverModal.rolesViewOnly')}</p>
       ) : null}
 
+      {canManageMemberRoles ? (
+        <form className="server-roles-create-form" onSubmit={handleCreateRole}>
+          <h3 className="server-roles-subheading">{t('serverModal.rolesNewRoleHeading')}</h3>
+          <p className="muted small">{t('serverModal.rolesNewRoleHint')}</p>
+          {createNotice ? (
+            <p
+              className={`server-roles-inline-notice ${
+                createNotice.type === 'err' ? 'server-roles-inline-notice--err' : ''
+              }`}
+              role="status"
+            >
+              {createNotice.text}
+            </p>
+          ) : null}
+          <div className="server-roles-create-row">
+            <label className="server-roles-create-field">
+              <span className="sr-only">{t('serverModal.rolesNewName')}</span>
+              <input
+                type="text"
+                name="new_role_name"
+                placeholder={t('serverModal.rolesNewNamePh')}
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
+                disabled={createBusy}
+              />
+            </label>
+            <label className="server-roles-create-field">
+              <span className="sr-only">{t('serverModal.rolesNewSlug')}</span>
+              <input
+                type="text"
+                name="new_role_slug"
+                placeholder={t('serverModal.rolesNewSlugPh')}
+                value={newRoleSlug}
+                onChange={(e) => setNewRoleSlug(e.target.value)}
+                disabled={createBusy}
+              />
+            </label>
+            <button type="submit" className="btn secondary" disabled={createBusy}>
+              {createBusy ? t('serverModal.rolesCreating') : t('serverModal.rolesCreateCta')}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
       {canManageMemberRoles && roleDefinitions.length > 0 ? (
         <div className="server-roles-names-block">
-          <h3 className="server-roles-subheading">{t('members.roleNamesEdit')}</h3>
+          <h3 className="server-roles-subheading">{t('serverModal.rolesRolesAndPermsHeading')}</h3>
           <p className="muted small">{t('members.roleNamesHint')}</p>
           {roleNameNotice ? (
             <p
@@ -161,23 +306,55 @@ export default function ServerRolesTab({
               {roleNameNotice.text}
             </p>
           ) : null}
-          <ul className="server-roles-name-edit-list">
+          <ul className="server-roles-role-cards">
             {roleDefinitions.map((def) => (
-              <li key={def.id}>
-                <label className="server-roles-name-edit-row">
-                  <span className="server-roles-slug">{def.slug}</span>
-                  <input
-                    type="text"
-                    name={`role_display_${def.id}`}
-                    defaultValue={def.name}
-                    key={`${def.id}-${def.name}`}
-                    disabled={roleNameBusyId === def.id}
-                    onBlur={(e) => saveRoleDisplayName(def, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur()
-                    }}
-                  />
-                </label>
+              <li key={def.id} className="server-roles-role-card">
+                <div className="server-roles-role-card-head">
+                  <label className="server-roles-name-edit-row">
+                    <span className="server-roles-slug">{def.slug}</span>
+                    <input
+                      type="text"
+                      name={`role_display_${def.id}`}
+                      defaultValue={def.name}
+                      key={`${def.id}-${def.name}`}
+                      disabled={roleNameBusyId === def.id}
+                      onBlur={(e) => saveRoleDisplayName(def, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur()
+                      }}
+                    />
+                  </label>
+                  {!def.is_system ? (
+                    <button
+                      type="button"
+                      className="btn ghost small server-roles-delete-btn"
+                      disabled={deleteBusyId === def.id}
+                      onClick={() => handleDeleteRole(def)}
+                    >
+                      {deleteBusyId === def.id ? t('serverModal.rolesDeleting') : t('serverModal.rolesDelete')}
+                    </button>
+                  ) : null}
+                </div>
+                {catalogKeys.length > 0 ? (
+                  <fieldset className="server-roles-perm-fieldset" disabled={permBusyId === def.id}>
+                    <legend className="server-roles-perm-legend">{t('serverModal.rolesPermissionsLegend')}</legend>
+                    <div className="server-roles-perm-grid">
+                      {catalogKeys.map((key) => (
+                        <label key={key} className="server-roles-perm-item">
+                          <input
+                            type="checkbox"
+                            name={`perm_${def.id}_${key}`}
+                            checked={(def.permissions || []).includes(key)}
+                            onChange={(e) => {
+                              void togglePermission(def, key, e.target.checked)
+                            }}
+                          />
+                          <span>{t(`serverModal.perm.${key}`, { defaultValue: key })}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ) : null}
               </li>
             ))}
           </ul>

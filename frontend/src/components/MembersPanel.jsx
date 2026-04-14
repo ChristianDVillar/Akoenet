@@ -93,6 +93,7 @@ export default function MembersPanel({
           slug: String(r.slug || r.name || '')
             .trim()
             .toLowerCase(),
+          permissions: Array.isArray(r.permissions) ? r.permissions : [],
         }))
         if (!cancelled) setRoleDefinitions(defs)
       } catch {

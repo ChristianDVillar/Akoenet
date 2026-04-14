@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { getUserServerPermissionKeys, hasAnyServerPermission } = require("./server-permissions");
 
 async function isServerMember(userId, serverId) {
   const banned = await isUserBannedInServer(userId, serverId);
@@ -54,14 +55,12 @@ async function getUserServerRoles(userId, serverId) {
 }
 
 async function canManageChannels(userId, serverId) {
-  const roles = await getUserServerRoles(userId, serverId);
-  return roles.includes("admin") || roles.includes("moderator");
+  return hasAnyServerPermission(userId, serverId, ["server_admin", "manage_channels"]);
 }
 
-/** Only server admins may assign or change member roles (not moderators). */
+/** Server admins or roles with manage_member_roles (via role_server_permissions). */
 async function canManageMemberRoles(userId, serverId) {
-  const roles = await getUserServerRoles(userId, serverId);
-  return roles.includes("admin");
+  return hasAnyServerPermission(userId, serverId, ["server_admin", "manage_member_roles"]);
 }
 
 async function getChannelInfo(channelId) {
@@ -91,10 +90,8 @@ async function getChannelPermissionsForUser(userId, channelId) {
   const member = await isServerMember(userId, channel.server_id);
   if (!member) return { allowed: false, can_view: false, can_send: false, can_connect: false };
 
-  const roles = await getUserServerRoles(userId, channel.server_id);
-  const isAdmin = roles.includes("admin");
-  const isModerator = roles.includes("moderator");
-  if (isAdmin) {
+  const permKeys = await getUserServerPermissionKeys(userId, channel.server_id);
+  if (permKeys.has("server_admin")) {
     return { allowed: true, can_view: true, can_send: true, can_connect: true, channel };
   }
 
@@ -127,7 +124,7 @@ async function getChannelPermissionsForUser(userId, channelId) {
   let basePermissions;
   if (ruleRows.rows.length === 0) {
     if (channel.is_private) {
-      const canAccessByDefault = isModerator;
+      const canAccessByDefault = permKeys.has("access_private_default");
       basePermissions = {
         allowed: canAccessByDefault,
         can_view: canAccessByDefault,
@@ -194,6 +191,7 @@ module.exports = {
   getChannelServerId,
   canAccessChannel,
   getUserServerRoles,
+  getUserServerPermissionKeys,
   canManageChannels,
   canManageMemberRoles,
   canReadChannel,
