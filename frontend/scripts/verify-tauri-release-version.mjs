@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const tagRaw = process.env.TAG || ''
-const tag = tagRaw.replace(/^v/i, '')
+const tagNoV = tagRaw.replace(/^v/i, '')
+// CI sometimes uses helper tags like vX.Y.Z-remote; map them to X.Y.Z for version checks.
+const tag = tagNoV.replace(/-remote$/i, '')
 if (!tag) {
   console.error('Missing env TAG (e.g. v0.7.5)')
   process.exit(1)
