@@ -51,7 +51,8 @@ async function verifySteamOpenIdAssertion(openidParams) {
   const body = new URLSearchParams();
   body.set("openid.mode", "check_authentication");
   for (const [k, v] of Object.entries(openidParams)) {
-    if (k.startsWith("openid.")) body.set(k, v);
+    if (!k.startsWith("openid.") || k === "openid.mode") continue;
+    body.set(k, v);
   }
 
   // Steam (and some CDNs) often treat requests without a browser-like User-Agent as bots
