@@ -4,9 +4,24 @@ function collectOpenIdParams(query) {
   const out = {};
   if (!query || typeof query !== "object") return out;
   for (const [k, raw] of Object.entries(query)) {
-    if (!k.startsWith("openid.")) continue;
+    let key = String(k);
+    if (key.startsWith("openid_")) {
+      // Some proxies/frameworks normalize dots to underscores.
+      key = `openid.${key.slice("openid_".length)}`;
+    }
+    if (!key.startsWith("openid.")) continue;
     const v = Array.isArray(raw) ? raw[0] : raw;
-    if (v != null && v !== "") out[k] = String(v);
+    if (v != null && v !== "") out[key] = String(v);
+  }
+  // Fallback for parsers that decode "openid.mode=x" as nested object { openid: { mode: x } }.
+  const nested = query.openid;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    for (const [nk, nvRaw] of Object.entries(nested)) {
+      const nv = Array.isArray(nvRaw) ? nvRaw[0] : nvRaw;
+      if (nv == null || nv === "") continue;
+      const kk = `openid.${String(nk).trim()}`;
+      out[kk] = String(nv);
+    }
   }
   return out;
 }

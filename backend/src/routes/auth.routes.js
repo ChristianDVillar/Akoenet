@@ -59,6 +59,17 @@ function resolvePublicApiBase() {
 }
 
 const publicApiBase = resolvePublicApiBase();
+const steamCallbackPathname = "/auth/steam/callback";
+
+function sameOriginAndPath(urlA, urlB) {
+  try {
+    const a = new URL(String(urlA || ""));
+    const b = new URL(String(urlB || ""));
+    return a.origin === b.origin && a.pathname.replace(/\/+$/, "") === b.pathname.replace(/\/+$/, "");
+  } catch {
+    return false;
+  }
+}
 
 const defaultFrontendBase =
   process.env.RENDER === "true" ? "https://akoenet-frontend.onrender.com" : "http://localhost:5173";
@@ -902,6 +913,36 @@ router.get("/steam/callback", authRateLimiter, async (req, res) => {
   }
 
   const openid = collectOpenIdParams(req.query);
+  const expectedCallbackUrl = `${publicApiBase}${steamCallbackPathname}`;
+  const returnTo = String(openid["openid.return_to"] || "");
+  const realm = String(openid["openid.realm"] || "");
+
+  // Fail fast with explicit reason when callback host/protocol/path do not match
+  // what the backend used when creating the OpenID request.
+  if (returnTo && !sameOriginAndPath(returnTo, expectedCallbackUrl)) {
+    logger.warn(
+      {
+        uid,
+        returnTo,
+        expectedCallbackUrl,
+        publicApiBase,
+      },
+      "Steam OpenID callback mismatch"
+    );
+    return res.redirect(steamLinkErrorUrl("callback_mismatch"));
+  }
+  if (realm && !sameOriginAndPath(realm, publicApiBase)) {
+    logger.warn(
+      {
+        uid,
+        realm,
+        expectedRealm: publicApiBase,
+      },
+      "Steam OpenID realm mismatch"
+    );
+    return res.redirect(steamLinkErrorUrl("realm_mismatch"));
+  }
+
   let steamId;
   try {
     steamId = await verifySteamOpenIdAssertion(openid);
@@ -912,7 +953,21 @@ router.get("/steam/callback", authRateLimiter, async (req, res) => {
     );
     return res.redirect(steamLinkErrorUrl("verify_failed"));
   }
-  if (!steamId) return res.redirect(steamLinkErrorUrl("not_verified"));
+  if (!steamId) {
+    logger.warn(
+      {
+        uid,
+        openidKeys: Object.keys(openid),
+        openidMode: openid["openid.mode"],
+        openidReturnTo: returnTo,
+        openidRealm: realm,
+        expectedCallbackUrl,
+        expectedRealm: publicApiBase,
+      },
+      "Steam OpenID not verified"
+    );
+    return res.redirect(steamLinkErrorUrl("not_verified"));
+  }
 
   try {
     const taken = await pool.query(
