@@ -3210,6 +3210,54 @@ textarea {
   padding: 0.25rem 0.45rem;
 }
 
+.members-role-names-panel {
+  padding: 0.5rem 0.9rem 0.75rem;
+  border-bottom: 1px solid var(--nexora-border);
+  font-size: 0.8rem;
+}
+
+.members-role-names-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--nexora-strong);
+}
+
+.members-role-names-hint {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.members-role-name-edit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.members-role-name-edit-row {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.78rem;
+}
+
+.members-role-slug {
+  font-family: ui-monospace, monospace;
+  color: var(--nexora-muted);
+  font-size: 0.72rem;
+}
+
+.members-role-name-edit-row input {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--nexora-border);
+  background: var(--nexora-bg);
+  color: var(--nexora-strong);
+}
+
 .members-trending {
   padding: 0.65rem 0.9rem 0.5rem;
   border-bottom: 1px solid var(--nexora-border);

@@ -77,7 +77,15 @@ const memberRolesParamSchema = z.object({
   userId: z.coerce.number().int().positive(),
 });
 const patchMemberRoleBodySchema = z.object({
+  /** Rol interno (`slug`): admin | moderator | member */
   role: z.string().trim().min(1).max(64),
+});
+const serverRoleIdParamSchema = z.object({
+  serverId: z.coerce.number().int().positive(),
+  roleId: z.coerce.number().int().positive(),
+});
+const patchRoleDisplayNameSchema = z.object({
+  name: z.string().trim().min(1).max(64),
 });
 const customCommandIdParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
@@ -201,8 +209,8 @@ router.post("/", validate({ body: createServerSchema }), async (req, res) => {
     const roleIds = {};
     for (const roleName of roleNames) {
       const rr = await client.query(
-        `INSERT INTO roles (server_id, name) VALUES ($1, $2) RETURNING id`,
-        [server.id, roleName]
+        `INSERT INTO roles (server_id, name, slug) VALUES ($1, $2, $3) RETURNING id`,
+        [server.id, roleName, roleName]
       );
       roleIds[roleName] = rr.rows[0].id;
     }
@@ -295,7 +303,7 @@ router.post("/:serverId/join", validate({ params: serverIdParamSchema }), async 
     return res.status(403).json({ error: "Cannot join this server" });
   }
   const memberRole = await pool.query(
-    `SELECT r.id FROM roles r WHERE r.server_id = $1 AND r.name = 'member'`,
+    `SELECT r.id FROM roles r WHERE r.server_id = $1 AND r.slug = 'member'`,
     [serverId]
   );
   if (memberRole.rows.length === 0) {
@@ -498,7 +506,7 @@ router.post("/invite/:token/join", validate({ params: inviteTokenParamSchema }),
       return res.status(403).json({ error: "Cannot join this server" });
     }
     const memberRole = await client.query(
-      `SELECT r.id FROM roles r WHERE r.server_id = $1 AND r.name = 'member'`,
+      `SELECT r.id FROM roles r WHERE r.server_id = $1 AND r.slug = 'member'`,
       [serverId]
     );
     if (memberRole.rows.length === 0) {
@@ -647,11 +655,46 @@ router.get("/:serverId/roles", validate({ params: serverIdParamSchema }), async 
     return res.status(403).json({ error: "Not a member" });
   }
   const result = await pool.query(
-    `SELECT r.id, r.name FROM roles r WHERE r.server_id = $1 ORDER BY r.id`,
+    `SELECT r.id, r.name, r.slug FROM roles r WHERE r.server_id = $1 ORDER BY r.id`,
     [serverId]
   );
   res.json(result.rows);
 });
+
+router.patch(
+  "/:serverId/roles/:roleId",
+  validate({
+    params: serverRoleIdParamSchema,
+    body: patchRoleDisplayNameSchema,
+  }),
+  async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const roleId = Number(req.params.roleId);
+    const name = String(req.body.name || "").trim();
+    if (!(await canManageMemberRoles(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to rename roles" });
+    }
+    const existing = await pool.query(`SELECT id, slug FROM roles WHERE id = $1 AND server_id = $2`, [
+      roleId,
+      serverId,
+    ]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ error: "role_not_found" });
+    }
+    const dup = await pool.query(
+      `SELECT 1 FROM roles WHERE server_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND id <> $3`,
+      [serverId, name, roleId]
+    );
+    if (dup.rows.length) {
+      return res.status(400).json({ error: "role_name_taken" });
+    }
+    const updated = await pool.query(
+      `UPDATE roles SET name = $1 WHERE id = $2 AND server_id = $3 RETURNING id, name, slug`,
+      [name, roleId, serverId]
+    );
+    res.json(updated.rows[0]);
+  }
+);
 
 router.get("/:serverId/members", validate({ params: serverIdParamSchema }), async (req, res) => {
   const serverId = req.params.serverId;
@@ -663,7 +706,8 @@ router.get("/:serverId/members", validate({ params: serverIdParamSchema }), asyn
     `SELECT u.id, u.username, u.avatar_url, u.presence_status,
             u.steam_id, u.share_game_activity, u.desktop_game_detect_opt_in,
             u.manual_activity_game, u.manual_activity_platform,
-            ARRAY_REMOVE(ARRAY_AGG(r.name), NULL) AS roles
+            ARRAY_REMOVE(ARRAY_AGG(r.name), NULL) AS roles,
+            ARRAY_REMOVE(ARRAY_AGG(r.slug), NULL) AS role_slugs
      FROM server_members m
      JOIN users u ON u.id = m.user_id
      LEFT JOIN user_roles ur ON ur.user_id = u.id
@@ -686,7 +730,7 @@ router.patch(
   async (req, res) => {
     const serverId = Number(req.params.serverId);
     const targetUserId = Number(req.params.userId);
-    const roleName = String(req.body.role || "")
+    const roleSlug = String(req.body.role || "")
       .trim()
       .toLowerCase();
     if (!(await canManageMemberRoles(req.user.id, serverId))) {
@@ -704,12 +748,12 @@ router.patch(
       return res.status(404).json({ error: "Server not found" });
     }
     const ownerId = Number(serverRow.rows[0].owner_id);
-    if (targetUserId === ownerId && roleName !== "admin") {
+    if (targetUserId === ownerId && roleSlug !== "admin") {
       return res.status(400).json({ error: "cannot_change_owner_role" });
     }
     const roleRow = await pool.query(
-      `SELECT id, name FROM roles WHERE server_id = $1 AND LOWER(name) = $2`,
-      [serverId, roleName]
+      `SELECT id, name, slug FROM roles WHERE server_id = $1 AND slug = $2`,
+      [serverId, roleSlug]
     );
     if (!roleRow.rows.length) {
       return res.status(400).json({ error: "role_not_found" });
@@ -719,14 +763,14 @@ router.patch(
     const targetHadAdmin = await pool.query(
       `SELECT 1 FROM user_roles ur
        INNER JOIN roles r ON r.id = ur.role_id
-       WHERE ur.user_id = $1 AND r.server_id = $2 AND r.name = 'admin'`,
+       WHERE ur.user_id = $1 AND r.server_id = $2 AND r.slug = 'admin'`,
       [targetUserId, serverId]
     );
-    if (targetHadAdmin.rows.length && roleName !== "admin") {
+    if (targetHadAdmin.rows.length && roleSlug !== "admin") {
       const otherAdmins = await pool.query(
         `SELECT COUNT(*)::int AS c FROM user_roles ur
          INNER JOIN roles r ON r.id = ur.role_id
-         WHERE r.server_id = $1 AND r.name = 'admin' AND ur.user_id <> $2`,
+         WHERE r.server_id = $1 AND r.slug = 'admin' AND ur.user_id <> $2`,
         [serverId, targetUserId]
       );
       if ((otherAdmins.rows[0]?.c ?? 0) < 1) {
@@ -756,7 +800,12 @@ router.patch(
       client.release();
     }
 
-    res.json({ ok: true, user_id: targetUserId, role: roleRow.rows[0].name });
+    res.json({
+      ok: true,
+      user_id: targetUserId,
+      role: roleRow.rows[0].name,
+      slug: roleRow.rows[0].slug,
+    });
   }
 );
 

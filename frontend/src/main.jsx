@@ -14,23 +14,30 @@ const AppRouter = __SPA_HASH_ROUTER__ ? HashRouter : BrowserRouter
 
 const TWITCH_OAUTH_ERR_KEY = 'akoenet_twitch_oauth_error'
 
-/** Runs before React so /?twitch_token= works on static hosts without a SPA rewrite for deep links. */
+/** Runs before React so /?twitch_token= or /#/?twitch_token= (HashRouter) works on static hosts. */
 function consumeTwitchOAuthFromUrl() {
   try {
-    const params = new URLSearchParams(window.location.search)
-    const token = params.get('twitch_token')
-    const err = params.get('twitch_error')
+    let params = new URLSearchParams(window.location.search)
+    let token = params.get('twitch_token')
+    let err = params.get('twitch_error')
+    if (!token && !err && window.location.hash?.includes('?')) {
+      const qi = window.location.hash.indexOf('?')
+      const inHash = new URLSearchParams(window.location.hash.slice(qi + 1))
+      token = inHash.get('twitch_token')
+      err = inHash.get('twitch_error')
+      if (token || err) params = inHash
+    }
     if (!token && !err) return
     if (token) localStorage.setItem('token', token)
     const refresh = params.get('refresh_token')
     if (refresh) localStorage.setItem('refresh_token', refresh)
     if (err) sessionStorage.setItem(TWITCH_OAUTH_ERR_KEY, err)
-    params.delete('twitch_token')
-    params.delete('refresh_token')
-    params.delete('twitch_error')
-    const q = params.toString()
     const path = err ? '/login' : window.location.pathname || '/'
-    window.history.replaceState({}, '', path + (q ? `?${q}` : '') + (window.location.hash || ''))
+    const cleanHash =
+      window.location.hash?.includes('?') && (token || err)
+        ? window.location.hash.replace(/\?.*$/, '') || '#/'
+        : window.location.hash || ''
+    window.history.replaceState({}, '', path + cleanHash)
   } catch {
     /* ignore */
   }

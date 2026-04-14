@@ -44,13 +44,13 @@ async function canAccessChannel(userId, channelId) {
 
 async function getUserServerRoles(userId, serverId) {
   const r = await pool.query(
-    `SELECT roles.name
+    `SELECT roles.slug
      FROM user_roles
      JOIN roles ON roles.id = user_roles.role_id
      WHERE user_roles.user_id = $1 AND roles.server_id = $2`,
     [userId, serverId]
   );
-  return r.rows.map((row) => row.name);
+  return r.rows.map((row) => String(row.slug || "").toLowerCase());
 }
 
 async function canManageChannels(userId, serverId) {

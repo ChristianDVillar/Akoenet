@@ -5,6 +5,10 @@ import api from '../services/api'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 
 function normalizedRoles(member) {
+  const slugs = Array.isArray(member?.role_slugs) ? member.role_slugs : []
+  if (slugs.length) {
+    return slugs.map((s) => String(s || '').trim().toLowerCase()).filter(Boolean)
+  }
   const roles = Array.isArray(member?.roles) ? member.roles : []
   const cleaned = roles
     .map((r) => String(r || '').trim().toLowerCase())
@@ -71,9 +75,24 @@ export default function MembersPanel({
   const [friendRequestBusyId, setFriendRequestBusyId] = useState(null)
   const [dmOpenBusyId, setDmOpenBusyId] = useState(null)
   const [friendNotice, setFriendNotice] = useState(null)
-  const [serverRoleNames, setServerRoleNames] = useState([])
+  const [roleDefinitions, setRoleDefinitions] = useState([])
   const [roleBusyId, setRoleBusyId] = useState(null)
   const [roleNotice, setRoleNotice] = useState(null)
+  const [roleNameBusyId, setRoleNameBusyId] = useState(null)
+  const [roleNameNotice, setRoleNameNotice] = useState(null)
+
+  const serverRoleNames = useMemo(
+    () => sortServerRoleNames(roleDefinitions.map((r) => r.slug).filter(Boolean)),
+    [roleDefinitions]
+  )
+
+  const roleLabels = useMemo(() => {
+    const m = {}
+    for (const r of roleDefinitions) {
+      if (r.slug) m[r.slug] = r.name
+    }
+    return m
+  }, [roleDefinitions])
   const connectedSet = useMemo(
     () => new Set((connectedUserIds || []).map((id) => Number(id))),
     [connectedUserIds]
@@ -94,23 +113,61 @@ export default function MembersPanel({
 
   useEffect(() => {
     if (!serverId || !canManageMemberRoles) {
-      setServerRoleNames([])
+      setRoleDefinitions([])
       return undefined
     }
     let cancelled = false
     ;(async () => {
       try {
         const { data } = await api.get(`/servers/${serverId}/roles`)
-        const names = sortServerRoleNames((Array.isArray(data) ? data : []).map((r) => r?.name))
-        if (!cancelled) setServerRoleNames(names)
+        const defs = (Array.isArray(data) ? data : []).map((r) => ({
+          id: r.id,
+          name: r.name,
+          slug: String(r.slug || r.name || '')
+            .trim()
+            .toLowerCase(),
+        }))
+        if (!cancelled) setRoleDefinitions(defs)
       } catch {
-        if (!cancelled) setServerRoleNames([])
+        if (!cancelled) setRoleDefinitions([])
       }
     })()
     return () => {
       cancelled = true
     }
   }, [serverId, canManageMemberRoles])
+
+  async function saveRoleDisplayName(def, rawName) {
+    if (!serverId || !canManageMemberRoles) return
+    const name = String(rawName || '').trim()
+    if (!name || name === def.name) return
+    setRoleNameNotice(null)
+    setRoleNameBusyId(def.id)
+    try {
+      await api.patch(`/servers/${serverId}/roles/${def.id}`, { name })
+      const { data } = await api.get(`/servers/${serverId}/roles`)
+      setRoleDefinitions(
+        (Array.isArray(data) ? data : []).map((r) => ({
+          id: r.id,
+          name: r.name,
+          slug: String(r.slug || r.name || '')
+            .trim()
+            .toLowerCase(),
+        }))
+      )
+      await onMemberRolesUpdated?.()
+      setRoleNameNotice({ type: 'ok', text: t('members.roleNameSaved') })
+    } catch (err) {
+      const code = err.response?.data?.error
+      if (code === 'role_name_taken') {
+        setRoleNameNotice({ type: 'err', text: t('members.roleNameTaken') })
+      } else {
+        setRoleNameNotice({ type: 'err', text: t('members.roleNameErr') })
+      }
+    } finally {
+      setRoleNameBusyId(null)
+    }
+  }
 
   const friendshipByPeerId = useMemo(() => {
     const m = new Map()
@@ -123,8 +180,8 @@ export default function MembersPanel({
   const roleOptions = useMemo(() => {
     const set = new Set(['member'])
     for (const m of members || []) {
-      const roles = Array.isArray(m?.roles) ? m.roles : []
-      for (const r of roles) {
+      const rs = normalizedRoles(m)
+      for (const r of rs) {
         if (r) set.add(String(r).toLowerCase())
       }
     }
@@ -147,7 +204,8 @@ export default function MembersPanel({
 
   const groupedMembers = useMemo(() => {
     const sections = new Map()
-    const titleFor = (key) => t(`members.roles.${key}`, { defaultValue: key.charAt(0).toUpperCase() + key.slice(1) })
+    const titleFor = (key) =>
+      roleLabels[key] || t(`members.roles.${key}`, { defaultValue: key.charAt(0).toUpperCase() + key.slice(1) })
     for (const member of filteredMembers) {
       const key = resolveDisplayRole(member)
       if (!sections.has(key)) {
@@ -175,7 +233,7 @@ export default function MembersPanel({
       return a.title.localeCompare(b.title)
     })
     return arr
-  }, [filteredMembers, t])
+  }, [filteredMembers, t, roleLabels])
 
   async function openDirectMessage(peerId) {
     setFriendNotice(null)
@@ -262,6 +320,41 @@ export default function MembersPanel({
           </button>
         )}
       </header>
+      {canManageMemberRoles && serverId && roleDefinitions.length > 0 && (
+        <details className="members-role-names-panel">
+          <summary>{t('members.roleNamesEdit')}</summary>
+          <p className="muted small members-role-names-hint">{t('members.roleNamesHint')}</p>
+          {roleNameNotice && (
+            <p
+              className={`members-friend-notice ${
+                roleNameNotice.type === 'err' ? 'members-friend-notice--err' : ''
+              }`}
+              role="status"
+            >
+              {roleNameNotice.text}
+            </p>
+          )}
+          <ul className="members-role-name-edit-list">
+            {roleDefinitions.map((def) => (
+              <li key={def.id}>
+                <label className="members-role-name-edit-row">
+                  <span className="members-role-slug">{def.slug}</span>
+                  <input
+                    type="text"
+                    defaultValue={def.name}
+                    key={`${def.id}-${def.name}`}
+                    disabled={roleNameBusyId === def.id}
+                    onBlur={(e) => saveRoleDisplayName(def, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                    }}
+                  />
+                </label>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {roleNotice && (
         <p
           className={`members-friend-notice ${roleNotice.type === 'err' ? 'members-friend-notice--err' : ''}`}
@@ -302,7 +395,9 @@ export default function MembersPanel({
           >
             {roleOptions.map((r) => (
               <option key={r} value={r}>
-                {r === 'all' ? t('members.allRoles') : t(`members.roles.${r}`, { defaultValue: r })}
+                {r === 'all'
+                  ? t('members.allRoles')
+                  : roleLabels[r] || t(`members.roles.${r}`, { defaultValue: r })}
               </option>
             ))}
           </select>
@@ -417,9 +512,10 @@ export default function MembersPanel({
                             >
                               {optionNames.map((rn) => (
                                 <option key={rn} value={rn}>
-                                  {t(`members.roles.${rn}`, {
-                                    defaultValue: rn.charAt(0).toUpperCase() + rn.slice(1),
-                                  })}
+                                  {roleLabels[rn] ||
+                                    t(`members.roles.${rn}`, {
+                                      defaultValue: rn.charAt(0).toUpperCase() + rn.slice(1),
+                                    })}
                                 </option>
                               ))}
                             </select>

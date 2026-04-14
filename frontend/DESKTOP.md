@@ -176,3 +176,12 @@ npm run tauri signer generate -- -w "$env:USERPROFILE\.tauri\akonet.key" -f
 ```
 
 (con `$env:CI = "true"` si quieres evitar el prompt de contraseña). El script de build también busca `frontend/~/.tauri/akonet.key` por compatibilidad, pero lo recomendable es tener la clave solo bajo `%USERPROFILE%\.tauri\` (y esa ruta **no** debe subirse a git).
+
+### GitHub Actions: «Resource not accessible by integration» al crear el Release
+
+El build puede terminar bien (MSI/NSIS y `.sig`) y fallar al **crear o subir** el release. Suele ser el permiso del `GITHUB_TOKEN`:
+
+- En el **repositorio**: **Settings → Actions → General → Workflow permissions** → activa **Read and write permissions** y guarda.
+- En una **organización**: un administrador debe permitir que los workflows tengan permisos de escritura en los repos (política de Actions).
+
+**Atajo:** crea manualmente en GitHub un **Release** vacío para el tag `vX.Y.Z` y vuelve a lanzar el workflow; la acción solo subirá assets si el release ya existe (según versión de `tauri-action`).

@@ -23,14 +23,24 @@
 #     Si usas clave *sin* contraseña: elimina este secreto del repo (no lo dejes creado vacío: puede fallar el build).
 #     Error típico: "Wrong password for that key" → contraseña distinta o secreto mal pegado en GitHub.
 #
-# Permisos: Settings → Actions → General → Workflow permissions →
-#   "Read and write permissions" (para que GITHUB_TOKEN cree el Release).
+# Permisos (obligatorio si ves "Resource not accessible by integration" al crear el Release):
+#   Repo: Settings → Actions → General → Workflow permissions →
+#   "Read and write permissions" + guardar.
+#   En organizaciones: el admin debe permitir que los workflows escriban en el repo.
+#
+# Aviso Tauri "updater secret key does not match pubkey": el secreto TAURI_SIGNING_PRIVATE_KEY
+# no es el par de plugins.updater.pubkey en tauri.conf.json. Genera la línea correcta con:
+#   cd frontend && npm run updater:pubkey-for-conf -- "%USERPROFILE%\.tauri\tu.key.pub"
+#   y sustituye pubkey en src-tauri/tauri.conf.json; o alinea el secreto en GitHub con esa pubkey.
 #
 # Tras el job: el instalador está en el Release y también como nombre estable:
 #   …/releases/latest/download/akonet-desktop.exe
 # (mismo NSIS que AkoeNet_X.Y.Z_x64-setup.exe). Render puede hacer curl de esa URL al build.
 #
 # Referencia: https://github.com/tauri-apps/tauri-action
+#
+# Rutas tipo D:\a\NOMBRE_ORG\NOMBRE_REPO\... : carpeta de trabajo del runner Windows en
+# GitHub Actions (clone del repo); no es tu disco local.
 # =============================================================================
 
 name: Publish desktop (Windows)
@@ -40,6 +50,7 @@ on:
     tags:
       - 'v*'
 
+# Permisos del workflow (el job repite contents: write por claridad con algunas acciones).
 permissions:
   contents: write
 
@@ -52,6 +63,8 @@ concurrency:
 jobs:
   publish-tauri:
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       # Usar el commit del evento (github.sha) para que el job use el mismo árbol que el tag,
@@ -75,10 +88,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # Escribir el secreto en un fichero y usar solo TAURI_SIGNING_PRIVATE_KEY_PATH en el build.
-      # Pasar la clave multilínea solo por variable de entorno en Windows a veces la trunca o corrompe
-      # → Tauri: "failed to decode base64 ... Invalid padding".
-      - name: Preparar clave de firma (fichero temporal)
+      # Tauri `sign_updaters` lee `TAURI_SIGNING_PRIVATE_KEY` y hace base64-decode; si además
+      # apunta a un fichero, lee el texto tal cual (un .key multilínea en claro NO sirve ahí).
+      # Normalizamos aquí (mismo criterio que `tauri-with-cargo-path.mjs`) y exportamos a GITHUB_ENV.
+      - name: Exportar clave de firma normalizada para el build
+        working-directory: frontend
         shell: bash
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -87,7 +101,7 @@ jobs:
             echo "::error::Falta el secreto TAURI_SIGNING_PRIVATE_KEY. Settings → Secrets and variables → Actions."
             exit 1
           fi
-          printf '%s' "$KEY" > "${RUNNER_TEMP}/tauri-signing.key"
+          node scripts/ci-export-tauri-signing-key.mjs
 
       - name: Comprobar que el tag coincide con package.json, tauri.conf y Cargo.toml
         working-directory: frontend
@@ -98,8 +112,9 @@ jobs:
       - name: Build Tauri and upload release + latest.json
         uses: tauri-apps/tauri-action@v0.6
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY_PATH: ${{ runner.temp }}/tauri-signing.key
+          # github.token es el GITHUB_TOKEN del workflow (evita confusiones; requiere permisos arriba).
+          GITHUB_TOKEN: ${{ github.token }}
+          # Clave en el paso anterior → GITHUB_ENV (no uses PATH a .key multilínea).
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: frontend
@@ -119,7 +134,8 @@ jobs:
       - name: Subir alias estable akonet-desktop.exe (mismo binario, URL fija /latest/download/)
         working-directory: frontend
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $nsis = "src-tauri/target/release/bundle/nsis"

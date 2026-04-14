@@ -114,40 +114,47 @@ const twitchRedirectUri = (() => {
 })();
 
 /**
- * After Twitch, redirect to SPA root with query params. Deep links like /auth/twitch/callback
- * return 404 on many static hosts (including Render) unless a /* → /index.html rewrite is set.
- * / always serves index.html, so this works without dashboard rules.
+ * HashRouter (p. ej. Render) solo expone query dentro del fragmento `/#/?a=b`.
+ * `/?a=b` en la URL principal no llega a `useSearchParams()` → Steam/Twitch "link" parecía no persistir.
+ */
+function spaRedirectWithQuery(params) {
+  const base = stripTrailingSlash(frontendBase);
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v != null && v !== "") sp.set(k, String(v));
+  }
+  const qs = sp.toString();
+  if (!qs) return `${base}/`;
+  if (useHashRouter) {
+    return `${base}/#/?${qs}`;
+  }
+  return `${base}/?${qs}`;
+}
+
+/**
+ * After Twitch login/signup OAuth: tokens en query (o en hash si HashRouter).
  */
 function twitchOAuthSuccessUrl(appToken, refreshToken) {
-  const u = new URL("/", frontendBase);
-  u.searchParams.set("twitch_token", appToken);
-  if (refreshToken) u.searchParams.set("refresh_token", refreshToken);
-  return u.toString();
+  const p = { twitch_token: appToken };
+  if (refreshToken) p.refresh_token = refreshToken;
+  return spaRedirectWithQuery(p);
 }
 
 function twitchOAuthErrorUrl(code) {
-  const u = new URL("/", frontendBase);
-  u.searchParams.set("twitch_error", code);
-  return u.toString();
+  return spaRedirectWithQuery({ twitch_error: String(code) });
 }
 
 function steamLinkSuccessUrl() {
-  const u = new URL("/", frontendBase);
-  u.searchParams.set("steam_linked", "1");
-  return u.toString();
+  return spaRedirectWithQuery({ steam_linked: "1" });
 }
 
 /** After linking Twitch from User settings (session stays the same; no new JWT in URL). */
 function twitchLinkSuccessUrl() {
-  const u = new URL("/", frontendBase);
-  u.searchParams.set("twitch_linked", "1");
-  return u.toString();
+  return spaRedirectWithQuery({ twitch_linked: "1" });
 }
 
 function steamLinkErrorUrl(code) {
-  const u = new URL("/", frontendBase);
-  u.searchParams.set("steam_error", String(code));
-  return u.toString();
+  return spaRedirectWithQuery({ steam_error: String(code) });
 }
 
 /** Base URL shown in /auth/twitch/status (OAuth returns ?twitch_token= or ?twitch_error= on /). */

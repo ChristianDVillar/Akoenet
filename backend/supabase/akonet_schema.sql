@@ -58,7 +58,9 @@ CREATE TABLE IF NOT EXISTS public.roles (
   id SERIAL PRIMARY KEY,
   server_id INTEGER NOT NULL REFERENCES public.servers (id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  CONSTRAINT roles_server_name_unique UNIQUE (server_id, name)
+  slug VARCHAR(32) NOT NULL,
+  CONSTRAINT roles_server_name_unique UNIQUE (server_id, name),
+  CONSTRAINT roles_server_slug_unique UNIQUE (server_id, slug)
 );
 
 CREATE TABLE IF NOT EXISTS public.user_roles (
