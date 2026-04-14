@@ -12,8 +12,17 @@ import {
 } from '../lib/invites'
 import ServerEmojiManager from './ServerEmojiManager'
 import ServerCustomContentSettings from './ServerCustomContentSettings'
+import ServerRolesTab from './ServerRolesTab'
 
-export default function ServerSettingsModal({ open, onClose, serverId, serverName }) {
+export default function ServerSettingsModal({
+  open,
+  onClose,
+  serverId,
+  serverName,
+  members = [],
+  serverOwnerId = null,
+  onMembersRefresh = null,
+}) {
   const { t } = useTranslation()
   const [inviteType, setInviteType] = useState('temporary')
   /** For 7-day links only: one person vs up to N. */
@@ -28,8 +37,9 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
   const [copyNotice, setCopyNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [canManageServer, setCanManageServer] = useState(false)
+  const [canManageMemberRoles, setCanManageMemberRoles] = useState(false)
   const [activeSection, setActiveSection] = useState(
-    /** @type {'invites' | 'emojis' | 'commands' | 'events' | 'announcements'} */ ('invites')
+    /** @type {'invites' | 'emojis' | 'roles' | 'commands' | 'events' | 'announcements'} */ ('invites')
   )
   const copyTimerRef = useRef(null)
 
@@ -57,8 +67,14 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
     loadEmojis()
     api
       .get(`/servers/${serverId}/my-permissions`)
-      .then((r) => setCanManageServer(Boolean(r.data?.can_manage_channels)))
-      .catch(() => setCanManageServer(false))
+      .then((r) => {
+        setCanManageServer(Boolean(r.data?.can_manage_channels))
+        setCanManageMemberRoles(Boolean(r.data?.can_manage_member_roles))
+      })
+      .catch(() => {
+        setCanManageServer(false)
+        setCanManageMemberRoles(false)
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serverId])
 
@@ -169,6 +185,7 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
           <aside className="settings-split-nav" aria-label={t('serverModal.navAria')}>
             {navBtn('invites', t('serverModal.navInvites'))}
             {navBtn('emojis', t('serverModal.navEmojis'))}
+            {navBtn('roles', t('serverModal.navRoles'))}
             {navBtn('commands', t('serverModal.navCommands'))}
             {navBtn('events', t('serverModal.navEvents'))}
             {navBtn('announcements', t('serverModal.navAnnouncements'))}
@@ -317,6 +334,16 @@ export default function ServerSettingsModal({ open, onClose, serverId, serverNam
                 </p>
                 <ServerEmojiManager serverId={Number(serverId)} emojis={emojiList} onReload={loadEmojis} />
               </div>
+            ) : null}
+
+            {activeSection === 'roles' && serverId ? (
+              <ServerRolesTab
+                serverId={serverId}
+                members={members}
+                canManageMemberRoles={canManageMemberRoles}
+                serverOwnerId={serverOwnerId}
+                onMembersRefresh={onMembersRefresh}
+              />
             ) : null}
 
             {(activeSection === 'commands' || activeSection === 'events' || activeSection === 'announcements') &&

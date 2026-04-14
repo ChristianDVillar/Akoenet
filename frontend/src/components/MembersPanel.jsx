@@ -3,18 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
-
-function normalizedRoles(member) {
-  const slugs = Array.isArray(member?.role_slugs) ? member.role_slugs : []
-  if (slugs.length) {
-    return slugs.map((s) => String(s || '').trim().toLowerCase()).filter(Boolean)
-  }
-  const roles = Array.isArray(member?.roles) ? member.roles : []
-  const cleaned = roles
-    .map((r) => String(r || '').trim().toLowerCase())
-    .filter(Boolean)
-  return cleaned.length ? cleaned : ['member']
-}
+import { normalizedRoles, resolveDisplayRole, ROLE_ORDER, sortServerRoleNames } from '../lib/serverRoles'
 
 function isMemberOnline(member, connectedSet, currentUser) {
   if (currentUser && Number(member?.id) === Number(currentUser?.id)) {
@@ -28,28 +17,6 @@ function isMemberOnline(member, connectedSet, currentUser) {
   const connected = connectedSet.has(Number(member?.id))
   if (connected) return true
   return status === 'online' || status === 'idle' || status === 'dnd'
-}
-
-const ROLE_ORDER = ['admin', 'moderator', 'streamer', 'member']
-const ROLE_OPTION_ORDER = ['admin', 'moderator', 'member', 'streamer']
-
-function sortServerRoleNames(names) {
-  const lower = (names || []).map((n) => String(n || '').trim().toLowerCase()).filter(Boolean)
-  const set = new Set(lower)
-  const out = []
-  for (const k of ROLE_OPTION_ORDER) {
-    if (set.has(k)) out.push(k)
-  }
-  const rest = [...set].filter((k) => !ROLE_OPTION_ORDER.includes(k)).sort((a, b) => a.localeCompare(b))
-  return [...out, ...rest]
-}
-
-function resolveDisplayRole(member) {
-  const roles = normalizedRoles(member)
-  for (const key of ROLE_ORDER) {
-    if (roles.includes(key)) return key
-  }
-  return roles[0] || 'member'
 }
 
 export default function MembersPanel({

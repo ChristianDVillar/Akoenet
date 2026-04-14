@@ -602,6 +602,7 @@ export default {
     navAria: 'Secciones de ajustes del servidor',
     navInvites: 'Invitaciones',
     navEmojis: 'Emojis',
+    navRoles: 'Roles',
     navCommands: 'Comandos',
     navEvents: 'Eventos',
     navAnnouncements: 'Anuncios',
@@ -630,6 +631,17 @@ export default {
     revoke: 'Revocar',
     emojisTitle: 'Emojis del servidor',
     emojisLead: 'Gestiona los emojis de este servidor aquí.',
+    rolesTitle: 'Roles y miembros',
+    rolesLead:
+      'Cambia el nombre visible de cada rol en la lista. Asigna a cada miembro un rol (administrador, moderador o miembro).',
+    rolesViewOnly:
+      'Aquí ves los roles; solo administradores y moderadores pueden renombrar roles o cambiar asignaciones.',
+    rolesMembersHeading: 'Miembros',
+    rolesColMember: 'Miembro',
+    rolesColRole: 'Rol',
+    rolesOwner: 'Dueño',
+    rolesEmpty: 'Aún no hay miembros en este servidor.',
+    rolesFilterEmpty: 'Ningún miembro coincide con la búsqueda.',
   },
   channelSettings: {
     kicker: 'Ajustes del canal',

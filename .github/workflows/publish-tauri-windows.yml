@@ -28,6 +28,10 @@
 #   "Read and write permissions" + guardar.
 #   En organizaciones: el admin debe permitir que los workflows escriban en el repo.
 #
+# Si tras eso sigue fallando (p. ej. ruleset o política de org): crea un secreto opcional
+#   GH_RELEASE_TOKEN — PAT clásico con scope "repo", o fine-grained con Contents: Read and write.
+#   El workflow usa ese token para tauri-action y gh release upload si el secreto existe.
+#
 # Aviso Tauri "updater secret key does not match pubkey": el secreto TAURI_SIGNING_PRIVATE_KEY
 # no es el par de plugins.updater.pubkey en tauri.conf.json. Genera la línea correcta con:
 #   cd frontend && npm run updater:pubkey-for-conf -- "%USERPROFILE%\.tauri\tu.key.pub"
@@ -109,12 +113,31 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: node scripts/verify-tauri-release-version.mjs
 
+      # Pasar el token por GITHUB_OUTPUT + add-mask: el contexto env.* no incluye GITHUB_ENV,
+      # y así tauri-action y gh reciben explícitamente el mismo valor (PAT o github.token).
+      - id: release_token
+        name: Token para API de Releases (GH_RELEASE_TOKEN o github.token)
+        shell: bash
+        env:
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          if [ -n "${GH_RELEASE_TOKEN:-}" ]; then
+            tok=$(printf '%s' "$GH_RELEASE_TOKEN" | tr -d '\r\n')
+            echo "Usando GH_RELEASE_TOKEN (PAT) para crear/subir el release."
+          else
+            tok="$FALLBACK_TOKEN"
+            echo "Usando github.token. Si falla 'Resource not accessible', define GH_RELEASE_TOKEN (PAT con repo) o Workflow permissions → Read and write en el repo/org."
+          fi
+          if [ -z "$tok" ]; then echo "::error::No hay token para GitHub."; exit 1; fi
+          echo "::add-mask::$tok"
+          echo "token=$tok" >> "$GITHUB_OUTPUT"
+
       - name: Build Tauri and upload release + latest.json
         uses: tauri-apps/tauri-action@v0.6
         env:
-          # github.token es el GITHUB_TOKEN del workflow (evita confusiones; requiere permisos arriba).
-          GITHUB_TOKEN: ${{ github.token }}
-          # Clave en el paso anterior → GITHUB_ENV (no uses PATH a .key multilínea).
+          GITHUB_TOKEN: ${{ steps.release_token.outputs.token }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: frontend
@@ -134,8 +157,8 @@ jobs:
       - name: Subir alias estable akonet-desktop.exe (mismo binario, URL fija /latest/download/)
         working-directory: frontend
         env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.release_token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.release_token.outputs.token }}
         shell: pwsh
         run: |
           $nsis = "src-tauri/target/release/bundle/nsis"

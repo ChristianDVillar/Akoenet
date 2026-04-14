@@ -783,6 +783,9 @@ export default function ServerView() {
           onClose={() => setServerSettingsOpen(false)}
           serverId={id}
           serverName={serverName}
+          members={members}
+          serverOwnerId={serverOwnerId}
+          onMembersRefresh={refreshServerMembers}
         />
         <ChannelSettingsModal
           open={channelSettingsOpen}

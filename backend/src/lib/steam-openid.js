@@ -28,7 +28,8 @@ function buildSteamLoginUrl(returnTo, realm) {
  * @returns {Promise<string|null>} SteamID64 or null
  */
 async function verifySteamOpenIdAssertion(openidParams) {
-  if (openidParams["openid.mode"] !== "id_res") return null;
+  const mode = String(openidParams["openid.mode"] || "").trim();
+  if (mode !== "id_res") return null;
   const claimed = openidParams["openid.claimed_id"] || "";
   if (!claimed.includes("/openid/id/")) return null;
 
@@ -38,12 +39,26 @@ async function verifySteamOpenIdAssertion(openidParams) {
     if (k.startsWith("openid.")) body.set(k, v);
   }
 
+  // Steam (and some CDNs) often treat requests without a browser-like User-Agent as bots
+  // and respond in ways that omit is_valid:true → OpenID verification fails in production.
   const res = await fetch(STEAM_OPENID_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "text/plain,*/*",
+      "User-Agent":
+        "Mozilla/5.0 (compatible; AkoeNet/1.0; +https://specs.openid.net/auth/2.0)",
+    },
     body: body.toString(),
+    signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(25_000) : undefined,
   });
   const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(`Steam OpenID HTTP ${res.status}`);
+    err.steamOpenIdBodyPreview = text.slice(0, 200);
+    throw err;
+  }
+  if (/\bis_valid\s*:\s*false\b/i.test(text)) return null;
   if (!/\bis_valid\s*:\s*true\b/i.test(text)) return null;
 
   const m = String(claimed).match(/\/openid\/id\/(\d+)(?:\/)?$/);

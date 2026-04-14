@@ -979,6 +979,140 @@ textarea {
   color: var(--nexora-text);
 }
 
+.server-roles-tab-lead {
+  margin: 0 0 0.85rem;
+}
+
+.server-roles-view-only {
+  margin: 0 0 1rem;
+}
+
+.server-roles-names-block {
+  margin: 0 0 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.12);
+}
+
+.server-roles-subheading {
+  margin: 0 0 0.35rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--nexora-text);
+}
+
+.server-roles-inline-notice {
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.82rem;
+}
+
+.server-roles-inline-notice--err {
+  color: #f87171;
+}
+
+.server-roles-name-edit-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.server-roles-name-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.server-roles-slug {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--nexora-muted);
+  min-width: 5.5rem;
+}
+
+.server-roles-name-edit-row input {
+  flex: 1;
+  min-width: 8rem;
+  max-width: 18rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--nexora-text);
+}
+
+.server-roles-members-block {
+  margin-top: 0.35rem;
+}
+
+.server-roles-member-search {
+  width: 100%;
+  max-width: 20rem;
+  margin: 0.5rem 0 0.65rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--nexora-text);
+}
+
+.server-roles-table-wrap {
+  overflow: auto;
+  max-height: min(50vh, 22rem);
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.12);
+}
+
+.server-roles-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.server-roles-table th,
+.server-roles-table td {
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.08);
+}
+
+.server-roles-table th {
+  position: sticky;
+  top: 0;
+  background: rgba(15, 23, 42, 0.92);
+  color: var(--nexora-muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.server-roles-table tr:last-child td {
+  border-bottom: none;
+}
+
+.server-roles-username {
+  font-weight: 500;
+}
+
+.server-roles-owner-badge {
+  font-weight: 400;
+}
+
+.server-roles-role-select {
+  min-width: 9rem;
+}
+
+.server-roles-role-readonly {
+  color: var(--nexora-muted);
+}
+
+.server-roles-empty {
+  margin: 0.5rem 0.65rem 0.65rem;
+}
+
 .server-custom-list {
   list-style: none;
   padding: 0;

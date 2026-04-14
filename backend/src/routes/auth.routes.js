@@ -906,7 +906,10 @@ router.get("/steam/callback", authRateLimiter, async (req, res) => {
   try {
     steamId = await verifySteamOpenIdAssertion(openid);
   } catch (e) {
-    logger.error({ err: e }, "Steam OpenID verify failed");
+    logger.error(
+      { err: e, steamOpenIdBodyPreview: e.steamOpenIdBodyPreview },
+      "Steam OpenID verify failed"
+    );
     return res.redirect(steamLinkErrorUrl("verify_failed"));
   }
   if (!steamId) return res.redirect(steamLinkErrorUrl("not_verified"));
