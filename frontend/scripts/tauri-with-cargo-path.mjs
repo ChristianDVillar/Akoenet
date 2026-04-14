@@ -98,6 +98,11 @@ if (process.env.TAURI_SIGNING_PRIVATE_KEY?.trim()) {
     process.env.TAURI_SIGNING_PRIVATE_KEY
   )
 }
+// Clave sin contraseña: una cadena vacía en el env a veces hace que el CLI intente descifrar con "".
+// Quitar la variable equivale a "sin contraseña" (mismo efecto que no definir el secreto en GitHub).
+if (!process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD?.trim()) {
+  delete process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+}
 const r = spawnSync(process.execPath, [tauriJs, ...args], {
   stdio: 'inherit',
   cwd: root,
