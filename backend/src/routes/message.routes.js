@@ -20,6 +20,23 @@ const logger = require("../lib/logger");
 const router = express.Router();
 router.use(auth);
 router.use(requireTermsAccepted);
+const schedulerBotAvatarUrl = String(
+  process.env.SCHEDULER_BOT_AVATAR_URL ||
+    (process.env.FRONTEND_URL
+      ? `${String(process.env.FRONTEND_URL).replace(/\/+$/, "")}/RoundLogoBlack.png`
+      : "") ||
+    "https://akoenet-frontend.onrender.com/RoundLogoBlack.png"
+).trim();
+
+function applySchedulerMessageIdentity(row) {
+  const content = String(row?.content || "");
+  if (!content.startsWith("📅 [Scheduler]")) return row;
+  return {
+    ...row,
+    username: "Scheduler",
+    avatar_url: schedulerBotAvatarUrl || row?.avatar_url || null,
+  };
+}
 
 /** List rows with optional reply preview (parent message snippet). */
 const MESSAGE_LIST_SELECT = `
@@ -121,7 +138,9 @@ router.get(
       }
       const rows = result.rows.reverse();
       const enriched = await withReactionsOnMessages(rows, req.user.id);
-      res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
+      res.json(
+        enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(applySchedulerMessageIdentity(m))))
+      );
     } catch (e) {
       logger.warn(
         { err: e, route: "GET /messages/search/global", userId: req.user.id, qLen: q.length },
@@ -164,7 +183,9 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
     const result = await pool.query(query, params);
     const rows = result.rows.reverse();
     const enriched = await withReactionsOnMessages(rows, req.user.id);
-    return res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
+    return res.json(
+      enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(applySchedulerMessageIdentity(m))))
+    );
   }
   if (afterId) {
     params.push(afterId);
@@ -174,7 +195,9 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
     const result = await pool.query(query, params);
     const rows = result.rows;
     const enriched = await withReactionsOnMessages(rows, req.user.id);
-    return res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
+    return res.json(
+      enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(applySchedulerMessageIdentity(m))))
+    );
   }
   query += ` ORDER BY m.created_at DESC LIMIT $${params.length + 1}`;
   params.push(limit);
@@ -182,7 +205,7 @@ router.get("/channel/:channelId", validate({ params: channelIdParamSchema, query
   const result = await pool.query(query, params);
   const rows = result.rows.reverse();
   const enriched = await withReactionsOnMessages(rows, req.user.id);
-  res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
+  res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(applySchedulerMessageIdentity(m)))));
 });
 
 router.get(
@@ -206,7 +229,9 @@ router.get(
       );
       const rows = result.rows.reverse();
       const enriched = await withReactionsOnMessages(rows, req.user.id);
-      res.json(enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m))));
+      res.json(
+        enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(applySchedulerMessageIdentity(m))))
+      );
     } catch (e) {
       logger.warn(
         { err: e, route: "GET /messages/channel/:channelId/search", userId: req.user.id, channelId },
@@ -248,7 +273,7 @@ router.get(
       [channelId]
     );
     const rows = (await withReactionsOnMessages(result.rows, req.user.id)).map((m) =>
-      sanitizeUserMediaFields(sanitizeImageUrlField(m))
+      sanitizeUserMediaFields(sanitizeImageUrlField(applySchedulerMessageIdentity(m)))
     );
     if (format === "csv") {
       const esc = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -323,7 +348,9 @@ router.get(
     const beforeChrono = beforeQ.rows.reverse();
     const combined = [...beforeChrono, anchor, ...afterQ.rows];
     const enriched = await withReactionsOnMessages(combined, req.user.id);
-    const mapped = enriched.map((m) => sanitizeUserMediaFields(sanitizeImageUrlField(m)));
+    const mapped = enriched.map((m) =>
+      sanitizeUserMediaFields(sanitizeImageUrlField(applySchedulerMessageIdentity(m)))
+    );
     res.json({
       anchor_id: Number(messageId),
       channel_id: Number(channelId),

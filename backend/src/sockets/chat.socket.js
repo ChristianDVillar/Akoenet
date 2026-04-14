@@ -507,8 +507,7 @@ function initSocket(io) {
           }
 
           const replyUserId = Number.isInteger(announcerId) && announcerId > 0 ? announcerId : socket.userId;
-          const replyBody =
-            replyUserId === socket.userId ? `📅 [Scheduler]\n${replyText}` : replyText;
+          const replyBody = `📅 [Scheduler]\n${replyText}`;
           const botMessage = await broadcastChannelMessage(io, pool, {
             channelId,
             userId: replyUserId,
