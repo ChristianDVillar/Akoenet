@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const express = require("express");
 const { z } = require("zod");
 const pool = require("../config/db");
@@ -60,7 +61,12 @@ function hasValidSchedulerSecret(req) {
   const expected = String(process.env.SCHEDULER_WEBHOOK_SECRET || "").trim();
   if (!expected) return false;
   const received = String(req.get("x-scheduler-webhook-secret") || "").trim();
-  return received && received === expected;
+  if (!received || expected.length !== received.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, "utf8"), Buffer.from(received, "utf8"));
+  } catch {
+    return false;
+  }
 }
 
 function buildAnnouncementMessage(payload) {
