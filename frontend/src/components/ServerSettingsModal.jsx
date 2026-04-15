@@ -38,8 +38,9 @@ export default function ServerSettingsModal({
   const [busy, setBusy] = useState(false)
   const [canManageServer, setCanManageServer] = useState(false)
   const [canManageMemberRoles, setCanManageMemberRoles] = useState(false)
+  const [serverBans, setServerBans] = useState([])
   const [activeSection, setActiveSection] = useState(
-    /** @type {'invites' | 'emojis' | 'roles' | 'commands' | 'events' | 'announcements'} */ ('invites')
+    /** @type {'invites' | 'emojis' | 'roles' | 'commands' | 'events' | 'announcements' | 'bans'} */ ('invites')
   )
   const copyTimerRef = useRef(null)
 
@@ -65,6 +66,7 @@ export default function ServerSettingsModal({
     if (!open || !serverId) return
     loadInvites()
     loadEmojis()
+    loadBans()
     api
       .get(`/servers/${serverId}/my-permissions`)
       .then((r) => {
@@ -77,6 +79,12 @@ export default function ServerSettingsModal({
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serverId])
+
+  useEffect(() => {
+    if (!open || !serverId || activeSection !== 'bans') return
+    loadBans()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, open, serverId])
 
   async function loadInvites() {
     if (!serverId) return
@@ -97,6 +105,29 @@ export default function ServerSettingsModal({
       setEmojiList(data)
     } catch {
       setEmojiList([])
+    }
+  }
+
+  async function loadBans() {
+    if (!serverId) return
+    try {
+      const { data } = await api.get(`/servers/${serverId}/bans`)
+      setServerBans(Array.isArray(data) ? data : [])
+    } catch {
+      setServerBans([])
+    }
+  }
+
+  async function unbanUser(userId) {
+    if (!serverId || !userId || !canManageServer) return
+    setError('')
+    setInfo('')
+    try {
+      await api.delete(`/servers/${serverId}/bans/${userId}`)
+      setInfo(t('serverModal.banRemovedOk'))
+      await loadBans()
+    } catch {
+      setError(t('serverModal.errUnban'))
     }
   }
 
@@ -189,6 +220,7 @@ export default function ServerSettingsModal({
             {navBtn('commands', t('serverModal.navCommands'))}
             {navBtn('events', t('serverModal.navEvents'))}
             {navBtn('announcements', t('serverModal.navAnnouncements'))}
+            {navBtn('bans', t('serverModal.navBans'))}
           </aside>
 
           <section className="settings-split-content">
@@ -353,6 +385,47 @@ export default function ServerSettingsModal({
                 canManage={canManageServer}
                 tab={activeSection}
               />
+            ) : null}
+
+            {activeSection === 'bans' && serverId ? (
+              <div className="server-settings-tab-pane">
+                <h2 className="server-settings-panel-title">{t('serverModal.bansTitle')}</h2>
+                <p className="muted small">{t('serverModal.bansLead')}</p>
+                {serverBans.length === 0 ? (
+                  <p className="muted small">{t('serverModal.noBans')}</p>
+                ) : (
+                  <ul className="server-custom-list">
+                    {serverBans.map((ban) => (
+                      <li key={ban.id}>
+                        <strong>{ban.username || `user_${ban.user_id}`}</strong>
+                        <span className="muted small">
+                          ID: {ban.user_id}
+                          {ban.reason ? ` · ${t('serverModal.reason')}: ${ban.reason}` : ''}
+                        </span>
+                        {ban.expires_at ? (
+                          <span className="muted small">
+                            {t('serverModal.expires')}: {new Date(ban.expires_at).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="muted small">{t('serverModal.permanent')}</span>
+                        )}
+                        {canManageServer ? (
+                          <button
+                            type="button"
+                            className="btn small secondary"
+                            onClick={() => unbanUser(ban.user_id)}
+                          >
+                            {t('serverModal.unban')}
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!canManageServer ? (
+                  <p className="muted small">{t('serverModal.bansReadOnly')}</p>
+                ) : null}
+              </div>
             ) : null}
           </section>
         </div>

@@ -1,5 +1,5 @@
 /** Built-in `!` commands handled elsewhere (Scheduler integration). */
-const RESERVED_COMMANDS = new Set(["schedule", "next"]);
+const RESERVED_COMMANDS = new Set(["schedule", "next", "commands"]);
 const CUSTOM_COMMAND_ACTION_TYPES = new Set(["none", "ban"]);
 
 /**
