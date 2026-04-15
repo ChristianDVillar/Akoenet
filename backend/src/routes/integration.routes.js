@@ -5,6 +5,7 @@ const validate = require("../middleware/validate");
 const auth = require("../middleware/auth");
 const requireTermsAccepted = require("../middleware/require-terms");
 const { broadcastChannelMessage } = require("../lib/channel-message-broadcast");
+const logger = require("../lib/logger");
 const {
   fetchUpcomingEvents,
   fetchSchedulerDiscovery,
@@ -239,9 +240,12 @@ router.get("/scheduler/connect", validate({ query: schedulerConnectQuerySchema }
   }
 
   const setupToken = String(req.query.setup_token || req.query.setupToken || "").trim();
+  const akonetBaseUrl = resolveAkonetBaseUrl(req);
+  const webhookUrl = `${akonetBaseUrl}/integrations/scheduler/webhooks/stream-scheduled`;
   const payload = {
     setupToken,
-    akonetBaseUrl: resolveAkonetBaseUrl(req),
+    akonetBaseUrl,
+    webhookUrl,
   };
   if (req.query.server_id != null || req.query.serverId != null) {
     payload.serverId = Number(req.query.server_id ?? req.query.serverId);
@@ -262,14 +266,33 @@ router.get("/scheduler/connect", validate({ query: schedulerConnectQuerySchema }
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
+      const remoteBody = await response.text();
+      logger.warn(
+        {
+          event: "scheduler_connect_complete_failed",
+          status: response.status,
+          schedulerBase,
+          remoteBody,
+          payload,
+        },
+        "Scheduler connect complete returned non-2xx"
+      );
       const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "error", `scheduler_http_${response.status}`);
       if (redirectUrl) return res.redirect(302, redirectUrl);
-      return res.status(502).json({ error: "scheduler_connect_failed", httpStatus: response.status });
+      return res.status(502).json({
+        error: "scheduler_connect_failed",
+        httpStatus: response.status,
+        schedulerBody: remoteBody,
+      });
     }
     const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "ok", "connected");
     if (redirectUrl) return res.redirect(302, redirectUrl);
     return res.json({ ok: true, connected: true });
-  } catch {
+  } catch (error) {
+    logger.warn(
+      { err: error, event: "scheduler_connect_complete_fetch_failed", schedulerBase, payload },
+      "Scheduler connect complete request failed"
+    );
     const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "error", "scheduler_fetch_failed");
     if (redirectUrl) return res.redirect(302, redirectUrl);
     return res.status(502).json({ error: "scheduler_fetch_failed" });
