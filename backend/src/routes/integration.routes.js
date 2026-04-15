@@ -38,6 +38,23 @@ const streamScheduledSchema = z.object({
   channel_id: z.coerce.number().int().positive().optional(),
 });
 
+const schedulerConnectQuerySchema = z.object({
+  setup_token: z.string().trim().min(1).max(500).optional(),
+  setupToken: z.string().trim().min(1).max(500).optional(),
+  server_id: z.coerce.number().int().positive().optional(),
+  serverId: z.coerce.number().int().positive().optional(),
+  channel_id: z.coerce.number().int().positive().optional(),
+  channelId: z.coerce.number().int().positive().optional(),
+  send_clips: z
+    .union([z.literal("1"), z.literal("0"), z.literal("true"), z.literal("false")])
+    .optional(),
+  sendClips: z
+    .union([z.literal("1"), z.literal("0"), z.literal("true"), z.literal("false")])
+    .optional(),
+}).refine((q) => Boolean(q.setup_token || q.setupToken), {
+  message: "setup_token is required",
+});
+
 function hasValidSchedulerSecret(req) {
   const expected = String(process.env.SCHEDULER_WEBHOOK_SECRET || "").trim();
   if (!expected) return false;
@@ -66,6 +83,27 @@ function buildAnnouncementMessage(payload) {
     lines.splice(2, 0, `Twitch: ${String(payload.twitch_login).trim()}`);
   }
   return lines.join("\n");
+}
+
+function resolveAkonetBaseUrl(req) {
+  const explicit = String(
+    process.env.AKONET_BASE_URL || process.env.BACKEND_URL || process.env.RENDER_EXTERNAL_URL || ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  if (explicit) return explicit;
+  const protocol = String(req.get("x-forwarded-proto") || req.protocol || "https").trim();
+  const host = String(req.get("x-forwarded-host") || req.get("host") || "").trim();
+  if (!host) return "";
+  return `${protocol}://${host}`.replace(/\/+$/, "");
+}
+
+function buildSchedulerConnectRedirect(frontendBaseUrl, status, detail) {
+  if (!frontendBaseUrl) return "";
+  const url = new URL(frontendBaseUrl.replace(/\/+$/, "") + "/");
+  url.searchParams.set("scheduler_connect", status);
+  if (detail) url.searchParams.set("detail", detail);
+  return url.toString();
 }
 
 router.post(
@@ -181,6 +219,61 @@ router.get("/scheduler/discovery", async (_req, res) => {
     });
   }
   return res.json(d.discovery);
+});
+
+/**
+ * GET /integrations/scheduler/connect
+ * Public callback endpoint used by Streamer Scheduler setup flow.
+ */
+router.get("/scheduler/connect", validate({ query: schedulerConnectQuerySchema }), async (req, res) => {
+  const schedulerBase = String(process.env.SCHEDULER_API_BASE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const frontendBase = String(process.env.FRONTEND_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!schedulerBase) {
+    const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "error", "scheduler_api_not_configured");
+    if (redirectUrl) return res.redirect(302, redirectUrl);
+    return res.status(503).json({ error: "scheduler_api_not_configured" });
+  }
+
+  const setupToken = String(req.query.setup_token || req.query.setupToken || "").trim();
+  const payload = {
+    setupToken,
+    akonetBaseUrl: resolveAkonetBaseUrl(req),
+  };
+  if (req.query.server_id != null || req.query.serverId != null) {
+    payload.serverId = Number(req.query.server_id ?? req.query.serverId);
+  }
+  if (req.query.channel_id != null || req.query.channelId != null) {
+    payload.channelId = Number(req.query.channel_id ?? req.query.channelId);
+  }
+  if (req.query.send_clips != null || req.query.sendClips != null) {
+    const sendClipsRaw = String(req.query.send_clips ?? req.query.sendClips);
+    payload.sendClips = sendClipsRaw === "1" || sendClipsRaw === "true";
+  }
+
+  try {
+    const completeUrl = `${schedulerBase}/api/akoenet/connect/complete`;
+    const response = await fetch(completeUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "error", `scheduler_http_${response.status}`);
+      if (redirectUrl) return res.redirect(302, redirectUrl);
+      return res.status(502).json({ error: "scheduler_connect_failed", httpStatus: response.status });
+    }
+    const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "ok", "connected");
+    if (redirectUrl) return res.redirect(302, redirectUrl);
+    return res.json({ ok: true, connected: true });
+  } catch {
+    const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "error", "scheduler_fetch_failed");
+    if (redirectUrl) return res.redirect(302, redirectUrl);
+    return res.status(502).json({ error: "scheduler_fetch_failed" });
+  }
 });
 
 router.get(
