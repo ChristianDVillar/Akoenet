@@ -99,11 +99,18 @@ function resolveAkonetBaseUrl(req) {
   return `${protocol}://${host}`.replace(/\/+$/, "");
 }
 
-function buildSchedulerConnectRedirect(frontendBaseUrl, status, detail) {
-  if (!frontendBaseUrl) return "";
-  const url = new URL(frontendBaseUrl.replace(/\/+$/, "") + "/");
-  url.searchParams.set("scheduler_connect", status);
-  if (detail) url.searchParams.set("detail", detail);
+function buildStreamAutomatorRedirect(ok, reason) {
+  const base = String(process.env.SCHEDULER_CONNECT_REDIRECT_URL || "https://streamautomator.com/settings")
+    .trim()
+    .replace(/\/+$/, "");
+  const url = new URL(base);
+  url.searchParams.set("tab", "platforms");
+  if (ok) {
+    url.searchParams.set("linked", "akoenet");
+  } else {
+    url.searchParams.set("error", "link_failed");
+    url.searchParams.set("reason", reason || "akoenet_connect_failed");
+  }
   return url.toString();
 }
 
@@ -230,13 +237,10 @@ router.get("/scheduler/connect", validate({ query: schedulerConnectQuerySchema }
   const schedulerBase = String(process.env.SCHEDULER_API_BASE_URL || "")
     .trim()
     .replace(/\/+$/, "");
-  const frontendBase = String(process.env.FRONTEND_URL || "")
-    .trim()
-    .replace(/\/+$/, "");
+  const redirectSuccess = buildStreamAutomatorRedirect(true);
   if (!schedulerBase) {
-    const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "error", "scheduler_api_not_configured");
-    if (redirectUrl) return res.redirect(302, redirectUrl);
-    return res.status(503).json({ error: "scheduler_api_not_configured" });
+    const redirectUrl = buildStreamAutomatorRedirect(false, "scheduler_api_not_configured");
+    return res.redirect(302, redirectUrl);
   }
 
   const setupToken = String(req.query.setup_token || req.query.setupToken || "").trim();
@@ -277,25 +281,17 @@ router.get("/scheduler/connect", validate({ query: schedulerConnectQuerySchema }
         },
         "Scheduler connect complete returned non-2xx"
       );
-      const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "error", `scheduler_http_${response.status}`);
-      if (redirectUrl) return res.redirect(302, redirectUrl);
-      return res.status(502).json({
-        error: "scheduler_connect_failed",
-        httpStatus: response.status,
-        schedulerBody: remoteBody,
-      });
+      const redirectUrl = buildStreamAutomatorRedirect(false, "scheduler_connect_failed");
+      return res.redirect(302, redirectUrl);
     }
-    const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "ok", "connected");
-    if (redirectUrl) return res.redirect(302, redirectUrl);
-    return res.json({ ok: true, connected: true });
+    return res.redirect(302, redirectSuccess);
   } catch (error) {
     logger.warn(
       { err: error, event: "scheduler_connect_complete_fetch_failed", schedulerBase, payload },
       "Scheduler connect complete request failed"
     );
-    const redirectUrl = buildSchedulerConnectRedirect(frontendBase, "error", "scheduler_fetch_failed");
-    if (redirectUrl) return res.redirect(302, redirectUrl);
-    return res.status(502).json({ error: "scheduler_fetch_failed" });
+    const redirectUrl = buildStreamAutomatorRedirect(false, "network_error");
+    return res.redirect(302, redirectUrl);
   }
 });
 
