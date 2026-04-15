@@ -15,7 +15,12 @@ const {
   formatScheduleReply,
   parseSchedulerChatCommand,
 } = require("../lib/scheduler-client");
-const { parseServerCustomCommandText } = require("../lib/custom-server-command");
+const {
+  applyCustomCommandTemplate,
+  extractFirstCommandArg,
+  normalizeCustomCommandActionType,
+  parseServerCustomCommandText,
+} = require("../lib/custom-server-command");
 const { resolveSchedulerStreamerSlug } = require("../lib/scheduler-resolve");
 const { appEvents } = require("../lib/app-events");
 const { sanitizeMediaUrl, sanitizeImageUrlField } = require("../lib/sanitize-media-url");
@@ -132,6 +137,35 @@ function initSocket(io) {
     }
     current.count += 1;
     return true;
+  }
+
+  async function resolveCommandTargetForServer(serverId, rawToken) {
+    const token = String(rawToken || "").trim();
+    if (!token) return null;
+    const mentionIdMatch = token.match(/^<@(\d+)>$/);
+    const numericId = mentionIdMatch ? Number(mentionIdMatch[1]) : Number(token);
+    if (Number.isInteger(numericId) && numericId > 0) {
+      const byId = await pool.query(
+        `SELECT u.id, u.username
+         FROM users u
+         JOIN server_members sm ON sm.user_id = u.id
+         WHERE sm.server_id = $1 AND u.id = $2
+         LIMIT 1`,
+        [serverId, numericId]
+      );
+      if (byId.rows.length) return byId.rows[0];
+    }
+    const username = token.replace(/^@+/, "").trim();
+    if (!username) return null;
+    const byName = await pool.query(
+      `SELECT u.id, u.username
+       FROM users u
+       JOIN server_members sm ON sm.user_id = u.id
+       WHERE sm.server_id = $1 AND LOWER(u.username) = LOWER($2)
+       LIMIT 1`,
+      [serverId, username]
+    );
+    return byName.rows[0] || null;
   }
 
   function getRoom(channelId) {
@@ -542,7 +576,9 @@ function initSocket(io) {
         const customMatch = !imageUrl && userText ? parseServerCustomCommandText(userText) : null;
         if (customMatch) {
           const cmdLookup = await pool.query(
-            `SELECT id, response FROM server_custom_commands WHERE server_id = $1 AND command_name = $2`,
+            `SELECT id, response, action_type, action_value
+             FROM server_custom_commands
+             WHERE server_id = $1 AND command_name = $2`,
             [serverId, customMatch.name]
           );
           if (cmdLookup.rows.length) {
@@ -583,7 +619,77 @@ function initSocket(io) {
               messageId: userMessage.id,
             });
 
-            let replyText = String(cmdLookup.rows[0].response || "").trim();
+            const invokingUser = u.rows[0]?.username || `user_${socket.userId}`;
+            const firstArgToken = extractFirstCommandArg(customMatch.argsText);
+            const target = await resolveCommandTargetForServer(serverId, firstArgToken);
+            let replyText = applyCustomCommandTemplate(String(cmdLookup.rows[0].response || "").trim(), {
+              user: invokingUser,
+              args: customMatch.argsText,
+              target: target?.username || "",
+              targetId: target?.id || "",
+            });
+            const actionType = normalizeCustomCommandActionType(cmdLookup.rows[0].action_type);
+            if (actionType === "ban") {
+              const canModerate = await canManageChannels(socket.userId, serverId);
+              if (!canModerate) {
+                replyText = `${replyText}\n\n_(Action skipped: you need channel management permission.)_`.trim();
+              } else if (!target) {
+                replyText = `${replyText}\n\n_(Action skipped: no valid target user in first argument.)_`.trim();
+              } else if (Number(target.id) === Number(socket.userId)) {
+                replyText = `${replyText}\n\n_(Action skipped: you cannot target yourself.)_`.trim();
+              } else {
+                const serverOwner = await pool.query(`SELECT owner_id FROM servers WHERE id = $1`, [serverId]);
+                if (
+                  serverOwner.rows.length &&
+                  Number(serverOwner.rows[0].owner_id) === Number(target.id)
+                ) {
+                  replyText = `${replyText}\n\n_(Action skipped: server owner cannot be banned.)_`.trim();
+                } else {
+                  const alreadyBanned = await pool.query(
+                    `SELECT 1 FROM server_bans
+                     WHERE server_id = $1
+                       AND user_id = $2
+                       AND revoked_at IS NULL
+                       AND (expires_at IS NULL OR expires_at > NOW())
+                     LIMIT 1`,
+                    [serverId, target.id]
+                  );
+                  if (!alreadyBanned.rows.length) {
+                    const reason = String(cmdLookup.rows[0].action_value || "").trim() || `Custom command !${customMatch.name}`;
+                    const client = await pool.connect();
+                    try {
+                      await client.query("BEGIN");
+                      await client.query(
+                        `INSERT INTO server_bans (server_id, user_id, reason, banned_by, expires_at)
+                         VALUES ($1, $2, $3, $4, NULL)`,
+                        [serverId, target.id, reason, socket.userId]
+                      );
+                      await client.query(`DELETE FROM server_members WHERE user_id = $1 AND server_id = $2`, [
+                        target.id,
+                        serverId,
+                      ]);
+                      await client.query(
+                        `DELETE FROM user_roles ur
+                         USING roles r
+                         WHERE ur.role_id = r.id
+                           AND ur.user_id = $1
+                           AND r.server_id = $2`,
+                        [target.id, serverId]
+                      );
+                      await client.query("COMMIT");
+                    } catch (e) {
+                      await client.query("ROLLBACK");
+                      logger.error({ err: e, serverId, targetUserId: target.id }, "Custom command ban action failed");
+                      replyText = `${replyText}\n\n_(Action failed while banning target user.)_`.trim();
+                    } finally {
+                      client.release();
+                    }
+                  } else {
+                    replyText = `${replyText}\n\n_(Action skipped: target user is already banned.)_`.trim();
+                  }
+                }
+              }
+            }
             if (
               replyText &&
               textContainsBlockedLanguage(replyText, {

@@ -25,7 +25,10 @@ const {
 } = require("../lib/server-permissions");
 const { broadcastChannelMessage } = require("../lib/channel-message-broadcast");
 const { textContainsBlockedLanguage } = require("../lib/blocked-content");
-const { isReservedServerCommandName } = require("../lib/custom-server-command");
+const {
+  isReservedServerCommandName,
+  normalizeCustomCommandActionType,
+} = require("../lib/custom-server-command");
 const {
   getVoicePresenceSnapshotForServer,
   getConnectedUserIdsGlobal,
@@ -123,13 +126,19 @@ const customCommandIdParamSchema = z.object({
 const createCustomCommandSchema = z.object({
   command_name: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{2,32}$/),
   response: z.string().trim().min(1).max(4000),
+  action_type: z.enum(["none", "ban"]).optional(),
+  action_value: z.string().trim().max(200).optional().nullable(),
 });
 const patchCustomCommandSchema = z
   .object({
     command_name: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{2,32}$/).optional(),
     response: z.string().trim().min(1).max(4000).optional(),
+    action_type: z.enum(["none", "ban"]).optional(),
+    action_value: z.string().trim().max(200).optional().nullable(),
   })
-  .refine((d) => d.command_name != null || d.response != null, { message: "empty_patch" });
+  .refine((d) => d.command_name != null || d.response != null || d.action_type != null || d.action_value !== undefined, {
+    message: "empty_patch",
+  });
 const serverEventIdParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
   eventId: z.coerce.number().int().positive(),
@@ -990,7 +999,7 @@ router.get("/:serverId/custom-commands", validate({ params: serverIdParamSchema 
     return res.status(403).json({ error: "Not a member" });
   }
   const r = await pool.query(
-    `SELECT id, server_id, command_name, response, created_by, created_at, updated_at
+    `SELECT id, server_id, command_name, response, action_type, action_value, created_by, created_at, updated_at
      FROM server_custom_commands WHERE server_id = $1 ORDER BY command_name ASC`,
     [serverId]
   );
@@ -1018,11 +1027,14 @@ router.post(
       return res.status(400).json({ error: "blocked_content" });
     }
     try {
+      const actionType = normalizeCustomCommandActionType(req.body.action_type);
+      const actionValue = req.body.action_value != null ? String(req.body.action_value).trim() || null : null;
       const ins = await pool.query(
-        `INSERT INTO server_custom_commands (server_id, command_name, response, created_by)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, server_id, command_name, response, created_by, created_at, updated_at`,
-        [serverId, name, req.body.response, req.user.id]
+        `INSERT INTO server_custom_commands
+           (server_id, command_name, response, action_type, action_value, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, server_id, command_name, response, action_type, action_value, created_by, created_at, updated_at`,
+        [serverId, name, req.body.response, actionType, actionValue, req.user.id]
       );
       res.status(201).json(ins.rows[0]);
     } catch (e) {
@@ -1066,6 +1078,14 @@ router.patch(
       sets.push(`response = $${vals.length + 1}`);
       vals.push(req.body.response);
     }
+    if (req.body.action_type != null) {
+      sets.push(`action_type = $${vals.length + 1}`);
+      vals.push(normalizeCustomCommandActionType(req.body.action_type));
+    }
+    if (req.body.action_value !== undefined) {
+      sets.push(`action_value = $${vals.length + 1}`);
+      vals.push(req.body.action_value != null ? String(req.body.action_value).trim() || null : null);
+    }
     sets.push(`updated_at = NOW()`);
     const idPos = vals.length + 1;
     const sidPos = vals.length + 2;
@@ -1074,7 +1094,7 @@ router.patch(
       const upd = await pool.query(
         `UPDATE server_custom_commands SET ${sets.join(", ")}
          WHERE id = $${idPos} AND server_id = $${sidPos}
-         RETURNING id, server_id, command_name, response, created_by, created_at, updated_at`,
+         RETURNING id, server_id, command_name, response, action_type, action_value, created_by, created_at, updated_at`,
         vals
       );
       if (!upd.rows.length) return res.status(404).json({ error: "Not found" });

@@ -17,6 +17,8 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
   const [textChannels, setTextChannels] = useState([])
   const [cmdName, setCmdName] = useState('')
   const [cmdResponse, setCmdResponse] = useState('')
+  const [cmdActionType, setCmdActionType] = useState('none')
+  const [cmdActionValue, setCmdActionValue] = useState('')
   const [evTitle, setEvTitle] = useState('')
   const [evDesc, setEvDesc] = useState('')
   const [evStart, setEvStart] = useState('')
@@ -64,9 +66,13 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
       await api.post(`/servers/${serverId}/custom-commands`, {
         command_name: name,
         response: cmdResponse.trim(),
+        action_type: cmdActionType,
+        action_value: cmdActionValue.trim() || null,
       })
       setCmdName('')
       setCmdResponse('')
+      setCmdActionType('none')
+      setCmdActionValue('')
       await loadAll()
     } catch (err) {
       const code = err.response?.data?.error
@@ -239,6 +245,12 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
                   </button>
                 ) : null}
                 <pre className="server-custom-preview">{c.response}</pre>
+                {c.action_type && c.action_type !== 'none' ? (
+                  <div className="muted small">
+                    Action: <code className="inline-code">{c.action_type}</code>
+                    {c.action_value ? ` (${c.action_value})` : ''}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -262,6 +274,25 @@ export default function ServerCustomContentSettings({ serverId, canManage, tab }
               onChange={(e) => setCmdResponse(e.target.value)}
               rows={4}
               placeholder={t('serverAutomations.replyTextPh')}
+            />
+            <label htmlFor={`srv-cmd-action-${serverId}`}>Action</label>
+            <select
+              id={`srv-cmd-action-${serverId}`}
+              name="command_action"
+              value={cmdActionType}
+              onChange={(e) => setCmdActionType(e.target.value)}
+            >
+              <option value="none">none</option>
+              <option value="ban">ban first argument user</option>
+            </select>
+            <label htmlFor={`srv-cmd-action-value-${serverId}`}>Action value (optional)</label>
+            <input
+              id={`srv-cmd-action-value-${serverId}`}
+              name="command_action_value"
+              value={cmdActionValue}
+              onChange={(e) => setCmdActionValue(e.target.value)}
+              placeholder="Reason used by ban action"
+              autoComplete="off"
             />
             <button type="submit" className="btn primary small" disabled={busy}>
               {t('serverAutomations.addCommand')}
