@@ -24,9 +24,28 @@ export function getMicTestAudioConstraints() {
   }
 }
 
-/** Same DSP profile as mic test: used for WebRTC voice channels (send path + consistency with settings). */
+/**
+ * WebRTC voice send path: full browser speech DSP (NR + AGC + echo cancellation).
+ * Do not reuse mic-test constraints here — AGC off makes keyboard/desk noise and clicks more audible vs voice.
+ * `voiceIsolation` is added only when reported supported (Chromium), to avoid getUserMedia failures elsewhere.
+ */
 export function getVoiceChannelAudioConstraints() {
-  return getMicTestAudioConstraints()
+  const c = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+    sampleRate: { ideal: 48000 },
+  }
+  try {
+    if (typeof navigator !== 'undefined') {
+      const supported = navigator.mediaDevices?.getSupportedConstraints?.()
+      if (supported?.voiceIsolation) c.voiceIsolation = true
+    }
+  } catch {
+    /* ignore */
+  }
+  return c
 }
 
 /**
@@ -98,23 +117,26 @@ export function buildMicTestMonitorGraph(ctx, streamSource, { micGain, monitorMi
 export function buildVoiceOutgoingGraph(ctx, mediaStreamSource, { micGainPercent }) {
   const hp = ctx.createBiquadFilter()
   hp.type = 'highpass'
-  hp.frequency.value = 95
+  /* Slightly higher cut: less desk/rumble without hurting intelligibility. */
+  hp.frequency.value = 100
   hp.Q.value = 0.707
 
   const lp = ctx.createBiquadFilter()
   lp.type = 'lowpass'
-  lp.frequency.value = 14000
+  /* Roll off harsh transients (keyboard/mouse clicks) a bit more than speech bandwidth. */
+  lp.frequency.value = 12000
   lp.Q.value = 0.707
 
   const gain = ctx.createGain()
   gain.gain.value = Math.max(0, Math.min(2, Number(micGainPercent) / 100))
 
   const limiter = ctx.createDynamicsCompressor()
-  limiter.threshold.value = -4
-  limiter.knee.value = 9
-  limiter.ratio.value = 16
-  limiter.attack.value = 0.002
-  limiter.release.value = 0.12
+  /* Catch short spikes (clicks) a bit earlier; ratio moderate to avoid pumping on voice. */
+  limiter.threshold.value = -8
+  limiter.knee.value = 12
+  limiter.ratio.value = 12
+  limiter.attack.value = 0.001
+  limiter.release.value = 0.15
 
   const destination = ctx.createMediaStreamDestination()
 
@@ -162,20 +184,20 @@ export function buildRemoteVoicePlaybackGraph(ctx, stream) {
 
   const hp = ctx.createBiquadFilter()
   hp.type = 'highpass'
-  hp.frequency.value = 95
+  hp.frequency.value = 100
   hp.Q.value = 0.707
 
   const lp = ctx.createBiquadFilter()
   lp.type = 'lowpass'
-  lp.frequency.value = 14000
+  lp.frequency.value = 12000
   lp.Q.value = 0.707
 
   const limiter = ctx.createDynamicsCompressor()
-  limiter.threshold.value = -4
-  limiter.knee.value = 9
-  limiter.ratio.value = 16
-  limiter.attack.value = 0.002
-  limiter.release.value = 0.12
+  limiter.threshold.value = -8
+  limiter.knee.value = 12
+  limiter.ratio.value = 12
+  limiter.attack.value = 0.001
+  limiter.release.value = 0.15
 
   const destination = ctx.createMediaStreamDestination()
 
