@@ -30,7 +30,7 @@ dependencies = [
 
 [[package]]
 name = "akonet-desktop"
-version = "0.7.5"
+version = "0.7.8"
 dependencies = [
  "serde_json",
  "sysinfo",
