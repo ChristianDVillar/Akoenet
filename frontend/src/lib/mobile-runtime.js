@@ -1,22 +1,21 @@
-let capacitorCorePromise = null
+import { Capacitor } from '@capacitor/core'
 
-async function getCapacitorCore() {
-  if (!capacitorCorePromise) {
-    capacitorCorePromise = import('@capacitor/core')
-      .then((mod) => mod?.Capacitor || null)
-      .catch(() => null)
-  }
-  return capacitorCorePromise
-}
-
+/**
+ * Import estático de @capacitor/core: un único módulo en el grafo.
+ * Un `import('@capacitor/core')` dinámico aparte empaquetaba otra copia (p. ej. dist-*.js),
+ * volvía a ejecutar initCapacitorGlobal y rompía plugins como Preferences ("…then() is not implemented").
+ */
 export function isCapacitorNative() {
-  const platform = typeof window !== 'undefined' ? window.Capacitor?.getPlatform?.() : null
-  return platform === 'android' || platform === 'ios'
+  try {
+    const platform = Capacitor.getPlatform()
+    return platform === 'android' || platform === 'ios'
+  } catch {
+    return false
+  }
 }
 
 export async function addNativeAppStateListener(onActive) {
   if (typeof onActive !== 'function') return () => {}
-  const Capacitor = await getCapacitorCore()
   if (!Capacitor?.isNativePlatform?.()) return () => {}
   const AppMod = await import('@capacitor/app').catch(() => null)
   const App = AppMod?.App

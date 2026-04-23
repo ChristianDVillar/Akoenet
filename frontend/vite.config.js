@@ -22,6 +22,9 @@ export default defineConfig(({ mode }) => {
   const useHashRouter = resolveUseHashRouter(mode)
   return {
   plugins: [react()],
+  resolve: {
+    dedupe: ['@capacitor/core'],
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __SPA_HASH_ROUTER__: useHashRouter,

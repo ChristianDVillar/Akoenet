@@ -1,28 +1,20 @@
+import { Preferences } from '@capacitor/preferences'
 import { isCapacitorNative } from '../lib/mobile-runtime'
 
 const TOKEN_KEY = 'token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
 
-let preferencesPromise = null
-
-async function getPreferences() {
-  if (!isCapacitorNative()) return null
-  if (!preferencesPromise) {
-    preferencesPromise = import('@capacitor/preferences')
-      .then((mod) => mod?.Preferences || null)
-      .catch(() => null)
-  }
-  return preferencesPromise
-}
-
 async function setNativeValue(key, value) {
-  const Preferences = await getPreferences()
-  if (!Preferences) return
-  if (value) {
-    await Preferences.set({ key, value })
-    return
+  if (!isCapacitorNative()) return
+  try {
+    if (value) {
+      await Preferences.set({ key, value })
+    } else {
+      await Preferences.remove({ key })
+    }
+  } catch {
+    /* native store opcional */
   }
-  await Preferences.remove({ key })
 }
 
 function getLocalValue(key) {
@@ -66,12 +58,13 @@ export function clearSessionTokens() {
 }
 
 export async function hydrateSessionFromNativeStorage() {
-  const Preferences = await getPreferences()
-  if (!Preferences) return
-  const [tokenRes, refreshRes] = await Promise.all([
-    Preferences.get({ key: TOKEN_KEY }),
-    Preferences.get({ key: REFRESH_TOKEN_KEY }),
-  ])
-  setLocalValue(TOKEN_KEY, tokenRes?.value || null)
-  setLocalValue(REFRESH_TOKEN_KEY, refreshRes?.value || null)
+  if (!isCapacitorNative()) return
+  try {
+    const tokenRes = await Preferences.get({ key: TOKEN_KEY })
+    const refreshRes = await Preferences.get({ key: REFRESH_TOKEN_KEY })
+    setLocalValue(TOKEN_KEY, tokenRes?.value || null)
+    setLocalValue(REFRESH_TOKEN_KEY, refreshRes?.value || null)
+  } catch {
+    /* sin copia nativa o plugin no listo */
+  }
 }
