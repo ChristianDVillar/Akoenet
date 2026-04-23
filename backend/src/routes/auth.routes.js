@@ -307,6 +307,10 @@ const pushSubscribeSchema = z.object({
     auth: z.string().min(10).max(500),
   }),
 });
+const nativePushSubscribeSchema = z.object({
+  token: z.string().trim().min(20).max(4096),
+  platform: z.enum(["android", "ios"]),
+});
 const emptyToNull = (v) => (v === "" ? null : v);
 
 const updateSettingsSchema = z
@@ -1021,9 +1025,15 @@ router.post("/push/subscribe", auth, requireTermsAccepted, validate({ body: push
   try {
     const { endpoint, keys } = req.body;
     await pool.query(
-      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, subscription_type, native_platform, native_token, updated_at)
+       VALUES ($1, $2, $3, $4, 'web', NULL, NULL, NOW())
+       ON CONFLICT (user_id, endpoint) DO UPDATE
+       SET p256dh = EXCLUDED.p256dh,
+           auth = EXCLUDED.auth,
+           subscription_type = 'web',
+           native_platform = NULL,
+           native_token = NULL,
+           updated_at = NOW()`,
       [req.user.id, endpoint, keys.p256dh, keys.auth]
     );
     res.json({ ok: true });
@@ -1033,15 +1043,86 @@ router.post("/push/subscribe", auth, requireTermsAccepted, validate({ body: push
   }
 });
 
+router.post(
+  "/push/native/subscribe",
+  auth,
+  requireTermsAccepted,
+  validate({ body: nativePushSubscribeSchema }),
+  async (req, res) => {
+    try {
+      const token = String(req.body.token || "").trim();
+      const platform = String(req.body.platform || "").trim().toLowerCase();
+      await pool.query(
+        `DELETE FROM push_subscriptions
+         WHERE user_id = $1
+           AND subscription_type = 'native'
+           AND native_platform = $2`,
+        [req.user.id, platform]
+      );
+      await pool.query(
+        `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, subscription_type, native_platform, native_token, updated_at)
+         VALUES ($1, NULL, NULL, NULL, 'native', $2, $3, NOW())
+         ON CONFLICT (native_token) DO UPDATE
+         SET user_id = EXCLUDED.user_id,
+             subscription_type = 'native',
+             native_platform = EXCLUDED.native_platform,
+             endpoint = NULL,
+             p256dh = NULL,
+             auth = NULL,
+             updated_at = NOW()`,
+        [req.user.id, platform, token]
+      );
+      res.json({ ok: true });
+    } catch (e) {
+      logger.error({ err: e }, "native push subscribe failed");
+      res.status(500).json({ error: "native_subscribe_failed" });
+    }
+  }
+);
+
+router.delete("/push/native/subscribe", auth, requireTermsAccepted, async (req, res) => {
+  const platform = String(req.query.platform || "").trim().toLowerCase();
+  const token = String(req.query.token || "").trim();
+  if (platform === "android" || platform === "ios") {
+    await pool.query(
+      `DELETE FROM push_subscriptions
+       WHERE user_id = $1
+         AND subscription_type = 'native'
+         AND native_platform = $2`,
+      [req.user.id, platform]
+    );
+    return res.json({ ok: true });
+  }
+  if (token) {
+    await pool.query(
+      `DELETE FROM push_subscriptions
+       WHERE user_id = $1
+         AND subscription_type = 'native'
+         AND native_token = $2`,
+      [req.user.id, token]
+    );
+    return res.json({ ok: true });
+  }
+  await pool.query(`DELETE FROM push_subscriptions WHERE user_id = $1 AND subscription_type = 'native'`, [
+    req.user.id,
+  ]);
+  res.json({ ok: true });
+});
+
 router.delete("/push/subscribe", auth, requireTermsAccepted, async (req, res) => {
   const endpoint = String(req.query.endpoint || "").trim();
   if (!endpoint) {
-    await pool.query(`DELETE FROM push_subscriptions WHERE user_id = $1`, [req.user.id]);
-  } else {
-    await pool.query(`DELETE FROM push_subscriptions WHERE user_id = $1 AND endpoint = $2`, [
+    await pool.query(`DELETE FROM push_subscriptions WHERE user_id = $1 AND subscription_type = 'web'`, [
       req.user.id,
-      endpoint,
     ]);
+  } else {
+    await pool.query(
+      `DELETE FROM push_subscriptions
+       WHERE user_id = $1
+         AND subscription_type = 'web'
+         AND endpoint = $2`,
+      [req.user.id, endpoint]
+    );
   }
   res.json({ ok: true });
 });

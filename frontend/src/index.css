@@ -5629,6 +5629,59 @@ input.theme-color-hex:disabled {
 
 /* Must come after the (max-width: 980px) block so narrow layouts are not overridden. */
 @media (max-width: 720px) {
+  .app-shell--server .rail-icon--touch {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+  }
+
+  .app-shell--server .chat-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.32rem;
+  }
+
+  .app-shell--server .chat-save-row {
+    display: none;
+  }
+
+  .app-shell--server .chat-members-trigger {
+    min-height: 42px;
+    padding-inline: 0.6rem;
+  }
+
+  .app-shell--server .message-action-icon {
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  .app-shell--server .composer {
+    gap: 0.5rem;
+  }
+
+  .app-shell--server .composer .btn,
+  .app-shell--server .composer .file-btn {
+    min-height: 42px;
+  }
+
+  .file-btn-mobile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    padding-inline: 0.55rem;
+  }
+
+  .members-column .member-item-main {
+    min-height: 48px;
+  }
+
+  .members-column .member-item-actions .btn {
+    min-height: 40px;
+  }
+
   .btn,
   .server-tile,
   .channel-item,

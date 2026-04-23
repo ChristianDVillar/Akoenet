@@ -1,0 +1,9 @@
+{
+  "appId": "com.akoenet.mobile",
+  "appName": "AkoeNet",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}

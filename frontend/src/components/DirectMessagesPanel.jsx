@@ -11,6 +11,9 @@ import RichMessageText from './RichMessageText'
 import MessageLinkPreview from './MessageLinkPreview'
 import MessageVideoEmbeds from './MessageVideoEmbeds'
 import EditHistoryModal from './EditHistoryModal'
+import { isCapacitorNative } from '../lib/mobile-runtime'
+import { pickImageFileFromDevice } from '../services/mobile-media'
+import { getAccessToken } from '../services/session-store'
 
 const baseURL = getApiBaseUrl()
 const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
@@ -586,7 +589,7 @@ export default function DirectMessagesPanel({ user }) {
     try {
       const form = new FormData()
       form.append('file', file)
-      const token = localStorage.getItem('token')
+      const token = getAccessToken()
       const res = await fetch(`${baseURL}/upload/direct/${selectedConversationId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -632,6 +635,12 @@ export default function DirectMessagesPanel({ user }) {
   async function onFile(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
+    await uploadDmImage(file)
+  }
+
+  async function onPickFromMobileDevice() {
+    const file = await pickImageFileFromDevice()
+    if (!file) return
     await uploadDmImage(file)
   }
 
@@ -1137,6 +1146,18 @@ export default function DirectMessagesPanel({ user }) {
               />
               📎
             </label>
+            {isCapacitorNative() && (
+              <button
+                type="button"
+                className="btn ghost small file-btn-mobile"
+                onClick={onPickFromMobileDevice}
+                title={t('dm.attachFromDevice', { defaultValue: 'Attach from device' })}
+                aria-label={t('dm.attachFromDevice', { defaultValue: 'Attach from device' })}
+                disabled={!selectedConversationId || uploading}
+              >
+                📷
+              </button>
+            )}
             <StandardEmojiPicker
               inputRef={dmComposerInputRef}
               text={text}

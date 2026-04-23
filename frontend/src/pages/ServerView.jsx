@@ -662,7 +662,7 @@ export default function ServerView() {
   return (
     <AppChrome>
       <>
-        <div className="app-shell">
+        <div className="app-shell app-shell--server">
           <ServerSidebar
             servers={servers}
             activeServerId={id}

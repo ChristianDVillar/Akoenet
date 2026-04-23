@@ -61,7 +61,7 @@ function copyLatestNsisToReleases(srcDir, destDir, primaryExe) {
   return copied
 }
 
-/** Semver [major, minor, patch] desde nombres tipo AkoeNet_0.7.0_x64-setup.exe */
+/** Semver [major, minor, patch] desde nombres tipo AkoeNet_1.5.0_x64-setup.exe */
 function semverFromAkoeNetSetupName(name) {
   const m = name.match(/_(\d+)\.(\d+)\.(\d+)_/i)
   if (!m) return null

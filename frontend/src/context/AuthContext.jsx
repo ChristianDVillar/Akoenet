@@ -12,6 +12,14 @@ import api, {
   stopSessionKeepAlive,
 } from '../services/api'
 import { connectAkoeNet, disconnectAkoeNet } from '../services/socket'
+import { addNativeAppStateListener } from '../lib/mobile-runtime'
+import {
+  clearSessionTokens,
+  getAccessToken,
+  getRefreshToken,
+  setAccessToken,
+  setRefreshToken,
+} from '../services/session-store'
 
 const AuthContext = createContext(null)
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
@@ -42,7 +50,7 @@ export function AuthProvider({ children }) {
   const [serverUnreachable, setServerUnreachable] = useState(false)
 
   const logout = useCallback(async () => {
-    const rt = localStorage.getItem('refresh_token')
+    const rt = getRefreshToken()
     try {
       if (rt) {
         await api.post('/auth/logout', { refresh_token: rt })
@@ -50,8 +58,7 @@ export function AuthProvider({ children }) {
     } catch {
       /* ignore */
     }
-    localStorage.removeItem('token')
-    localStorage.removeItem('refresh_token')
+    clearSessionTokens()
     stopSessionKeepAlive()
     disconnectAkoeNet()
     setUser(null)
@@ -65,8 +72,7 @@ export function AuthProvider({ children }) {
     } catch {
       /* ignore */
     }
-    localStorage.removeItem('token')
-    localStorage.removeItem('refresh_token')
+    clearSessionTokens()
     stopSessionKeepAlive()
     disconnectAkoeNet()
     setUser(null)
@@ -74,9 +80,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   const refreshUser = useCallback(async () => {
-    const token = localStorage.getItem('token')
+    const token = getAccessToken()
     if (!token) {
-      localStorage.removeItem('refresh_token')
+      setRefreshToken(null)
       setUser(null)
       setServerUnreachable(false)
       setLoading(false)
@@ -98,7 +104,7 @@ export function AuthProvider({ children }) {
           stopSessionKeepAlive()
           disconnectAkoeNet()
         } else {
-          connectAkoeNet(localStorage.getItem('token') || token)
+          connectAkoeNet(getAccessToken() || token)
           startSessionKeepAlive()
         }
         setServerUnreachable(false)
@@ -141,8 +147,7 @@ export function AuthProvider({ children }) {
         'Your session expired due to a security update. Please sign in again.'
       )
     }
-    localStorage.removeItem('token')
-    localStorage.removeItem('refresh_token')
+    clearSessionTokens()
     stopSessionKeepAlive()
     disconnectAkoeNet()
     setUser(null)
@@ -184,13 +189,32 @@ export function AuthProvider({ children }) {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [user])
 
+  useEffect(() => {
+    if (!user) return undefined
+    let removeListener = null
+    addNativeAppStateListener(() => {
+      refreshSessionAfterForeground()
+    })
+      .then((cleanup) => {
+        removeListener = cleanup
+      })
+      .catch(() => {})
+    return () => {
+      try {
+        removeListener?.()
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [user])
+
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password })
     if (data.requires_2fa && data.two_factor_token) {
       return { requires2fa: true, twoFactorToken: data.two_factor_token }
     }
-    localStorage.setItem('token', data.token)
-    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
+    setAccessToken(data.token)
+    if (data.refresh_token) setRefreshToken(data.refresh_token)
     setUser(data.user)
     setServerUnreachable(false)
     if (!data.user.needs_terms_acceptance) {
@@ -208,8 +232,8 @@ export function AuthProvider({ children }) {
       two_factor_token: twoFactorToken,
       code,
     })
-    localStorage.setItem('token', data.token)
-    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
+    setAccessToken(data.token)
+    if (data.refresh_token) setRefreshToken(data.refresh_token)
     setUser(data.user)
     setServerUnreachable(false)
     if (!data.user.needs_terms_acceptance) {
@@ -223,7 +247,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const loginWithToken = useCallback(async (token) => {
-    localStorage.setItem('token', token)
+    setAccessToken(token)
     const { data } = await api.get('/auth/me')
     setUser(data)
     if (!data.needs_terms_acceptance) {
@@ -240,7 +264,7 @@ export function AuthProvider({ children }) {
     const { data: ver } = await api.get('/auth/terms/version')
     const { data } = await api.post('/auth/terms/accept', { version: ver.current_terms_version })
     setUser(data.user)
-    const t = localStorage.getItem('token')
+    const t = getAccessToken()
     if (t && data.user && !data.user.needs_terms_acceptance) {
       connectAkoeNet(t)
       startSessionKeepAlive()

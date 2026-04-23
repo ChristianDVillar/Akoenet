@@ -1,5 +1,12 @@
 import axios from 'axios'
 import { getApiBaseUrl } from '../lib/apiBase'
+import {
+  clearSessionTokens,
+  getAccessToken,
+  getRefreshToken,
+  setAccessToken,
+  setRefreshToken,
+} from './session-store'
 
 const baseURL = getApiBaseUrl()
 
@@ -25,7 +32,7 @@ function decodeJwtPayload(token) {
 
 /** Single in-flight refresh for interceptor, keep-alive, and foreground — backend rotates refresh tokens. */
 async function sharedRefresh() {
-  const refresh = localStorage.getItem('refresh_token')
+  const refresh = getRefreshToken()
   if (!refresh) throw new Error('no_refresh')
   if (!refreshInFlight) {
     refreshInFlight = rawApi
@@ -36,8 +43,8 @@ async function sharedRefresh() {
       })
   }
   const data = await refreshInFlight
-  if (data?.token) localStorage.setItem('token', data.token)
-  if (data?.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
+  if (data?.token) setAccessToken(data.token)
+  if (data?.refresh_token) setRefreshToken(data.refresh_token)
   startSessionKeepAlive()
   return data
 }
@@ -61,8 +68,8 @@ function clearKeepAliveTimer() {
 /** Renueva el access token antes de caducar y reprograma el siguiente ciclo. */
 export function startSessionKeepAlive() {
   clearKeepAliveTimer()
-  const refresh = localStorage.getItem('refresh_token')
-  const token = localStorage.getItem('token')
+  const refresh = getRefreshToken()
+  const token = getAccessToken()
   if (!refresh || !token) return
 
   const payload = decodeJwtPayload(token)
@@ -77,8 +84,7 @@ export function startSessionKeepAlive() {
     const ok = await refreshAccessTokenSilently()
     if (!ok) {
       stopSessionKeepAlive()
-      localStorage.removeItem('token')
-      localStorage.removeItem('refresh_token')
+      clearSessionTokens()
       window.dispatchEvent(new CustomEvent('akoenet:session-lost'))
     }
   }, delay)
@@ -90,9 +96,9 @@ export function stopSessionKeepAlive() {
 
 /** Tras volver de segundo plano o suspensión, refresca solo si el JWT está caducado o próximo a caducar. */
 export async function refreshSessionAfterForeground() {
-  const refresh = localStorage.getItem('refresh_token')
+  const refresh = getRefreshToken()
   if (!refresh) return
-  const token = localStorage.getItem('token')
+  const token = getAccessToken()
   const payload = decodeJwtPayload(token)
   const expMs = payload?.exp ? payload.exp * 1000 : 0
   const now = Date.now()
@@ -101,7 +107,7 @@ export async function refreshSessionAfterForeground() {
 }
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = getAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -125,7 +131,7 @@ api.interceptors.response.use(
     ) {
       return Promise.reject(err)
     }
-    const refresh = localStorage.getItem('refresh_token')
+    const refresh = getRefreshToken()
     if (!refresh) return Promise.reject(err)
     cfg._retry = true
     try {
@@ -134,8 +140,7 @@ api.interceptors.response.use(
       return api(cfg)
     } catch (e) {
       stopSessionKeepAlive()
-      localStorage.removeItem('token')
-      localStorage.removeItem('refresh_token')
+      clearSessionTokens()
       return Promise.reject(e)
     }
   }

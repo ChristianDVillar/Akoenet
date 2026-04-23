@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client'
 import { getApiBaseUrl } from '../lib/apiBase'
+import { getAccessToken, setAccessToken } from './session-store'
 
 const baseURL = getApiBaseUrl()
 
@@ -10,11 +11,11 @@ export function connectAkoeNet(token) {
     socket.disconnect()
   }
   if (typeof token === 'string' && token) {
-    localStorage.setItem('token', token)
+    setAccessToken(token)
   }
   socket = io(baseURL, {
     auth: (cb) => {
-      cb({ token: localStorage.getItem('token') || '' })
+      cb({ token: getAccessToken() || '' })
     },
     autoConnect: true,
     transports: ['websocket', 'polling'],

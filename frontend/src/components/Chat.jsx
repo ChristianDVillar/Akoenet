@@ -10,6 +10,9 @@ import MessageVideoEmbeds from './MessageVideoEmbeds'
 import StandardEmojiPicker from './StandardEmojiPicker'
 import EditHistoryModal from './EditHistoryModal'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
+import { isCapacitorNative } from '../lib/mobile-runtime'
+import { pickImageFileFromDevice } from '../services/mobile-media'
+import { getAccessToken } from '../services/session-store'
 
 import { getApiBaseUrl } from '../lib/apiBase'
 
@@ -536,7 +539,7 @@ export default function Chat({
   }
 
   async function exportHistory(format) {
-    const token = localStorage.getItem('token')
+    const token = getAccessToken()
     if (!token || !channelId) return
     try {
       const res = await fetch(`${baseURL}/messages/channel/${channelId}/export?format=${format}`, {
@@ -601,7 +604,7 @@ export default function Chat({
     try {
       const form = new FormData()
       form.append('file', file)
-      const token = localStorage.getItem('token')
+      const token = getAccessToken()
       const res = await fetch(`${baseURL}/upload/channel/${channelId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -637,6 +640,12 @@ export default function Chat({
   async function onFile(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
+    await uploadChannelImage(file)
+  }
+
+  async function onPickFromMobileDevice() {
+    const file = await pickImageFileFromDevice()
+    if (!file) return
     await uploadChannelImage(file)
   }
 
@@ -1210,6 +1219,17 @@ export default function Chat({
           />
           📎
         </label>
+        {isCapacitorNative() && (
+          <button
+            type="button"
+            className="btn ghost small file-btn-mobile"
+            onClick={onPickFromMobileDevice}
+            title={t('chat.attachFromDevice', { defaultValue: 'Attach from device' })}
+            aria-label={t('chat.attachFromDevice', { defaultValue: 'Attach from device' })}
+          >
+            📷
+          </button>
+        )}
         <StandardEmojiPicker
           inputRef={composerInputRef}
           text={text}

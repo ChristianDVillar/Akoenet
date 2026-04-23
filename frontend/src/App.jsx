@@ -1,15 +1,18 @@
 import { Suspense, lazy } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from './context/AuthContext'
 import CookieConsentBanner from './components/CookieConsentBanner'
 import ThemeSync from './components/ThemeSync'
 import LegalTermsGate from './components/LegalTermsGate'
+import { useEffect } from 'react'
+import api from './services/api'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import DashboardAdmin from './pages/DashboardAdmin'
 import InvitePage from './pages/InvitePage'
+import { initMobileIntegrations } from './services/mobile-integrations'
 
 const RegisterComplete = lazy(() => import('./pages/RegisterComplete'))
 const Messages = lazy(() => import('./pages/Messages'))
@@ -74,6 +77,35 @@ function AuthGateRoute({ children, requireAdmin = false }) {
 }
 
 export default function App() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    let cleanup = null
+    initMobileIntegrations((to) => navigate(to)).then((fn) => {
+      cleanup = fn
+    })
+    return () => {
+      try {
+        cleanup?.()
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [navigate])
+
+  useEffect(() => {
+    const onMobilePushToken = (event) => {
+      const token = String(event?.detail?.token || '').trim()
+      const platform = String(event?.detail?.platform || '').trim().toLowerCase()
+      if (!token || (platform !== 'android' && platform !== 'ios')) return
+      api.post('/auth/push/native/subscribe', { token, platform }).catch(() => {})
+    }
+    window.addEventListener('akoenet:mobile-push-token', onMobilePushToken)
+    return () => {
+      window.removeEventListener('akoenet:mobile-push-token', onMobilePushToken)
+    }
+  }, [])
+
   return (
     <>
       <ThemeSync />

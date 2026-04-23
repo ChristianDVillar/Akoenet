@@ -18,6 +18,8 @@ services:
     envVars:
       - key: VITE_DESKTOP_INSTALLER_URL
         value: /releases/akonet-desktop.exe
+      - key: VITE_DESKTOP_INSTALLER_VERSION
+        value: "1.5.0"
     routes:
       - type: redirect
         source: /favicon.ico

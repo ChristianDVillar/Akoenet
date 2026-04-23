@@ -16,7 +16,7 @@ export default function ServerSidebar({
           {homeAction && (
             <button
               type="button"
-              className="rail-icon home-icon"
+              className="rail-icon rail-icon--touch home-icon"
               title={t('rail.homeTitle')}
               aria-label={t('rail.homeAria')}
               onClick={homeAction}
@@ -53,7 +53,7 @@ export default function ServerSidebar({
             <div className="rail-sep rail-sep-shortcuts" />
             <button
               type="button"
-              className={`rail-icon rail-icon-message ${messagesActive ? 'active' : ''}`}
+              className={`rail-icon rail-icon--touch rail-icon-message ${messagesActive ? 'active' : ''}`}
               title={t('rail.dmTitle')}
               aria-label={t('rail.dmAria')}
               onClick={messagesAction}
@@ -86,7 +86,7 @@ export default function ServerSidebar({
             <li key={s.id}>
               <button
                 type="button"
-                className={`rail-icon ${activeServerId === s.id ? 'active' : ''}`}
+                className={`rail-icon rail-icon--touch ${activeServerId === s.id ? 'active' : ''}`}
                 title={s.name}
                 aria-label={s.name}
                 onClick={() => onSelectServer(s.id)}

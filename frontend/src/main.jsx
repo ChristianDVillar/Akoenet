@@ -9,6 +9,11 @@ import { runDesktopUpdateCheck } from './lib/desktopUpdates.js'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { LandingLocaleProvider } from './context/LandingLocaleProvider.jsx'
+import {
+  hydrateSessionFromNativeStorage,
+  setAccessToken,
+  setRefreshToken,
+} from './services/session-store.js'
 
 const AppRouter = __SPA_HASH_ROUTER__ ? HashRouter : BrowserRouter
 
@@ -28,9 +33,9 @@ function consumeTwitchOAuthFromUrl() {
       if (token || err) params = inHash
     }
     if (!token && !err) return
-    if (token) localStorage.setItem('token', token)
+    if (token) setAccessToken(token)
     const refresh = params.get('refresh_token')
-    if (refresh) localStorage.setItem('refresh_token', refresh)
+    if (refresh) setRefreshToken(refresh)
     if (err) sessionStorage.setItem(TWITCH_OAUTH_ERR_KEY, err)
     const path = err ? '/login' : window.location.pathname || '/'
     const cleanHash =
@@ -43,8 +48,6 @@ function consumeTwitchOAuthFromUrl() {
   }
 }
 
-consumeTwitchOAuthFromUrl()
-
 /** Apply saved UI theme before React paints (reduces flash; accent syncs after /auth/me). */
 function bootstrapThemeEarly() {
   try {
@@ -54,7 +57,10 @@ function bootstrapThemeEarly() {
     /* ignore */
   }
 }
-bootstrapThemeEarly()
+async function bootstrapSessionEarly() {
+  await hydrateSessionFromNativeStorage()
+  consumeTwitchOAuthFromUrl()
+}
 
 if (isTauri() && import.meta.env.DEV) {
   import('@tauri-apps/plugin-log')
@@ -73,14 +79,23 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   })
 }
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <AppRouter>
-      <LandingLocaleProvider>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </LandingLocaleProvider>
-    </AppRouter>
-  </StrictMode>
-)
+function mountReactApp() {
+  createRoot(document.getElementById('root')).render(
+    <StrictMode>
+      <AppRouter>
+        <LandingLocaleProvider>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </LandingLocaleProvider>
+      </AppRouter>
+    </StrictMode>
+  )
+}
+
+void bootstrapSessionEarly()
+  .catch(() => {})
+  .finally(() => {
+    bootstrapThemeEarly()
+    mountReactApp()
+  })

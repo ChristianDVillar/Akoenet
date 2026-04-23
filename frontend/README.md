@@ -51,6 +51,18 @@ Equivale a `tauri:build` y luego genera en `frontend/public/releases/` **solo la
 
 En Windows verás típicamente `.msi` o instalador NSIS; en macOS `.dmg`/`.app`; según targets en `src-tauri/tauri.conf.json`.
 
+## App Android (Capacitor)
+
+Tras cambiar el logo en **`public/Akoenet.png`**, regenera iconos adaptativos y splash en el proyecto nativo:
+
+```bash
+cd frontend
+npm run mobile:icons
+npx cap sync android
+```
+
+La versión visible de la app en Android está en `android/app/build.gradle` (`versionName` / `versionCode`), alineada con el release del cliente (p. ej. con `frontend/package.json`).
+
 ### Avisos de “archivo peligroso” / SmartScreen (Windows)
 
 Los `.exe` sin **firma Authenticode** (certificado de editor) suelen ser marcados por Chrome/Edge y por **Windows SmartScreen** como no fiables. No implica que el binario esté infectado: es la política ante editores no verificados. Opciones: firma el instalador con un certificado de código (de pago, identidad verificada), o indica a los usuarios que usen “Más información” → “Ejecutar de todas formas” si confían en el origen. Documentación Tauri: [Windows Code Signing](https://v2.tauri.app/distribute/sign/windows/).

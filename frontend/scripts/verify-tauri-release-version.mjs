@@ -1,7 +1,7 @@
 /**
  * Comprueba que TAG (p. ej. v0.7.5 desde GitHub Actions) coincide con
  * package.json, src-tauri/tauri.conf.json y src-tauri/Cargo.toml.
- * Uso: TAG=v0.7.5 node scripts/verify-tauri-release-version.mjs
+ * Uso: TAG=v1.5.0 node scripts/verify-tauri-release-version.mjs
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -13,7 +13,7 @@ const tagNoV = tagRaw.replace(/^v/i, '')
 // CI sometimes uses helper tags like vX.Y.Z-remote; map them to X.Y.Z for version checks.
 const tag = tagNoV.replace(/-remote$/i, '')
 if (!tag) {
-  console.error('Missing env TAG (e.g. v0.7.5)')
+  console.error('Missing env TAG (e.g. v1.5.0)')
   process.exit(1)
 }
 

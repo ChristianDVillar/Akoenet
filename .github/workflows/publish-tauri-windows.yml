@@ -4,14 +4,14 @@
 #
 # Flujo recomendado (cada release de escritorio):
 #   1. Sube la versión en:
-#        frontend/package.json  → "version": "0.8.0"
-#        frontend/src-tauri/tauri.conf.json → "version": "0.8.0"
-#        frontend/src-tauri/Cargo.toml → version = "0.8.0"
+#        frontend/package.json  → "version": "1.5.0"
+#        frontend/src-tauri/tauri.conf.json → "version": "1.5.0"
+#        frontend/src-tauri/Cargo.toml → version = "1.5.0"
 #      (deben coincidir entre sí y con el tag.)
 #   2. Commit y push a la rama habitual (p. ej. Development o main).
 #   3. Crea y sube el tag:
-#        git tag v0.8.0
-#        git push origin v0.8.0
+#        git tag v1.5.0
+#        git push origin v1.5.0
 #
 # Este workflow se dispara solo con tags que empiezan por "v". Compila en
 # windows-latest y tauri-action sube el .exe, .sig y latest.json al Release.

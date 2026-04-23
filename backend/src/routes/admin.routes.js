@@ -7,6 +7,7 @@ const validate = require("../middleware/validate");
 const { getSnapshot } = require("../lib/runtime-metrics");
 const { extractMessageIdFromUrl } = require("../lib/dmca-message-id");
 const logger = require("../lib/logger");
+const { getPushDeliveryDebug } = require("../lib/web-push-notify");
 
 const router = express.Router();
 
@@ -529,6 +530,20 @@ router.get("/backup-status", async (_req, res) => {
       error: e?.message || String(e),
       status: "error",
     });
+  }
+});
+
+router.get("/push/debug", async (_req, res) => {
+  try {
+    const data = await getPushDeliveryDebug();
+    res.json({
+      ok: true,
+      checked_at: new Date().toISOString(),
+      ...data,
+    });
+  } catch (e) {
+    logger.error({ err: e }, "push debug failed");
+    res.status(500).json({ ok: false, error: "push_debug_failed" });
   }
 });
 
