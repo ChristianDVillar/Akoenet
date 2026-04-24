@@ -155,6 +155,22 @@ function twitchOAuthErrorUrl(code) {
   return spaRedirectWithQuery({ twitch_error: String(code) });
 }
 
+function twitchOAuthNativeUrl(params = {}) {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v != null && v !== "") sp.set(k, String(v));
+  }
+  const qs = sp.toString();
+  return qs ? `akoenet://oauth/twitch?${qs}` : "akoenet://oauth/twitch";
+}
+
+function twitchOAuthErrorRedirect(code, decodedState) {
+  if (decodedState?.native === true) {
+    return twitchOAuthNativeUrl({ error: String(code) });
+  }
+  return twitchOAuthErrorUrl(code);
+}
+
 function steamLinkSuccessUrl() {
   return spaRedirectWithQuery({ steam_linked: "1" });
 }
@@ -704,8 +720,10 @@ router.get("/twitch/start", authRateLimiter, (req, res) => {
       statusPath: "/auth/twitch/status",
     });
   }
+  const native = String(req.query?.native || "").trim().toLowerCase();
+  const nativeFlow = native === "1" || native === "true";
   const nonce = crypto.randomBytes(16).toString("hex");
-  const state = jwt.sign({ nonce }, secret, { expiresIn: "10m" });
+  const state = jwt.sign({ nonce, native: nativeFlow }, secret, { expiresIn: "10m" });
   const qs = new URLSearchParams({
     client_id: twitchClientId,
     redirect_uri: twitchRedirectUri,
@@ -780,12 +798,12 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
     });
 
     if (!tokenRes.ok) {
-      return res.redirect(twitchOAuthErrorUrl("twitch_token_failed"));
+      return res.redirect(twitchOAuthErrorRedirect("twitch_token_failed", decoded));
     }
     const tokenData = await tokenRes.json();
     const accessToken = tokenData.access_token;
     if (!accessToken) {
-      return res.redirect(twitchOAuthErrorUrl("twitch_no_access_token"));
+      return res.redirect(twitchOAuthErrorRedirect("twitch_no_access_token", decoded));
     }
 
     const meRes = await fetch("https://api.twitch.tv/helix/users", {
@@ -795,12 +813,12 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
       },
     });
     if (!meRes.ok) {
-      return res.redirect(twitchOAuthErrorUrl("twitch_user_failed"));
+      return res.redirect(twitchOAuthErrorRedirect("twitch_user_failed", decoded));
     }
     const meData = await meRes.json();
     const twitchUser = meData?.data?.[0];
     if (!twitchUser?.id || !twitchUser?.login) {
-      return res.redirect(twitchOAuthErrorUrl("twitch_invalid_user"));
+      return res.redirect(twitchOAuthErrorRedirect("twitch_invalid_user", decoded));
     }
 
     const login = String(twitchUser.login || "").trim().toLowerCase();
@@ -871,10 +889,18 @@ router.get("/twitch/callback", authRateLimiter, async (req, res) => {
     const user = userRes.rows[0];
     const appToken = signAppToken(user);
     const refreshRaw = await createStoredRefreshToken(pool, user.id);
+    if (decoded?.native === true) {
+      return res.redirect(
+        twitchOAuthNativeUrl({
+          token: appToken,
+          refresh_token: refreshRaw,
+        })
+      );
+    }
     return res.redirect(twitchOAuthSuccessUrl(appToken, refreshRaw));
   } catch (e) {
     logger.error({ err: e }, "Twitch callback failed");
-    return res.redirect(twitchOAuthErrorUrl("twitch_auth_failed"));
+    return res.redirect(twitchOAuthErrorRedirect("twitch_auth_failed", decoded));
   }
 });
 

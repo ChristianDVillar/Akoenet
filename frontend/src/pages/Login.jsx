@@ -7,6 +7,7 @@ import api from '../services/api'
 import { inviteLandingPath, INVITE_QUERY_PARAM } from '../lib/invites'
 import { postAuthDestination } from '../lib/postAuthDestination'
 import { isTauri } from '../lib/isTauri'
+import { isCapacitorNative } from '../lib/mobile-runtime'
 import AuthLegalStrip from '../components/AuthLegalStrip'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 
@@ -261,7 +262,10 @@ export default function Login() {
                   /* ignore */
                 }
               }
-              window.location.href = `${apiBase}/auth/twitch/start`
+              const nativeFlow = isCapacitorNative()
+              window.location.href = nativeFlow
+                ? `${apiBase}/auth/twitch/start?native=1`
+                : `${apiBase}/auth/twitch/start`
             }}
           >
             {twitchConfigured === null
