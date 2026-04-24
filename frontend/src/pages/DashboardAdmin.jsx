@@ -73,10 +73,12 @@ export default function DashboardAdmin({ embedded = false }) {
   const [reportStatus, setReportStatus] = useState('open')
   const [reportServerId, setReportServerId] = useState('')
   const [metrics, setMetrics] = useState(null)
+  const [pushDebug, setPushDebug] = useState(null)
   const [overview, setOverview] = useState(null)
   const [overviewEndpointAvailable, setOverviewEndpointAvailable] = useState(true)
   const [reportsEndpointAvailable, setReportsEndpointAvailable] = useState(true)
   const [metricsEndpointAvailable, setMetricsEndpointAvailable] = useState(true)
+  const [pushDebugEndpointAvailable, setPushDebugEndpointAvailable] = useState(true)
   const [loadWarnings, setLoadWarnings] = useState([])
   const docsUrl = `${String(api.defaults.baseURL || '').replace(/\/$/, '')}/docs`
 
@@ -132,11 +134,14 @@ export default function DashboardAdmin({ embedded = false }) {
         metricsEndpointAvailable
           ? api.get('/admin/metrics', acceptAllStatuses)
           : Promise.resolve({ status: 404, data: null }),
+        pushDebugEndpointAvailable
+          ? api.get('/admin/push/debug', acceptAllStatuses)
+          : Promise.resolve({ status: 404, data: null }),
         overviewEndpointAvailable
           ? api.get('/admin/overview', acceptAllStatuses)
           : Promise.resolve({ status: 404, data: null }),
       ]
-      const [depsRes, auditRes, reportRes, metricsRes, overviewRes] = await Promise.all(reqs)
+      const [depsRes, auditRes, reportRes, metricsRes, pushDebugRes, overviewRes] = await Promise.all(reqs)
 
       const depsBody = depsRes.data && typeof depsRes.data === 'object' ? depsRes.data : null
       if (depsBody?.deps && typeof depsBody.deps === 'object') {
@@ -189,6 +194,19 @@ export default function DashboardAdmin({ embedded = false }) {
         if (metricsRes.status === 404) {
           if (metricsEndpointAvailable) setMetricsEndpointAvailable(false)
           warnings.push(t('admin.warnMetrics404'))
+        }
+      }
+
+      if (pushDebugRes.status === 200 && pushDebugRes.data && typeof pushDebugRes.data === 'object') {
+        setPushDebug(pushDebugRes.data)
+        setPushDebugEndpointAvailable(true)
+      } else {
+        setPushDebug(null)
+        if (pushDebugRes.status === 404) {
+          if (pushDebugEndpointAvailable) setPushDebugEndpointAvailable(false)
+          warnings.push(t('admin.warnPushDebug404'))
+        } else if (pushDebugRes.status && pushDebugRes.status !== 200) {
+          warnings.push(t('admin.warnPushDebugHttp', { status: pushDebugRes.status }))
         }
       }
 
@@ -460,6 +478,58 @@ export default function DashboardAdmin({ embedded = false }) {
                 </span>
               </div>
             )}
+            <div className="status-history">
+              <h3>{t('admin.mobileStatusTitle')}</h3>
+              {!pushDebugEndpointAvailable ? (
+                <p className="muted small">{t('admin.mobileStatus404')}</p>
+              ) : pushDebug ? (
+                <>
+                  <div className="status-grid">
+                    <div className="status-item">
+                      <strong>{t('admin.mobileAndroidFcm')}</strong>
+                      <div className="status-right">
+                        <StatusBadge
+                          ok={Boolean(pushDebug?.configured?.android_fcm)}
+                          label={pushDebug?.configured?.android_fcm ? t('admin.statusOk') : t('admin.statusError')}
+                        />
+                      </div>
+                    </div>
+                    <div className="status-item">
+                      <strong>{t('admin.mobileWebPush')}</strong>
+                      <div className="status-right">
+                        <StatusBadge
+                          ok={Boolean(pushDebug?.configured?.web_push_vapid)}
+                          label={pushDebug?.configured?.web_push_vapid ? t('admin.statusOk') : t('admin.statusError')}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="status-meta" style={{ marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                    <span>
+                      <strong>{t('admin.mobileNativeTokens')}</strong>{' '}
+                      {formatNum(pushDebug?.subscriptions?.native_total ?? 0)}
+                    </span>
+                    <span>
+                      <strong>{t('admin.mobileAndroidTokens')}</strong>{' '}
+                      {formatNum(pushDebug?.subscriptions?.native_android_total ?? 0)}
+                    </span>
+                    <span>
+                      <strong>{t('admin.mobileIosTokens')}</strong>{' '}
+                      {formatNum(pushDebug?.subscriptions?.native_ios_total ?? 0)}
+                    </span>
+                    <span>
+                      <strong>{t('admin.mobileUsersAndroid')}</strong>{' '}
+                      {formatNum(pushDebug?.users?.with_android_native ?? 0)}
+                    </span>
+                  </div>
+                  <p className="muted small" style={{ marginTop: '0.5rem' }}>
+                    {t('admin.mobileHint')}
+                  </p>
+                </>
+              ) : (
+                <p className="muted small">{t('admin.na')}</p>
+              )}
+            </div>
             <div className="status-grid">
               <div className="status-item">
                 <strong>{t('admin.healthApi')}</strong>
