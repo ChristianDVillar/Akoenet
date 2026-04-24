@@ -1,13 +1,5 @@
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { isCapacitorNative } from '../lib/mobile-runtime'
-
-let cameraModulePromise = null
-
-async function getCameraModule() {
-  if (!cameraModulePromise) {
-    cameraModulePromise = import('@capacitor/camera').catch(() => null)
-  }
-  return cameraModulePromise
-}
 
 function normalizeMime(format) {
   const f = String(format || '').toLowerCase()
@@ -23,10 +15,6 @@ function normalizeMime(format) {
  */
 export async function pickImageFileFromDevice() {
   if (!isCapacitorNative()) return null
-  const mod = await getCameraModule()
-  const Camera = mod?.Camera
-  const CameraResultType = mod?.CameraResultType
-  const CameraSource = mod?.CameraSource
   if (!Camera || !CameraResultType || !CameraSource) return null
   try {
     const photo = await Camera.getPhoto({

@@ -1,16 +1,18 @@
+import { App } from '@capacitor/app'
+import { Capacitor } from '@capacitor/core'
+import { PushNotifications } from '@capacitor/push-notifications'
 import { isCapacitorNative } from '../lib/mobile-runtime'
 import { resolveMobileAppUrlToRoute } from '../lib/mobile-deep-links'
 import { setAccessToken, setRefreshToken } from './session-store'
 
-async function loadNativeModules() {
-  const [appMod, pushMod] = await Promise.all([
-    import('@capacitor/app').catch(() => null),
-    import('@capacitor/push-notifications').catch(() => null),
-  ])
-  return {
-    App: appMod?.App || null,
-    PushNotifications: pushMod?.PushNotifications || null,
-  }
+/**
+ * En Android, permisos + `register()` activan FCM y exigen Firebase (`google-services.json` + plugin `google-services`).
+ * Sin eso el plugin nativo puede tumbar el proceso. En iOS se sigue intentando el flujo habitual.
+ */
+function mayUseNativePush() {
+  if (Capacitor.getPlatform() !== 'android') return true
+  const v = String(import.meta.env?.VITE_ANDROID_FCM_REGISTER || '').trim().toLowerCase()
+  return v === '1' || v === 'true'
 }
 
 function dispatchPushToken(token) {
@@ -31,7 +33,6 @@ function maybePersistTokensFromRoute(route) {
 
 export async function initMobileIntegrations(navigate) {
   if (!isCapacitorNative() || typeof navigate !== 'function') return () => {}
-  const { App, PushNotifications } = await loadNativeModules()
   const removers = []
 
   if (App?.addListener) {
@@ -50,7 +51,7 @@ export async function initMobileIntegrations(navigate) {
     })
   }
 
-  if (PushNotifications) {
+  if (PushNotifications && mayUseNativePush()) {
     try {
       let perm = await PushNotifications.checkPermissions()
       if (perm.receive !== 'granted') {

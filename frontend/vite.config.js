@@ -23,7 +23,16 @@ export default defineConfig(({ mode }) => {
   return {
   plugins: [react()],
   resolve: {
-    dedupe: ['@capacitor/core'],
+    dedupe: ['@capacitor/core', '@capacitor/app', '@capacitor/preferences'],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/@capacitor/')) return 'capacitor'
+        },
+      },
+    },
   },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),

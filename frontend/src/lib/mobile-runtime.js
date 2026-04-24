@@ -1,9 +1,10 @@
+import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 
 /**
- * Import estático de @capacitor/core: un único módulo en el grafo.
- * Un `import('@capacitor/core')` dinámico aparte empaquetaba otra copia (p. ej. dist-*.js),
- * volvía a ejecutar initCapacitorGlobal y rompía plugins como Preferences ("…then() is not implemented").
+ * Imports estáticos de @capacitor/*: un solo grafo; los `import()` dinámicos a @capacitor/app
+ * u otros paquetes hacían que Vite emitiera otro chunk con otra copia de @capacitor/core
+ * y rompía Preferences ("…then() is not implemented on android").
  */
 export function isCapacitorNative() {
   try {
@@ -17,8 +18,6 @@ export function isCapacitorNative() {
 export async function addNativeAppStateListener(onActive) {
   if (typeof onActive !== 'function') return () => {}
   if (!Capacitor?.isNativePlatform?.()) return () => {}
-  const AppMod = await import('@capacitor/app').catch(() => null)
-  const App = AppMod?.App
   if (!App?.addListener) return () => {}
   const handle = await App.addListener('appStateChange', ({ isActive }) => {
     if (isActive) onActive()
