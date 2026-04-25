@@ -34,6 +34,12 @@ export default {
     leadDefault: 'Comunidades y chat en tiempo real.',
     twitchChecking: 'Comprobando Twitch…',
     twitchUnavailable: 'Twitch no disponible',
+    twitchServicePaused: 'Servidor en pausa o sin conexión',
+    twitchUnreachableTitle:
+      'No pudimos contactar con la API de AkoeNet. Recarga la página (F5 o ⌘R) o pulsa Reintentar.',
+    twitchUnreachableBody:
+      'A veces el hosting entra en reposo hasta la primera petición. Espera unos segundos, recarga esta página o pulsa Reintentar para volver a comprobar si Twitch ya está disponible.',
+    twitchRetryCheck: 'Reintentar',
     twitchSignIn: 'Entrar con Twitch',
     twitchDisabledTitle:
       'OAuth de Twitch no está configurado en el servidor (faltan TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET).',
@@ -246,7 +252,13 @@ export default {
       unlinkTwitch: 'Desvincular Twitch',
       twitchUnavailableHint:
         'La vinculación con Twitch no está configurada en este servidor (faltan credenciales OAuth de Twitch).',
+      twitchChecking: 'Comprobando Twitch…',
+      twitchServerUnreachableHint:
+        'No pudimos contactar con el servidor para comprobar Twitch (p. ej. API en reposo o sin red). Recarga la página o pulsa Reintentar.',
+      twitchRetryCheck: 'Reintentar',
       errorTwitchUnavailable: 'La vinculación con Twitch no está disponible ahora mismo.',
+      errorTwitchApiUnreachable:
+        'No pudimos contactar con el servidor. Recarga la página o espera unos segundos y vuelve a intentar la vinculación con Twitch.',
       errorTwitchStart: 'No se pudo iniciar la vinculación con Twitch.',
       errorTwitchUnlink: 'No se pudo desvincular Twitch.',
       twitchUnlinkedInfo: 'Cuenta de Twitch desvinculada.',

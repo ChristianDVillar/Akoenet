@@ -23,3 +23,12 @@ AkoeNet-notes.txt
 /AkoNet
 docs/notes/**
 !docs/notes/README.md
+
+# Firebase: el build Android usa frontend/android/app/google-services.json
+# en local/CI; no versionar (metadatos de proyecto / clave API del cliente).
+/google-services.json
+frontend/android/app/google-services.json
+
+# Firma Android: no versionar secretos ni keystores locales
+frontend/android/key.properties
+frontend/android/app/*.jks

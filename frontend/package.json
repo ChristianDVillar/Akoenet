@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "mobile:sync": "npx cap sync",
+    "mobile:sync:android": "node scripts/cap-sync-android-mobile.mjs",
     "mobile:add:android": "npx cap add android",
     "mobile:add:ios": "npx cap add ios",
     "mobile:open:android": "npx cap open android",

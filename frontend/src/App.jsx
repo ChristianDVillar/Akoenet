@@ -97,8 +97,18 @@ export default function App() {
     const onMobilePushToken = (event) => {
       const token = String(event?.detail?.token || '').trim()
       const platform = String(event?.detail?.platform || '').trim().toLowerCase()
+      const device_id = String(event?.detail?.device_id || '').trim()
+      const app_version = String(event?.detail?.app_version || '').trim()
       if (!token || (platform !== 'android' && platform !== 'ios')) return
-      api.post('/auth/push/native/subscribe', { token, platform }).catch(() => {})
+      api
+        .post('/auth/push/native/subscribe', {
+          token,
+          platform,
+          device_id: device_id || undefined,
+          app_version: app_version || undefined,
+          device_name: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        })
+        .catch(() => {})
     }
     window.addEventListener('akoenet:mobile-push-token', onMobilePushToken)
     return () => {

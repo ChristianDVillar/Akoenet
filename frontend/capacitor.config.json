@@ -1,5 +1,5 @@
 {
-  "appId": "com.akoenet.mobile",
+  "appId": "com.akoenet.app",
   "appName": "AkoeNet",
   "webDir": "dist",
   "bundledWebRuntime": false,

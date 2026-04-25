@@ -36,7 +36,8 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [twoFactorToken, setTwoFactorToken] = useState(null)
   const [code2fa, setCode2fa] = useState('')
-  const [twitchConfigured, setTwitchConfigured] = useState(null)
+  const [twitchGate, setTwitchGate] = useState(/** @type {'loading' | 'ready' | 'disabled' | 'unreachable'} */ ('loading'))
+  const [twitchStatusRetryToken, setTwitchStatusRetryToken] = useState(0)
   /** Exact OAuth redirect_uri the backend sends to Twitch (from /auth/twitch/status). */
   const [twitchOAuthRedirectUri, setTwitchOAuthRedirectUri] = useState(null)
   const apiBase = getApiBaseUrl()
@@ -70,6 +71,7 @@ export default function Login() {
 
   useEffect(() => {
     let cancelled = false
+    setTwitchGate('loading')
     const ac = new AbortController()
     const timeoutMs = 8000
     const timer = setTimeout(() => ac.abort(), timeoutMs)
@@ -82,13 +84,13 @@ export default function Login() {
       })
       .then((data) => {
         if (cancelled) return
-        setTwitchConfigured(Boolean(data?.configured))
+        setTwitchGate(data?.configured ? 'ready' : 'disabled')
         const ru = data?.redirectUri != null ? String(data.redirectUri).trim() : ''
-        if (ru) setTwitchOAuthRedirectUri(ru)
+        setTwitchOAuthRedirectUri(ru || null)
       })
       .catch(() => {
         clearTimeout(timer)
-        if (!cancelled) setTwitchConfigured(false)
+        if (!cancelled) setTwitchGate('unreachable')
       })
 
     return () => {
@@ -96,7 +98,7 @@ export default function Login() {
       clearTimeout(timer)
       ac.abort()
     }
-  }, [apiBase])
+  }, [apiBase, twitchStatusRetryToken])
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -251,8 +253,14 @@ export default function Login() {
           <button
             type="button"
             className="btn twitch"
-            disabled={twitchConfigured !== true}
-            title={twitchConfigured === false ? t('login.twitchDisabledTitle') : undefined}
+            disabled={twitchGate !== 'ready'}
+            title={
+              twitchGate === 'disabled'
+                ? t('login.twitchDisabledTitle')
+                : twitchGate === 'unreachable'
+                  ? t('login.twitchUnreachableTitle')
+                  : undefined
+            }
             onClick={() => {
               const inv = searchParams.get(INVITE_QUERY_PARAM)
               if (inv) {
@@ -268,13 +276,15 @@ export default function Login() {
                 : `${apiBase}/auth/twitch/start`
             }}
           >
-            {twitchConfigured === null
+            {twitchGate === 'loading'
               ? t('login.twitchChecking')
-              : twitchConfigured === false
+              : twitchGate === 'disabled'
                 ? t('login.twitchUnavailable')
-                : t('login.twitchSignIn')}
+                : twitchGate === 'unreachable'
+                  ? t('login.twitchServicePaused')
+                  : t('login.twitchSignIn')}
           </button>
-          {twitchConfigured === false && (
+          {twitchGate === 'disabled' && (
             <p className="muted small" style={{ marginTop: '0.5rem' }}>
               {t('login.twitchHelpBeforeUri')}{' '}
               <code>{twitchOAuthRedirectUri || `${apiBase}/auth/twitch/callback`}</code>
@@ -291,6 +301,18 @@ export default function Login() {
                 </>
               ) : null}
             </p>
+          )}
+          {twitchGate === 'unreachable' && (
+            <div className="muted small" style={{ marginTop: '0.5rem' }}>
+              <p style={{ margin: '0 0 0.5rem' }}>{t('login.twitchUnreachableBody')}</p>
+              <button
+                type="button"
+                className="btn ghost small"
+                onClick={() => setTwitchStatusRetryToken((n) => n + 1)}
+              >
+                {t('login.twitchRetryCheck')}
+              </button>
+            </div>
           )}
             </>
           )}

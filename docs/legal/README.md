@@ -13,6 +13,7 @@ Las páginas públicas del cliente usan **español e inglés**: para cada texto 
 | Protección legal | [`PROTECCION_LEGAL.md`](./PROTECCION_LEGAL.md) | [`PROTECCION_LEGAL.en.md`](./PROTECCION_LEGAL.en.md) |
 | Política de cookies | [`POLITICA_COOKIES.md`](./POLITICA_COOKIES.md) | [`POLITICA_COOKIES.en.md`](./POLITICA_COOKIES.en.md) |
 | Moderación de contenidos (DSA) | [`MODERACION_CONTENIDOS.md`](./MODERACION_CONTENIDOS.md) | [`MODERACION_CONTENIDOS.en.md`](./MODERACION_CONTENIDOS.en.md) |
+| Eliminación de cuenta | [`ACCOUNT_DELETION.md`](./ACCOUNT_DELETION.md) | [`ACCOUNT_DELETION.en.md`](./ACCOUNT_DELETION.en.md) |
 | Plantilla interna — registro (Art. 30 RGPD) | [`REGISTRO_TRATAMIENTO_RGPD_ART30_PLANTILLA.md`](./REGISTRO_TRATAMIENTO_RGPD_ART30_PLANTILLA.md) | — |
 | Plantilla interna — EIPD / DPIA | [`DPIA_PLANTILLA_RGPD.md`](./DPIA_PLANTILLA_RGPD.md) | — |
 
@@ -25,6 +26,7 @@ Tras compilar o ejecutar el frontend de Vite:
 - `/legal/proteccion` — protección legal  
 - `/legal/cookies` — política de cookies y almacenamiento local  
 - `/legal/moderacion` — declaración de moderación de contenidos (DSA)  
+- `/legal/account-deletion` — información sobre borrado de cuenta y solicitudes  
 
 La **landing pública** y el **pie de página** enlazan a estas rutas. El **contacto legal / DSA** (correo) se muestra en el pie si defines `VITE_LEGAL_CONTACT_EMAIL` en el build (ver `frontend/.env.example`).
 

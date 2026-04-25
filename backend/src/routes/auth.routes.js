@@ -326,6 +326,9 @@ const pushSubscribeSchema = z.object({
 const nativePushSubscribeSchema = z.object({
   token: z.string().trim().min(20).max(4096),
   platform: z.enum(["android", "ios"]),
+  device_id: z.string().trim().min(6).max(128).optional(),
+  device_name: z.string().trim().max(255).optional(),
+  app_version: z.string().trim().max(64).optional(),
 });
 const emptyToNull = (v) => (v === "" ? null : v);
 
@@ -1078,25 +1081,56 @@ router.post(
     try {
       const token = String(req.body.token || "").trim();
       const platform = String(req.body.platform || "").trim().toLowerCase();
+      const deviceId = String(req.body.device_id || "").trim() || null;
+      const deviceName = String(req.body.device_name || "").trim() || null;
+      const appVersion = String(req.body.app_version || "").trim() || null;
+      if (deviceId) {
+        await pool.query(
+          `DELETE FROM push_subscriptions
+           WHERE user_id = $1
+             AND subscription_type = 'native'
+             AND native_platform = $2
+             AND device_id = $3`,
+          [req.user.id, platform, deviceId]
+        );
+      } else {
+        await pool.query(
+          `DELETE FROM push_subscriptions
+           WHERE user_id = $1
+             AND subscription_type = 'native'
+             AND native_platform = $2`,
+          [req.user.id, platform]
+        );
+      }
       await pool.query(
-        `DELETE FROM push_subscriptions
-         WHERE user_id = $1
-           AND subscription_type = 'native'
-           AND native_platform = $2`,
-        [req.user.id, platform]
-      );
-      await pool.query(
-        `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, subscription_type, native_platform, native_token, updated_at)
-         VALUES ($1, NULL, NULL, NULL, 'native', $2, $3, NOW())
+        `INSERT INTO push_subscriptions (
+           user_id,
+           endpoint,
+           p256dh,
+           auth,
+           subscription_type,
+           native_platform,
+           native_token,
+           device_id,
+           device_name,
+           app_version,
+           last_seen_at,
+           updated_at
+         )
+         VALUES ($1, NULL, NULL, NULL, 'native', $2, $3, $4, $5, $6, NOW(), NOW())
          ON CONFLICT (native_token) DO UPDATE
          SET user_id = EXCLUDED.user_id,
              subscription_type = 'native',
              native_platform = EXCLUDED.native_platform,
+             device_id = EXCLUDED.device_id,
+             device_name = EXCLUDED.device_name,
+             app_version = EXCLUDED.app_version,
+             last_seen_at = NOW(),
              endpoint = NULL,
              p256dh = NULL,
              auth = NULL,
              updated_at = NOW()`,
-        [req.user.id, platform, token]
+        [req.user.id, platform, token, deviceId, deviceName, appVersion]
       );
       res.json({ ok: true });
     } catch (e) {
@@ -1109,6 +1143,17 @@ router.post(
 router.delete("/push/native/subscribe", auth, requireTermsAccepted, async (req, res) => {
   const platform = String(req.query.platform || "").trim().toLowerCase();
   const token = String(req.query.token || "").trim();
+  const deviceId = String(req.query.device_id || "").trim();
+  if (deviceId) {
+    await pool.query(
+      `DELETE FROM push_subscriptions
+       WHERE user_id = $1
+         AND subscription_type = 'native'
+         AND device_id = $2`,
+      [req.user.id, deviceId]
+    );
+    return res.json({ ok: true });
+  }
   if (platform === "android" || platform === "ios") {
     await pool.query(
       `DELETE FROM push_subscriptions

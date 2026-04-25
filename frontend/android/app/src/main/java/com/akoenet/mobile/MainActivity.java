@@ -1,4 +1,4 @@
-package com.akoenet.mobile;
+package com.akoenet.app;
 
 import android.os.Bundle;
 import androidx.core.splashscreen.SplashScreen;

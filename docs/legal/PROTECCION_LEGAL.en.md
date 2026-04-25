@@ -109,4 +109,4 @@ In the web client, the public footer uses **Spanish or English** copy depending 
 - Legal review of Markdown in your jurisdiction.
 - Replace placeholders (`[CONTACTO_…]`, etc.) in `PRIVACIDAD.md` and `TERMINOS_Y_CONDICIONES.md`.
 - Operational `legal@…` inbox and internal response process.
-- Published retention policy (`docs/RETENCION_DATOS.md` as operational template).
+- Published retention policy (operational template in **§29** of `docs/ESTRUCTURA_Y_FUNCIONAMIENTO.md`).

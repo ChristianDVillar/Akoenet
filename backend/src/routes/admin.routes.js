@@ -7,7 +7,7 @@ const validate = require("../middleware/validate");
 const { getSnapshot } = require("../lib/runtime-metrics");
 const { extractMessageIdFromUrl } = require("../lib/dmca-message-id");
 const logger = require("../lib/logger");
-const { getPushDeliveryDebug } = require("../lib/web-push-notify");
+const { getPushDeliveryDebug, sendPushToUsers, sendPushToNativeTokens } = require("../lib/web-push-notify");
 
 const router = express.Router();
 
@@ -78,6 +78,14 @@ const dpoIdParamsSchema = z.object({
 const dpoUpdateSchema = z.object({
   status: z.enum(["pending", "responded", "closed"]),
   response: z.string().trim().max(8000).optional().nullable(),
+});
+
+const pushTestSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(500),
+  url: z.string().trim().max(512).optional(),
+  user_ids: z.array(z.coerce.number().int().positive()).max(200).optional(),
+  tokens: z.array(z.string().trim().min(20).max(4096)).max(500).optional(),
 });
 
 router.get("/metrics", (_req, res) => {
@@ -544,6 +552,36 @@ router.get("/push/debug", async (_req, res) => {
   } catch (e) {
     logger.error({ err: e }, "push debug failed");
     res.status(500).json({ ok: false, error: "push_debug_failed" });
+  }
+});
+
+router.post("/push/test", validate({ body: pushTestSchema }), async (req, res) => {
+  try {
+    const payload = {
+      title: req.body.title,
+      body: req.body.body,
+      url: req.body.url || "/",
+    };
+    const userIds = Array.isArray(req.body.user_ids) ? req.body.user_ids : [];
+    const tokens = Array.isArray(req.body.tokens) ? req.body.tokens : [];
+    if (!userIds.length && !tokens.length) {
+      return res.status(400).json({ error: "Provide user_ids or tokens" });
+    }
+    if (userIds.length) {
+      await sendPushToUsers(userIds, payload);
+    }
+    let tokenResult = { sent: 0, failed: 0 };
+    if (tokens.length) {
+      tokenResult = await sendPushToNativeTokens(tokens, payload);
+    }
+    res.json({
+      ok: true,
+      queued_for_users: userIds.length,
+      direct_token_result: tokenResult,
+    });
+  } catch (e) {
+    logger.error({ err: e }, "push test send failed");
+    res.status(500).json({ ok: false, error: "push_test_failed" });
   }
 });
 

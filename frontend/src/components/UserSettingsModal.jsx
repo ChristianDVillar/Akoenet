@@ -78,7 +78,8 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   const [activitySaving, setActivitySaving] = useState(false)
   const [steamBusy, setSteamBusy] = useState(false)
   const [twitchBusy, setTwitchBusy] = useState(false)
-  const [twitchConfigured, setTwitchConfigured] = useState(null)
+  const [twitchGate, setTwitchGate] = useState(/** @type {'loading' | 'ready' | 'disabled' | 'unreachable'} */ ('loading'))
+  const [twitchStatusRetryToken, setTwitchStatusRetryToken] = useState(0)
   const [uiTheme, setUiTheme] = useState(() => sanitizeFull({}))
   const [themeReady, setThemeReady] = useState(false)
   const streamRef = useRef(null)
@@ -146,19 +147,20 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
     if (!open) return
     let cancelled = false
     const ac = new AbortController()
+    setTwitchGate('loading')
     api
       .get('/auth/twitch/status', { signal: ac.signal })
       .then((r) => {
-        if (!cancelled) setTwitchConfigured(Boolean(r.data?.configured))
+        if (!cancelled) setTwitchGate(r.data?.configured ? 'ready' : 'disabled')
       })
       .catch(() => {
-        if (!cancelled) setTwitchConfigured(false)
+        if (!cancelled) setTwitchGate('unreachable')
       })
     return () => {
       cancelled = true
       ac.abort()
     }
-  }, [open])
+  }, [open, twitchStatusRetryToken])
 
   useEffect(() => {
     if (!open) return
@@ -259,8 +261,12 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
   }
 
   async function connectTwitch() {
-    if (twitchConfigured !== true) {
-      setError(t('userSettings.activity.errorTwitchUnavailable'))
+    if (twitchGate !== 'ready') {
+      setError(
+        twitchGate === 'unreachable'
+          ? t('userSettings.activity.errorTwitchApiUnreachable')
+          : t('userSettings.activity.errorTwitchUnavailable')
+      )
       return
     }
     setTwitchBusy(true)
@@ -903,7 +909,11 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                   />
                   <span>{t('userSettings.activity.shareLabel')}</span>
                 </label>
-                {twitchConfigured === true ? (
+                {twitchGate === 'loading' ? (
+                  <p className="muted small" style={{ marginTop: '0.75rem' }}>
+                    {t('userSettings.activity.twitchChecking')}
+                  </p>
+                ) : twitchGate === 'ready' ? (
                   <div style={{ marginTop: '0.75rem' }}>
                     <strong className="muted small" style={{ display: 'block', marginBottom: 6 }}>
                       {t('userSettings.activity.twitchHeading')}
@@ -938,11 +948,22 @@ export default function UserSettingsModal({ open, onClose, initialSection = 'pro
                       ) : null}
                     </div>
                   </div>
-                ) : twitchConfigured === false ? (
+                ) : twitchGate === 'disabled' ? (
                   <p className="muted small" style={{ marginTop: '0.75rem' }}>
                     {t('userSettings.activity.twitchUnavailableHint')}
                   </p>
-                ) : null}
+                ) : (
+                  <div className="muted small" style={{ marginTop: '0.75rem' }}>
+                    <p style={{ margin: '0 0 0.5rem' }}>{t('userSettings.activity.twitchServerUnreachableHint')}</p>
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      onClick={() => setTwitchStatusRetryToken((n) => n + 1)}
+                    >
+                      {t('userSettings.activity.twitchRetryCheck')}
+                    </button>
+                  </div>
+                )}
                 {user?.steam_status?.web_api_configured ? (
                   <div style={{ marginTop: '0.75rem' }}>
                     <strong className="muted small" style={{ display: 'block', marginBottom: 6 }}>

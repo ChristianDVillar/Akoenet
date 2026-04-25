@@ -6,8 +6,7 @@ Plataforma de comunidad en tiempo real.
 
 | | |
 |--|--|
-| Índice | [docs/README.md](./docs/README.md) |
-| Español | [docs/README.es.md](./docs/README.es.md) |
-| English | [docs/README.en.md](./docs/README.en.md) |
+| Guía principal (arquitectura, despliegue, producción, móvil) | [docs/ESTRUCTURA_Y_FUNCIONAMIENTO.md](./docs/ESTRUCTURA_Y_FUNCIONAMIENTO.md) |
+| Índice breve `docs/` | [docs/README.md](./docs/README.md) |
 
-Textos legales del producto: carpeta `docs/legal/`. Licencia del código: fichero `LICENSE` en la raíz. Los enlaces de la tabla solo apuntan a guías de funcionamiento y despliegue.
+Textos legales del producto: carpeta `docs/legal/`. Licencia del código: fichero `LICENSE` en la raíz.

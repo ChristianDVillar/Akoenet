@@ -207,8 +207,48 @@ async function sendPushToUsers(userIds, payload) {
   }
 }
 
+/**
+ * @param {string[]} tokens
+ * @param {{ title: string, body: string, url?: string }} payload
+ */
+async function sendPushToNativeTokens(tokens, payload) {
+  const messaging = ensureFirebaseMessaging();
+  if (!messaging) return { sent: 0, failed: 0 };
+  const cleanTokens = [...new Set((tokens || []).map((t) => String(t || "").trim()).filter(Boolean))];
+  if (!cleanTokens.length) return { sent: 0, failed: 0 };
+
+  let sent = 0;
+  let failed = 0;
+  const batchSize = 500;
+  for (let i = 0; i < cleanTokens.length; i += batchSize) {
+    const batch = cleanTokens.slice(i, i + batchSize);
+    try {
+      const resp = await messaging.sendEachForMulticast({
+        tokens: batch,
+        notification: {
+          title: payload.title,
+          body: payload.body,
+        },
+        data: {
+          url: String(payload.url || "/"),
+        },
+        android: {
+          priority: "high",
+          ttl: 60 * 1000,
+        },
+      });
+      sent += Number(resp.successCount || 0);
+      failed += Number(resp.failureCount || 0);
+    } catch {
+      failed += batch.length;
+    }
+  }
+  return { sent, failed };
+}
+
 module.exports = {
   sendPushToUsers,
+  sendPushToNativeTokens,
   ensureWebPush,
   ensureFirebaseMessaging,
   getPushDeliveryDebug,

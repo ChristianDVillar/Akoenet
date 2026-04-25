@@ -34,6 +34,12 @@ export default {
     leadDefault: 'Communities and real-time chat.',
     twitchChecking: 'Checking Twitch…',
     twitchUnavailable: 'Twitch unavailable',
+    twitchServicePaused: 'Server sleeping or unreachable',
+    twitchUnreachableTitle:
+      'Could not reach the AkoeNet API. Reload the page (F5 or ⌘R) or tap Try again.',
+    twitchUnreachableBody:
+      'Some hosts sleep until the first request. Wait a few seconds, reload this page, or tap Try again to re-check Twitch availability.',
+    twitchRetryCheck: 'Try again',
     twitchSignIn: 'Sign in with Twitch',
     twitchDisabledTitle: 'Twitch OAuth is not configured on the server (missing TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET).',
     twitchAdminHint:
@@ -244,7 +250,13 @@ export default {
       unlinkTwitch: 'Unlink Twitch',
       twitchUnavailableHint:
         'Twitch linking is not configured on this server (missing Twitch OAuth credentials).',
+      twitchChecking: 'Checking Twitch…',
+      twitchServerUnreachableHint:
+        'We could not reach the server to check Twitch (for example the API is waking up or you are offline). Reload the page or tap Try again.',
+      twitchRetryCheck: 'Try again',
       errorTwitchUnavailable: 'Twitch linking is not available right now.',
+      errorTwitchApiUnreachable:
+        'We could not reach the server. Reload the page or wait a few seconds, then try linking Twitch again.',
       errorTwitchStart: 'Could not start Twitch linking.',
       errorTwitchUnlink: 'Could not unlink Twitch.',
       twitchUnlinkedInfo: 'Twitch account unlinked.',

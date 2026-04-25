@@ -2,12 +2,12 @@
 
 Este documento resume la arquitectura actual del proyecto, los flujos principales y los componentes clave de backend/frontend.
 
-*Última revisión estructural: abril 2026 (backend **1.4.x**, frontend/desktop **0.6.x**: ajustes de servidor por pestañas como User settings; `GET /integrations/scheduler/servers` y `…/channels` para el Streamer Scheduler; sesión persistente JWT + socket; desktop, `render.yaml`, workflow Windows por tag; registro por email, DM/amistad, Resend, UX móvil y cookies).*
+*Última revisión estructural: abril 2026 (backend **1.4.6**, frontend/desktop **1.5.0**: ajustes de servidor por pestañas como User settings; `GET /integrations/scheduler/servers` y `…/channels` para el Streamer Scheduler; sesión persistente JWT + socket; desktop, `render.yaml`, workflow Windows por tag; registro por email, DM/amistad, Resend, UX móvil y cookies).*
 
 ## Últimos cambios del documento
 
 - **Abril 2026 (servidor + Scheduler):** **`ServerSettingsModal.jsx`** usa el mismo layout de pestañas que **`UserSettingsModal`**: Invites, Emojis, Commands, Events, Announcements. Backend **1.4.0**: OpenAPI y rutas `GET /integrations/scheduler/servers` y `GET /integrations/scheduler/servers/:serverId/channels` (secreto compartido con el webhook de streams). Documentado en §15.1.1 y §24.6.
-- **Abril 2026 (sesión + desktop):** el frontend renueva el access token **antes de caducar** (`startSessionKeepAlive` en `frontend/src/services/api.js`, programado según `exp` del JWT) usando **`sharedRefresh()`** único para evitar carreras con el interceptor axios en `/auth/refresh` (el backend rota el refresh token). Al volver a la pestaña, `refreshSessionAfterForeground()` solo llama a `/auth/refresh` si el JWT expira en menos de 5 minutos o ya caducó. El **Socket.IO** usa `auth` como función que lee `localStorage` en cada handshake y reconexión (`reconnectionAttempts: Infinity`), para que tras cortes de red o suspensión el token siga siendo válido. Si el refresco falla, se dispara `akoenet:session-lost` y `AuthContext` limpia la sesión. **Desktop:** versión **0.3.1** en `package.json` / `src-tauri/tauri.conf.json`; instalador servido desde `frontend/public/releases/` y referenciado en **`render.yaml`** (`VITE_DESKTOP_INSTALLER_URL`). Publicación CI: `.github/workflows/publish-tauri-windows.yml` en push de tag `v*` (secretos `TAURI_SIGNING_PRIVATE_KEY` en GitHub Actions).
+- **Abril 2026 (sesión + desktop):** el frontend renueva el access token **antes de caducar** (`startSessionKeepAlive` en `frontend/src/services/api.js`, programado según `exp` del JWT) usando **`sharedRefresh()`** único para evitar carreras con el interceptor axios en `/auth/refresh` (el backend rota el refresh token). Al volver a la pestaña, `refreshSessionAfterForeground()` solo llama a `/auth/refresh` si el JWT expira en menos de 5 minutos o ya caducó. El **Socket.IO** usa `auth` como función que lee `localStorage` en cada handshake y reconexión (`reconnectionAttempts: Infinity`), para que tras cortes de red o suspensión el token siga siendo válido. Si el refresco falla, se dispara `akoenet:session-lost` y `AuthContext` limpia la sesión. **Desktop:** versión **1.5.0** en `package.json` / `src-tauri/tauri.conf.json`; instalador estable `akonet-desktop.exe` servido desde `frontend/public/releases/` y referenciado en **`render.yaml`** (`VITE_DESKTOP_INSTALLER_URL=/releases/akonet-desktop.exe`). Publicación CI: `.github/workflows/publish-tauri-windows.yml` en push de tag `v*` (secretos `TAURI_SIGNING_PRIVATE_KEY` en GitHub Actions).
 - **Fecha:** abril 2026.
 - Se alineó la guía con el estado real del código: `2FA TOTP`, `refresh tokens`, `notificaciones push web`, `threads` base, `social` (amistades/bloqueos) e `i18n` base.
 - Se corrigió el inventario de migraciones con `1733000019000_refresh_tokens` y `1733000020000_extended_features`.
@@ -59,7 +59,7 @@ Arquitectura general:
 - `frontend/`
   - `.env`: `VITE_API_URL` apunta al backend en local (p. ej. `http://localhost:3000`); en producción el default es `https://akoenet-backend.onrender.com` si la variable no está definida. Ver `frontend/.env.example`. Opcional: `VITE_DESKTOP_INSTALLER_URL` (ruta relativa bajo `/releases/` o URL absoluta al `.exe`).
   - `src-tauri/`: aplicación de escritorio **Tauri 2** (Windows NSIS); `Cargo.toml` / `tauri.conf.json` y versión alineadas con `package.json`. El instalador generado puede copiarse a `public/releases/` para descarga desde el sitio estático.
-  - `public/releases/`: instaladores desktop servidos como estáticos (p. ej. `AkoeNet_0.6.0_x64-setup.exe`).
+  - `public/releases/`: instaladores desktop servidos como estáticos (p. ej. `akonet-desktop.exe`; opcionalmente también artefactos versionados `*_x64-setup.exe`).
   - `src/App.jsx`: rutas principales.
   - `src/context/AuthContext.jsx`: estado de sesión + login/logout + `connectAkoeNet` / `disconnectAkoeNet`; tras sesión válida llama a `startSessionKeepAlive()`; en logout y pérdida de sesión `stopSessionKeepAlive()`; escucha `akoenet:session-lost`; en `visibilitychange` (pestaña visible) puede refrescar tokens vía `refreshSessionAfterForeground`.
   - `src/pages/`: Login, **Register** (paso 1: email + envío de enlace), **RegisterComplete** (token en URL: username, contraseña, fecha de nacimiento), Home (landing o `Dashboard` si hay sesión; invitaciones vía query en `Home` o ruta `/invite/:token`), `Messages` (DMs en ruta dedicada), ServerView, TwitchCallback, **`LegalDocPage`** (`/legal/:slug`), **`DmcaPage`**, **`DpoPage`**, **`InvitePage`**, **`SystemStatus`** (pública en **`/status`**: diagnóstico `GET /health` + `GET /health/deps`).
@@ -78,9 +78,8 @@ Arquitectura general:
 - `.github/workflows/publish-tauri-windows.yml`: al pushear un **tag** `v*`, compila Tauri en Windows y publica release + `latest.json` para el updater (requiere secretos de firma).
 - `scripts/rename-project-folder-AkoeNet.ps1` (raíz): renombra la carpeta del clon `AkoNet` → `AkoeNet` (con el IDE cerrado).
 - Documentacion en `docs/`:
-  - `docs/README.md` (indice de documentacion),
-  - `docs/README.en.md`, `docs/README.es.md` (guias),
-  - `docs/PRODUCCION.md` (checklist operativo: HTTPS, backups, CDN, TURN, escala de búsqueda),
+  - **`docs/ESTRUCTURA_Y_FUNCIONAMIENTO.md`**: documento único (arquitectura, despliegue, checklist producción §27, retención §29, briefing interno legal §30, push/deep links Android §26.7, panel admin §28).
+  - **`docs/README.md`**: índice mínimo que enlaza aquí y a legales.
   - `docs/legal/PRIVACIDAD.md`, `docs/legal/TERMINOS_Y_CONDICIONES.md`, `docs/legal/PROTECCION_LEGAL.md`, `docs/legal/README.md`.
 - En la raiz del repo: `README.md` (portada), `LICENSE`.
 
@@ -156,13 +155,13 @@ Notas:
 
 ### Twitch OAuth
 
-- `GET /auth/twitch/status` (sin JWT): indica si el servidor tiene OAuth listo (`configured`, `checks` por variable).
+- `GET /auth/twitch/status` (sin JWT): indica si el servidor tiene OAuth listo (`configured`, `checks` por variable, `redirectUri` cuando aplica).
 - `GET /auth/twitch/start` redirige a Twitch.
   - Si faltan `TWITCH_CLIENT_ID` o `TWITCH_CLIENT_SECRET`, responde **503** con JSON (`code`, `hint`, URLs de redirect) en lugar de redirigir.
 - `GET /auth/twitch/callback` intercambia code, obtiene user Twitch, crea/actualiza usuario local (`twitch_username` = `login` en minúsculas), actualiza avatar/display name y devuelve JWT al frontend vía redirect con `?token=`.
 - Frontend procesa token en `TwitchCallback`, refresca usuario y navega con `postAuthDestination` (home `/` o `/admin` si `is_admin`).
 - **Login (`Login.jsx`)** y flujo tras **RegisterComplete** (login automático) usan `postAuthDestination` para la primera pantalla tras autenticar.
-- **Login (`Login.jsx`):** al cargar, consulta `GET /auth/twitch/status` (timeout ~8 s); si `configured` es falso, deshabilita el botón de Twitch y muestra texto de ayuda. `VITE_API_URL` debe apuntar al backend.
+- **Login y Ajustes → Actividad (`Login.jsx`, `UserSettingsModal.jsx`):** consultan `GET /auth/twitch/status` (login con `fetch` y timeout ~8 s). El cliente distingue tres situaciones: (1) **respuesta 200 y `configured: true`** → botón «Entrar/Conectar con Twitch» habilitado; (2) **200 y `configured: false`** → OAuth no configurado en el servidor (faltan variables); texto de ayuda con `redirectUri` / consola Twitch; (3) **fallo de red, timeout, abort o HTTP no OK** (p. ej. API en *cold start* en hosting que duerme entre peticiones) → **no** se trata como «no configurado»; se muestra mensaje amigable sugiriendo **recargar la página** y un **Reintentar** para volver a consultar el estado. `VITE_API_URL` debe apuntar al backend alcanzable desde el navegador.
 
 ### Contexto frontend
 
@@ -445,7 +444,7 @@ Rutas privadas usan `PrivateRoute` y dependen de `AuthContext` (`/messages` y `/
 
 Referencias útiles:
 
-- Checklist de despliegue y producción: `docs/PRODUCCION.md`.
+- Checklist de despliegue y producción: **§27** en este documento.
 
 ## 11) Docker y ejecucion
 
@@ -905,8 +904,7 @@ Se aplicaron mejoras concretas orientadas a estabilidad, seguridad de entrada y 
 Base documental y legal:
 
 - `README.md` (raiz): portada del repositorio con enlaces a `docs/`.
-- `docs/README.en.md`: guia operativa en ingles.
-- `docs/README.es.md`: guia operativa en espanol.
+- Guías de producto en inglés/español: resumen en **§1**/**§2** de este documento y `README.md` en la raíz del repo.
 - `LICENSE` (raiz): licencia propietaria (all rights reserved).
 - `docs/legal/TERMINOS_Y_CONDICIONES.md`: marco de uso de la plataforma.
 - `docs/legal/PRIVACIDAD.md`: politica de privacidad base.
@@ -928,7 +926,7 @@ Resumen de evolucion:
 - **Voz:** WebRTC con constraints de calidad, toggle de camara en caliente y UI por tiles.
 - **Moderacion y control:** pins, borrado moderado, auditoria admin y dashboard de operacion.
 - **Seguridad operativa:** rate limiting por capas (auth, upload, chat, DM, reactions), token versioning y validacion con Zod.
-- **Documentacion:** OpenAPI + READMEs bilingues + documentos legales base.
+- **Documentacion:** OpenAPI + **`docs/ESTRUCTURA_Y_FUNCIONAMIENTO.md`** (guía única) + documentos legales base.
 
 ## 21) Analisis por componente (estado actual)
 
@@ -965,7 +963,7 @@ Resumen de evolucion:
 
 ### 21.4 Documentacion y legal
 
-- Producto/documentacion: `README.md` (raiz), `docs/README.en.md`, `docs/README.es.md`.
+- Producto/documentación: `README.md` (raíz) y **`docs/ESTRUCTURA_Y_FUNCIONAMIENTO.md`**.
 - API: `/docs` y `/docs/openapi.json`.
 - Legal base: `LICENSE` (raiz), `docs/legal/TERMINOS_Y_CONDICIONES.md`, `docs/legal/PRIVACIDAD.md`, `docs/legal/PROTECCION_LEGAL.md`.
 - Footer público (`SiteFooter`) muestra disclaimer: **"AkoeNet es software independiente y no está afiliado a Discord Inc."**
@@ -1164,7 +1162,7 @@ Resumen del enfoque: el diferencial del producto encaja en **comunidad + tiempo 
 - **Menciones y notificaciones in-app:** `@usuario`, `@here` (usuarios en la sala Socket `channel:{id}` — “en el canal” en ese momento) y `@everyone` (`@here` / `@everyone` solo si el emisor puede gestionar canales); evento Socket `in_app_notification` → salas `user:<id>`; campana `NotificationBell` (en `AppChromeToolbar` en cabecera) y deep links (`?channel=`).
 - **Onboarding y diferenciación:** modal de bienvenida (`WelcomeOnboardingModal` + `localStorage`), bloque Scheduler en dashboard, landing con copy orientado a Scheduler (`landingContent.js`), **nuevo servidor** con canal `📅 upcoming streams` y mensaje de bienvenida en `#general`.
 - **Historial en el compositor:** al escribir, localización visual de mensajes anteriores que empiezan por el texto tecleado (canal y DM; ver bullets en §6 y §8 UI).
-- **Checklist de producción:** `docs/PRODUCCION.md` (HTTPS, backups, CDN, TURN, escala de búsqueda).
+- **Checklist de producción:** **§27** (HTTPS, backups, CDN, TURN, escala de búsqueda).
 - **Métricas en proceso (observabilidad mínima):** contadores en memoria (`lib/runtime-metrics.js`) por mensajes de canal (vía `message.created` → `recordChannelMessage`) y DM (`recordDmMessage` tras envío OK). **`GET /admin/metrics`** (JWT admin) expone totales y ventana ~60s; el **Dashboard Admin** muestra un bloque opcional si la petición responde 200.
 
 *Sigue fuera de alcance o pendiente:* microservicios, event sourcing persistente, motor de búsqueda dedicado (p. ej. Elastic) a escala cuando PG+fallback deje de ser suficiente, onboarding guiado paso a paso (más allá del modal actual), roles/permisos granulares avanzados por servidor.
@@ -1176,4 +1174,411 @@ Resumen del enfoque: el diferencial del producto encaja en **comunidad + tiempo 
 1. **Producto:** hilos / conversaciones agrupadas nativas (siguiente salto de retención tras reply mínimo); mejoras de notificaciones (push, preferencias, digest).
 2. **Diferencial Scheduler:** recordatorios automáticos; estado “en vivo” si hay API de stream; más widgets en dashboard.
 3. **Seguridad de sesión:** refresh tokens y revocación global cuando el producto tenga tracción.
-4. **Infra:** métricas Prometheus + tableros cuando el despliegue lo justifique; TURN y CDN según `docs/PRODUCCION.md`; los contadores actuales son un puente ligero.
+4. **Infra:** métricas Prometheus + tableros cuando el despliegue lo justifique; TURN y CDN según **§27**; los contadores actuales son un puente ligero.
+
+## 26) Estrategia móvil recomendada (Capacitor sobre base React actual)
+
+Objetivo: lanzar app móvil sin reescribir el producto desde cero, reutilizando al máximo la base web actual y manteniendo un único backend.
+
+### 26.1 Decisión tecnológica
+
+- **Opción recomendada:** **Capacitor + React (Vite)** sobre el frontend existente.
+- **Motivo principal:** AkoeNet ya tiene base madura en `React + Vite`, `JWT + refresh`, `Socket.IO`, `WebRTC`, uploads, backend desacoplado y flujo desktop con Tauri; esto reduce coste y time-to-market frente a una reescritura.
+- **Resultado esperado:** una sola base funcional para:
+  - **Web:** React + Vite.
+  - **Desktop:** Tauri.
+  - **Mobile:** Capacitor (Android/iOS).
+  - **Backend único:** Node + Express + PostgreSQL + Socket.IO.
+
+### 26.2 Qué NO hacer ahora
+
+- **No recomendado en esta fase:** reescritura completa a React Native o Flutter.
+- Coste de oportunidad alto para el estado actual del proyecto:
+  - rehacer UI completa,
+  - rehacer navegación,
+  - rehacer flujos de sesión/auth,
+  - rehacer socket/realtime,
+  - rehacer uploads/adjuntos,
+  - rehacer voz/WebRTC en una capa distinta.
+- Impacto estimado: retraso significativo (meses) sin aportar ventaja proporcional frente al enfoque incremental con Capacitor.
+
+### 26.3 Prioridades técnicas para mobile
+
+#### Prioridad 1 — UX mobile-first (antes de empaquetar)
+
+La prioridad crítica no es backend, es experiencia de uso táctil.
+
+- Revisar y adaptar componentes clave para interacción con pulgar:
+  - `ServerSidebar`,
+  - `ServerView`,
+  - `MembersPanel`,
+  - composer de chat/DM,
+  - `VoiceRoom`,
+  - modales/onboarding/search.
+- Objetivo UX:
+  - layouts responsive reales (no solo escalado),
+  - áreas táctiles amplias,
+  - navegación y acciones principales accesibles con una mano.
+
+#### Prioridad 2 — Sustituir APIs browser-only donde convenga
+
+- **Storage de sesión:**
+  - minimizar dependencia de `localStorage` para secretos sensibles,
+  - mover refresh token a almacenamiento seguro móvil (según plataforma/plugin),
+  - mantener access token de corta vida con renovación controlada.
+- **Push notifications:**
+  - complementar/migrar push web hacia push nativo en app instalada:
+    - Android: FCM,
+    - iOS: APNS.
+- **Uploads y media:**
+  - soportar flujos nativos de cámara/galería/sistema de archivos (plugins de Capacitor) además de input web.
+- **Voz/video (WebRTC):**
+  - validar funcionamiento en dispositivos reales Android/iOS (foreground/background, permisos, reconexión, audio focus).
+  - si aparecen límites de estabilidad, evaluar evolución por fases (p. ej. LiveKit/Daily en iteración posterior).
+
+#### Prioridad 3 — Monetización móvil (AdMob)
+
+- Integrar AdMob en capa móvil (plugin estable en el momento de implementación).
+- Casos de uso recomendados:
+  - banners discretos en pantallas no críticas,
+  - rewarded ads en acciones opcionales,
+  - soporte a futuros planes premium y unlocks.
+
+#### Prioridad 4 — Deep links universales
+
+Aplicar esquema/app links para flujos críticos:
+
+- invitaciones,
+- OAuth Twitch,
+- verificación de email/registro completo.
+
+Ejemplos de rutas objetivo:
+
+- `akoenet://invite/<token>`
+- `akoenet://register/complete?token=...`
+- `akoenet://oauth/twitch`
+
+#### Prioridad 5 — Ciclo de vida móvil (suspend/resume)
+
+El backend y frontend ya tienen base sólida (`refresh`, `keepAlive`, reconexión Socket).
+
+Para móvil, reforzar:
+
+- rehidratación de sesión al volver a foreground,
+- refresh preventivo tras resume,
+- reconexión de socket y resync de historial cuando la app regresa de background.
+
+### 26.4 Plan de ejecución por fases
+
+#### Fase 1 — Android first
+
+- Objetivo: versión Android productiva antes de iOS.
+- Razones: menor fricción inicial, ciclo de publicación más rápido, validación de UX y monetización con menor coste.
+
+Entregables mínimos:
+
+- shell Capacitor Android funcional (icono y splash se regeneran con `npm run mobile:icons` en `frontend/`, tomando **`public/Akoenet.png`** como fuente única vía `scripts/generate-android-icons.mjs`; `versionName` / `versionCode` del módulo Android en `android/app/build.gradle` alineados con el release),
+- auth + refresh + socket estables en foreground/background,
+- chat/DM/servidores usables con UX táctil,
+- push nativo básico,
+- build interna para QA real en dispositivos.
+
+#### Fase 2 — Hardening y Play Store
+
+- estabilización de crashes/permisos,
+- métricas de sesión y retención móvil,
+- publicación en Play Store con checklist de calidad y política.
+
+#### Fase 3 — iOS + premium
+
+- portar flujo estabilizado a iOS,
+- profundizar en monetización:
+  - suscripciones,
+  - perks tipo “Nitro-like”,
+  - capacidades premium para Scheduler y creators.
+
+### 26.5 Stack móvil recomendado (objetivo)
+
+- **Cliente móvil:** Capacitor + React actual + Socket.IO.
+- **Capacidades nativas:** push, deep links, cámara/archivos, almacenamiento seguro para sesión.
+- **Monetización:** AdMob en app instalada.
+- **Servidor:** sin cambios estructurales grandes (se reutiliza backend actual).
+
+### 26.6 Conclusión ejecutiva
+
+- Para AkoeNet, la ruta de mayor retorno es **continuidad tecnológica**: React actual + Capacitor.
+- El principal cuello de botella no es infraestructura backend, sino **UX móvil y activación de usuarios**.
+- Recomendación operativa: ejecutar roadmap Android-first incremental, con validación en dispositivos reales desde el inicio.
+
+### 26.7 Checklist Android/iOS (push nativo, deep links y build)
+
+Pasos de configuración nativa para la implementación actual con Capacitor (deep links + token FCM y metadatos de dispositivo).
+
+**Android**
+
+- `AndroidManifest.xml`: intent-filter para esquema `akoenet://` en la activity principal; Android App Links (`https://…`) para el dominio público del frontend; permiso de notificaciones en runtime (Android 13+).
+- Publicar `https://<tu-dominio>/.well-known/assetlinks.json` coherente con el `applicationId` (p. ej. `com.akoenet.app`).
+- Firebase: proyecto FCM; colocar **`frontend/android/app/google-services.json`** (es el único que consume el plugin Gradle del módulo app; no duplicar en la raíz del repositorio salvo copia local descartable).
+- **Antes de generar AAB/APK de release:** desde `frontend/`, ejecutar **`npm run mobile:sync:android`** para que los instaladores pesados en **`public/releases/`** (p. ej. `.exe` de escritorio) no se copien a `android/app/src/main/assets/public` y no inflen el bundle de Play. Usar `npm run mobile:sync` solo si no hay esos binarios en `dist` o se acepta el riesgo de tamaño.
+- Validar recepción de push en foreground/background y al abrir desde la notificación.
+
+**iOS** (cuando se active el target)
+
+- Xcode: **Push Notifications**; **Background Modes** → Remote notifications; **Associated Domains** con `applinks:<tu-dominio>`.
+- APNS: key o certificado asociado a Firebase si se usa FCM como puente.
+- Publicar `https://<tu-dominio>/.well-known/apple-app-site-association`.
+
+**Deep links que debe validar QA**
+
+- `akoenet://invite/<token>`; `akoenet://register/complete?token=…`; `akoenet://oauth/twitch?token=…&refresh_token=…`; equivalentes HTTPS universales.
+
+**Contrato push nativo (actual)**
+
+- Tras registrar permisos y `PushNotifications.register()`, el cliente puede emitir **`akoenet:mobile-push-token`** con `{ token, platform }`.
+- Suscripción autenticada: **`POST /auth/push/native/subscribe`** con JSON `{ token, platform }` y opcionales `device_id`, `device_name`, `app_version`.
+- El backend persiste en `push_subscriptions` con `subscription_type = 'native'`.
+- Diagnóstico admin: `GET /admin/push/debug` cuando exista en el despliegue; prueba de envío según rutas admin configuradas. Envío real FCM en servidor: **`FIREBASE_SERVICE_ACCOUNT_JSON`** (u otra configuración documentada en código).
+
+**Comandos útiles** (desde `frontend/`): `npm run mobile:add:android`, `npm run mobile:sync:android`, `npm run mobile:open:android` (y equivalentes `:ios` si aplica).
+
+## 27) Checklist de producción (operaciones)
+
+Este proyecto no incluye un despliegue gestionado; antes de tráfico real conviene cerrar estos puntos.
+
+### 27.1 Seguridad y red
+
+- **HTTPS obligatorio** en el dominio público (terminación TLS en reverse proxy: **Caddy**, **Nginx**, **Traefik**, o balanceador del proveedor).
+- Tras el proxy, **activa `TRUST_PROXY=1`** en el backend para que `X-Forwarded-Proto` sea reconocido. El backend puede **redirigir HTTP→HTTPS** en producción (`NODE_ENV=production`) salvo que pongas `FORCE_HTTPS=false` (útil en pruebas locales).
+- **CORS** (`CORS_ORIGINS`) alineado con el origen exacto del frontend en producción.
+- **JWT / secretos** rotados y almacenados fuera del repo (gestor de secretos o variables del orquestador).
+- **Límite global por IP** (`GLOBAL_RATE_LIMIT_MAX`): capa adicional sobre los límites por ruta (login, subidas, etc.). Si no defines la variable, el backend usa **200 req/min en producción** y **400 en desarrollo**; ajusta según tráfico esperado.
+
+#### Caddy (ejemplo)
+
+Archivo de referencia en el repo: `deploy/Caddyfile.example` (TLS automático, API + Socket.IO + SPA).
+
+Puntos a revisar al copiarlo:
+
+- Sustituir `example.com` por tu dominio.
+- La directiva `@api` debe incluir las rutas que sirve Express: `/auth`, `/api` (alias OAuth), `/servers`, `/channels`, `/messages`, `/upload`, **`/uploads`** (descargas y redirects S3), `/dm`, `/integrations`, `/admin`, `/health`, `/docs`, `/dpo`, `/dmca`.
+- `handle /socket.io/*` debe proxy al mismo backend que el API.
+- Tras desplegar, comprobar: `curl -sI http://tudominio/` → `301` a `https://` y cabecera `strict-transport-security` (el backend también puede enviar HSTS si `TRUST_PROXY=1`).
+
+#### Nginx (ejemplo mínimo)
+
+Sustituye `api.example.com` y `www.example.com` según tu esquema (API y frontend pueden ser el mismo host con paths distintos, como en el Caddy de ejemplo).
+
+```nginx
+# Redirección HTTP → HTTPS
+server {
+  listen 80;
+  server_name api.example.com www.example.com;
+  return 301 https://$host$request_uri;
+}
+
+# API + WebSocket + estáticos (ajusta root al build de Vite)
+server {
+  listen 443 ssl http2;
+  server_name api.example.com www.example.com;
+
+  ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+  add_header X-Content-Type-Options "nosniff" always;
+
+  # Backend Node (misma máquina o red Docker)
+  location ~ ^/(auth|api|servers|channels|messages|upload|uploads|dm|integrations|admin|health|docs|dpo|dmca)(/|$) {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+
+  location /socket.io/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+
+  location / {
+    root /var/www/akoenet;
+    try_files $uri $uri/ /index.html;
+  }
+}
+```
+
+En el backend: `TRUST_PROXY=1`, `NODE_ENV=production`, `CORS_ORIGINS=https://www.example.com` (u origen exacto del SPA).
+
+### 27.2 Datos
+
+- **Backups automáticos de PostgreSQL** (snapshots diarios + retención; prueba de restauración periódica).
+  - Scripts: `scripts/backup-db.sh`, `scripts/backup-uploads.sh` (uploads con `STORAGE_DRIVER=local`).
+  - **Entrada única para cron:** `scripts/backup-all.sh` (ejecuta ambos).
+  - Variables: `DATABASE_URL`, `BACKUP_DIR` (default `/var/backups/akoenet`), `BACKUP_RETENTION_DAYS` (default 30), opcional `S3_BACKUP_BUCKET` + credenciales AWS para copiar el `.sql.gz` a S3.
+- **Estado de copias en el servidor:** si configuras `BACKUP_DIR` con los `.sql.gz` generados por el cron, `GET /admin/backup-status` (JWT admin) lista el último archivo y avisa si hace más de 48 h.
+- **Política de retención:** plantilla operativa en **§29** de este documento; alinear con `docs/legal/PRIVACIDAD.md` y variables DPO/DMCA en producción.
+
+#### Restauración (PostgreSQL)
+
+1. Detener el backend o poner mantenimiento para evitar escrituras durante el restore.
+2. Crear una base vacía o limpiar la destino (solo en entornos de prueba).
+3. Descomprimir y aplicar el volcado:
+
+```bash
+gunzip -c /var/backups/akoenet/akonet_db_YYYYMMDD_HHMMSS.sql.gz | psql "$DATABASE_URL"
+```
+
+4. Verificar migraciones (`pgmigrations`) y levantar el servicio.
+5. **Probar al menos una vez al mes** en staging con un backup real (objetivo RTO/RPO acordado con el negocio).
+
+#### Restauración (uploads locales)
+
+```bash
+tar -xzf /var/backups/akoenet/akonet_uploads_YYYYMMDD_HHMMSS.tar.gz -C /ruta/padre --strip-components=0
+# Asegúrate de que UPLOADS_PATH / backend/uploads coincide con el despliegue.
+```
+
+Con `STORAGE_DRIVER=s3`, la fuente de verdad es el bucket; planifica versionado o snapshots en el proveedor de objetos.
+
+### 27.3 Medios y latencia
+
+- **CDN u origen cacheable** para estáticos del frontend y, si aplica, redirecciones firmadas de objetos (`STORAGE_DRIVER=s3`).
+- Límites de subida y tipos MIME en backend; el servidor valida **magic bytes** (`file-type` en `upload.routes.js`) para que el contenido coincida con imágenes permitidas (no basta con renombrar un ejecutable).
+- Revisar cuotas de storage en el proveedor.
+
+### 27.4 DMCA / reclamaciones de copyright
+
+- Publica un **correo o formulario de contacto** claramente indicado en la web (p. ej. en la landing o en términos legales) para avisos de retirada.
+- En esta aplicación: formulario público **/legal/dmca** → `POST /dmca/takedown`; listado y resolución en **admin** (`GET /admin/dmca-takedowns`, `PATCH /admin/dmca-takedowns/:id`). Opcional: marcar `remove_infringing_message: true` al resolver para intentar retirar un mensaje cuyo id se pueda inferir de la URL notificada.
+- **Correo (Resend):** con `RESEND_API_KEY` y remitente por defecto `AkoeNet <akonet@streamautomator.com>` (`RESEND_FROM` opcional), el backend envía avisos al DPO y acuse al usuario en **DPO** (el correo del DPO, si no configuras `DPO_EMAIL`, es el buzón legal `LEGAL_INBOX_EMAIL`, por defecto `akonet@streamautomator.com`); en **DMCA** el equipo siempre recibe copia en ese buzón legal y se añaden `DMCA_NOTIFY_EMAIL` / `ADMIN_NOTIFY_EMAIL` / `DPO_EMAIL` si están definidos; acuse al reclamante. Sin clave, el flujo HTTP sigue igual y solo se registra en logs/BD.
+- Define un proceso interno: quién recibe el aviso, plazos de respuesta y cómo documentas la acción (retirada o contranotificación).
+
+### 27.5 Voz (WebRTC)
+
+- **Servidor TURN** (coturn u oferta del proveedor) para clientes en redes restrictivas (NAT simétrico, firewalls corporativos). Sin TURN, muchos usuarios solo tendrán audio estable en redes favorables.
+
+### 27.6 Observabilidad
+
+- Logs estructurados (`pino`) y alertas sobre errores 5xx y caídas de dependencias (`GET /health/deps`).
+
+### 27.7 Búsqueda a escala
+
+- La **búsqueda global** usa PostgreSQL FTS en canales legibles por usuario. Si el volumen crece mucho, valorar índices adicionales, partición por tiempo o motor dedicado (p. ej. Elastic/OpenSearch) como fase posterior.
+
+## 28) Panel de administración (`/admin`)
+
+Resumen del **Admin dashboard** (`frontend/src/pages/DashboardAdmin.jsx`): acceso solo con sesión y `user.is_admin === true` (`AdminRoute` en `App.jsx`). API bajo `/admin/*` con `auth` + `requireAdmin`.
+
+**Carga inicial (`load()`):** en paralelo `GET /health`, `GET /admin/health/deps` (acepta cualquier status), `GET /admin/audit-logs`, `GET /admin/reports/messages`, `GET /admin/metrics` (bloque opcional si 200). Reintentos con botón **Retry**; historial local de últimas comprobaciones (hasta 10 entradas).
+
+**Dependencias (`/admin/health/deps`):** API, Database (`SELECT 1`), Redis, Storage, Streamer Scheduler API (si no hay `SCHEDULER_API_BASE_URL` → *NOT SET*). Badges según `ok`.
+
+**Métricas (`GET /admin/metrics`):** contadores en memoria del proceso (`lib/runtime-metrics.js`); no persisten ni agregan multi-réplica.
+
+**Auditoría (`GET /admin/audit-logs`):** filtros `limit` (20), `offset`, `action`, `server_id`, `from` / `to` (ISO).
+
+**Reportes (`GET /admin/reports/messages`):** acciones `message_report_user` / `dm_message_report_user`. Filtros `status`, `server_id`, paginación. **Resolve / Reject / Reopen** vía `PATCH /admin/reports/messages/:auditId` con nota opcional (`window.prompt`).
+
+**Enlaces auxiliares en UI:** Swagger `{baseURL}/docs`; **Back** al home.
+
+**Endpoints resumidos**
+
+| Método | Ruta | Rol |
+|--------|------|-----|
+| `GET` | `/health` | Público |
+| `GET` | `/admin/health/deps` | Admin |
+| `GET` | `/admin/metrics` | Admin |
+| `GET` | `/admin/audit-logs` | Admin |
+| `GET` | `/admin/reports/messages` | Admin |
+| `PATCH` | `/admin/reports/messages/:auditId` | Admin |
+
+**Integración Streamer Scheduler (opcional):** el monorepo **Streamer Scheduler** puede proxificar las mismas rutas `/admin/*` hacia este backend con `AKOENET_API_URL` y `AKOENET_ADMIN_BEARER` (JWT de un admin de AkoeNet). Detalle y pruebas de humo en el repo del Scheduler: `streamer-scheduler/docs/ADMIN_DASHBOARD.md`.
+
+**Limitaciones:** la UI no edita ni borra logs; métricas se pierden al reiniciar el proceso; contenido enriquecido de reportes puede faltar si el mensaje fue eliminado.
+
+## 29) Política de retención de datos (plantilla operativa)
+
+Documento de trabajo para operadores. **Debe revisarse con asesor legal** antes de publicarse como política definitiva.
+
+### 29.1 Finalidades
+
+- Prestación del servicio (cuentas, mensajes, medios subidos por usuarios).
+- Seguridad, moderación y cumplimiento legal (logs de auditoría, reportes).
+
+### 29.2 Categorías sugeridas
+
+| Dato | Retención orientativa | Notas |
+|------|------------------------|-------|
+| Cuenta y perfil | Mientras la cuenta exista | Tras `DELETE /auth/me`, anonimización según implementación y excepciones legales. |
+| Mensajes de canal y DM | Mientras el servidor/conversación exista | Los operadores pueden borrar contenido; exportaciones sujetas a `EXPORT_MAX_MESSAGES`. |
+| Archivos subidos (imágenes) | Misma vida útil que el mensaje que los referencia | Storage local o S3 según despliegue. |
+| Logs de aplicación (pino) | 30–90 días (recomendado) | Rotación en el agregador de logs / disco. |
+| `admin_audit_logs` / reportes | 12–24 meses o según obligación | Ajustar por jurisdicción y tipo de incidente. |
+| Formularios DMCA / DPO | Plazo razonable para tramitar + archivo legal | Conservar lo mínimo imprescindible para reclamaciones y pruebas. |
+
+### 29.3 Acciones de usuario
+
+- **Portabilidad:** `GET /auth/me/export`.
+- **Supresión:** `DELETE /auth/me` (anonimización; pueden aplicarse retenciones por seguridad o ley).
+- **Solicitudes RGPD:** formulario `/legal/dpo` → `POST /dpo/message`.
+
+### 29.4 Contacto
+
+Completar con correo y responsable (p. ej. DPO) alineado con `DPO_EMAIL` / `DPO_NAME` en el backend y con `docs/legal/PRIVACIDAD.md`.
+
+## 30) Briefing interno para asesoría jurídica
+
+**Documento interno.** Resume contexto para un abogado en protección de datos, servicios digitales y/o PI; **no sustituye** asesoramiento profesional. Actualizar fecha y datos de contacto en cada envío.
+
+### 30.1 Responsable y contacto (completar antes de enviar)
+
+Completar: titular del tratamiento, domicilio, correo legal (`[CONTACTO_LEGAL]` en términos), privacidad (`[CONTACTO_PRIVACIDAD]` en política), buzón DSA (`VITE_LEGAL_CONTACT_EMAIL` en frontend), DPO (`DPO_*` en backend y `/legal/dpo`). Valorar obligación de nombramiento de DPO con el letrado.
+
+### 30.2 Qué es AkoeNet (resumen)
+
+Cuentas (email verificado, OAuth Twitch, Steam opcional), edad mínima 13 años, contenido generado por usuarios, voz WebRTC, export (`GET /auth/me/export`), borrado (`DELETE /auth/me`), DMCA y DPO, SPA + API + desktop Tauri.
+
+### 30.3 Tratamiento de datos — categorías
+
+Identificación/cuenta (BD, JWT+refresh), contenido (BD + storage), conexión/seguridad (logs, rate limit), preferencias (cliente; ver política de cookies), push (`push_subscriptions` si aplica). **Transferencias internacionales:** dependen del proveedor (p. ej. Render); alinear con la política de privacidad y SCC si procede.
+
+### 30.4 Textos legales en la app
+
+Markdown en `docs/legal/` (ES + `*.en.md`). Rutas típicas: `/legal/terminos`, `/legal/privacidad`, `/legal/proteccion`, `/legal/cookies`, `/legal/moderacion`, `/legal/dmca`, `/legal/dpo`, `/legal/account-deletion`. Banner de cookies: clave `akoenet_cookie_consent_v2` en `localStorage`; detalle en `docs/legal/POLITICA_COOKIES.md`. **Checklist operativa general:** **§27** de este documento.
+
+### 30.5 Cumplimiento — inventario de trabajo (no es conclusión jurídica)
+
+| Ámbito | Qué existe | Pregunta típica |
+|--------|------------|-----------------|
+| RGPD / LOPDGDD | Política, export/borrado, DPO, plantillas Art. 30 y DPIA en `docs/legal/` | DPO, bases legales, retenciones, encargados |
+| DSA | Moderación, reportes, DMCA, contacto legal | Umbral DSA, transparencia |
+| ePrivacy / LSSI | Cookies, banner con rechazo | Consentimiento, terceros |
+| PI | Términos, DMCA, `LICENSE` | Notice-and-takedown, marca |
+| Menores | Mínimo 13 años en registro | Mercados adicionales |
+| Voz | Tiempo real, sin grabación masiva por defecto | Datos sensibles en audio |
+
+### 30.6 Documentos internos RGPD (no públicos en la app)
+
+- `docs/legal/REGISTRO_TRATAMIENTO_RGPD_ART30_PLANTILLA.md`
+- `docs/legal/DPIA_PLANTILLA_RGPD.md`
+- **Retención operativa:** §29 de este documento
+
+### 30.7 Riesgos y lagunas conocidas
+
+Placeholders en legales hasta datos reales; SmartScreen en instalador Windows; representante UE si aplica; condiciones de terceros (Twitch, Steam, correo).
+
+### 30.8 Preguntas sugeridas para la reunión con el abogado
+
+Suficiencia de `docs/legal/*.md`, DPO/representante UE, cookies/DSA, jurisdicción, DMCA, EIPD/AEPD, contratos con encargados (hosting, email, BD).
+
+### 30.9 Material a adjuntar
+
+Este apartado (**§30**), export de `docs/legal/`, extracto de **§27** si el despliegue evaluado es relevante, lista de URLs de producción, volumen de usuarios (anonimizado).
+

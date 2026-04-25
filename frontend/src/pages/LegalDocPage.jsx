@@ -11,6 +11,8 @@ import cookiesMd from '../../../docs/legal/POLITICA_COOKIES.md?raw'
 import cookiesEn from '../../../docs/legal/POLITICA_COOKIES.en.md?raw'
 import moderacionMd from '../../../docs/legal/MODERACION_CONTENIDOS.md?raw'
 import moderacionEn from '../../../docs/legal/MODERACION_CONTENIDOS.en.md?raw'
+import accountDeletionMd from '../../../docs/legal/ACCOUNT_DELETION.md?raw'
+import accountDeletionEn from '../../../docs/legal/ACCOUNT_DELETION.en.md?raw'
 
 const DOCS = {
   privacidad: {
@@ -32,6 +34,10 @@ const DOCS = {
   moderacion: {
     es: { title: 'Moderación de contenidos', body: moderacionMd },
     en: { title: 'Content moderation', body: moderacionEn },
+  },
+  'account-deletion': {
+    es: { title: 'Eliminación de cuenta', body: accountDeletionMd },
+    en: { title: 'Account deletion', body: accountDeletionEn },
   },
 }
 

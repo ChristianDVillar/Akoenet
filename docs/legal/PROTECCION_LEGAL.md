@@ -109,4 +109,4 @@ En el cliente web, el pie público usa textos en **español o inglés** según e
 - Validación jurídica de los Markdown en tu jurisdicción.
 - Sustituir placeholders (`[CONTACTO_…]`, etc.) en `PRIVACIDAD.md` y `TERMINOS_Y_CONDICIONES.md`.
 - Buzón operativo `legal@…` y proceso interno de respuesta.
-- Política de retención publicada (`docs/RETENCION_DATOS.md` como plantilla operativa).
+- Política de retención publicada (plantilla operativa en **§29** de `docs/ESTRUCTURA_Y_FUNCIONAMIENTO.md`).
