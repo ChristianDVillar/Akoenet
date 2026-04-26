@@ -32,3 +32,5 @@ frontend/android/app/google-services.json
 # Firma Android: no versionar secretos ni keystores locales
 frontend/android/key.properties
 frontend/android/app/*.jks
+
+*firebase-adminsdk*.json
