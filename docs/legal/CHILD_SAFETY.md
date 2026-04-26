@@ -17,6 +17,6 @@ Los usuarios pueden reportar problemas de seguridad infantil directamente desde 
 
 ## Contacto para cumplimiento de seguridad infantil
 
-Correo: [dakinissystems@gmail.com](mailto:dakinissystems@gmail.com)
+Correo: dakinissystems@gmail.com
 
 AkoeNet está comprometida con mantener una plataforma segura para todos los usuarios y proteger a los menores frente al abuso y la explotación.

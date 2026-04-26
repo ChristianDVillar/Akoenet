@@ -17,6 +17,6 @@ Users can report child safety concerns directly through the application or by co
 
 ## Contact for child safety compliance
 
-Email: [dakinissystems@gmail.com](mailto:dakinissystems@gmail.com)
+Email: dakinissystems@gmail.com
 
 AkoeNet is committed to maintaining a safe platform for all users and protecting minors from abuse and exploitation.
