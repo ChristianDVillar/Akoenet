@@ -54,6 +54,10 @@ export default function SiteFooter({ className = '' }) {
           <span className="site-footer-dot" aria-hidden>
             ·
           </span>
+          <Link to="/legal/child-safety">{f.childSafety}</Link>
+          <span className="site-footer-dot" aria-hidden>
+            ·
+          </span>
           <Link to="/legal/cookies">{f.cookies}</Link>
           <span className="site-footer-dot" aria-hidden>
             ·
