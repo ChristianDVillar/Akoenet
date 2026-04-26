@@ -7068,6 +7068,35 @@ input.theme-color-hex:disabled {
   gap: 0.35rem 0.5rem;
 }
 
+.site-footer-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.site-footer-link-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.site-footer-link-group-title {
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.site-footer-nav--secondary {
+  opacity: 0.9;
+}
+
+.site-footer-link-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .site-footer-nav a {
   color: var(--echonet);
 }

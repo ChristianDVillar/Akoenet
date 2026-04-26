@@ -11,8 +11,8 @@ function isSpanishCopyrightLocale(locale) {
 
 function copyrightTradingNameSuffix(locale) {
   return isSpanishCopyrightLocale(locale)
-    ? '(marca comercial de Christian Villar). Todos los derechos reservados.'
-    : '(trading name of Christian Villar). All rights reserved.'
+    ? 'Marca comercial de Christian Villar. Todos los derechos reservados.'
+    : 'Trading name of Christian Villar. All rights reserved.'
 }
 
 function getCopyrightDisplayYear() {

@@ -12,6 +12,20 @@ export default function SiteFooter({ className = '' }) {
   const rootClass = ['site-footer', className].filter(Boolean).join(' ')
   const { year: copyrightYear, holder: copyrightHolder, suffix: copyrightSuffix } =
     clientCopyrightLineParts(locale)
+  const primaryLinks = [
+    { to: '/legal/terminos', label: f.terms },
+    { to: '/legal/privacidad', label: f.privacy },
+    { to: '/legal/account-deletion', label: f.accountDeletion },
+    { to: '/legal/child-safety', label: f.childSafety },
+    { to: '/status', label: f.status },
+  ]
+  const secondaryLinks = [
+    { to: '/legal/proteccion', label: f.legal },
+    { to: '/legal/dmca', label: f.dmca },
+    { to: '/legal/dpo', label: f.dpo },
+    { to: '/legal/cookies', label: f.cookies },
+    { to: '/legal/moderacion', label: f.moderation },
+  ]
 
   return (
     <footer className={rootClass}>
@@ -29,45 +43,38 @@ export default function SiteFooter({ className = '' }) {
             v{v}
           </span>
         </div>
-        <nav className="site-footer-nav" aria-label={f.legalNav}>
-          <Link to="/legal/terminos">{f.terms}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/legal/privacidad">{f.privacy}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/legal/proteccion">{f.legal}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/legal/dmca">{f.dmca}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/legal/dpo">{f.dpo}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/legal/account-deletion">{f.accountDeletion}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/legal/child-safety">{f.childSafety}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/legal/cookies">{f.cookies}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/legal/moderacion">{f.moderation}</Link>
-          <span className="site-footer-dot" aria-hidden>
-            ·
-          </span>
-          <Link to="/status">{f.status}</Link>
-        </nav>
+        <div className="site-footer-links" role="navigation" aria-label={f.legalNav}>
+          <div className="site-footer-link-group">
+            <p className="site-footer-link-group-title muted small">{f.legalGroupPrimary}</p>
+            <nav className="site-footer-nav" aria-label={f.legalGroupPrimary}>
+            {primaryLinks.map((link, idx) => (
+              <span key={link.to} className="site-footer-link-item">
+                {idx > 0 ? (
+                  <span className="site-footer-dot" aria-hidden>
+                    ·
+                  </span>
+                ) : null}
+                <Link to={link.to}>{link.label}</Link>
+              </span>
+            ))}
+            </nav>
+          </div>
+          <div className="site-footer-link-group">
+            <p className="site-footer-link-group-title muted small">{f.legalGroupSecondary}</p>
+            <nav className="site-footer-nav site-footer-nav--secondary" aria-label={f.legalGroupSecondary}>
+            {secondaryLinks.map((link, idx) => (
+              <span key={link.to} className="site-footer-link-item">
+                {idx > 0 ? (
+                  <span className="site-footer-dot" aria-hidden>
+                    ·
+                  </span>
+                ) : null}
+                <Link to={link.to}>{link.label}</Link>
+              </span>
+            ))}
+            </nav>
+          </div>
+        </div>
         {legalContactEmail ? (
           <p className="site-footer-legal-contact muted small">
             <span className="site-footer-legal-contact-label">{f.legalContact}: </span>
