@@ -33,7 +33,7 @@ export default {
     leadInvite: 'Tras iniciar sesión, te añadiremos automáticamente al servidor invitado.',
     leadDefault: 'Comunidades y chat en tiempo real.',
     twitchChecking: 'Comprobando Twitch…',
-    twitchUnavailable: 'Twitch no disponible',
+    twitchUnavailable: 'Inicio con Twitch no disponible',
     twitchServicePaused: 'Servidor en pausa o sin conexión',
     twitchUnreachableTitle:
       'No pudimos contactar con la API de AkoeNet. Recarga la página (F5 o ⌘R) o pulsa Reintentar.',
@@ -42,7 +42,7 @@ export default {
     twitchRetryCheck: 'Reintentar',
     twitchSignIn: 'Entrar con Twitch',
     twitchDisabledTitle:
-      'OAuth de Twitch no está configurado en el servidor (faltan TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET).',
+      'El inicio con Twitch no está disponible ahora mismo. Puedes continuar con correo y contraseña.',
     twitchAdminHint:
       'El administrador debe definir TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET. En la consola de desarrolladores de Twitch, añade exactamente esta URL de redirección (debe coincidir con TWITCH_REDIRECT_URI / tu API):',
     twitchApiMountHint:
@@ -50,7 +50,7 @@ export default {
     twitchDesktopHint:
       'El escritorio usa la misma URL de callback que informa la API (VITE_API_URL / API de producción), no http://localhost:5173 ni tauri://. Twitch solo permite callbacks https:// o http://localhost hacia tu backend.',
     twitchHelpBeforeUri:
-      'El administrador debe definir TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET. En la consola de desarrolladores de Twitch, añade exactamente esta URL de redirección (debe coincidir con TWITCH_REDIRECT_URI / tu API):',
+      'El inicio con Twitch está temporalmente no disponible en este servidor. Puedes continuar con correo y contraseña.\n\nSi eres el administrador, configura OAuth de Twitch y usa exactamente esta URL de redirección:',
     twitchHelpMountNote:
       'Tu API expone las mismas rutas bajo /auth/… y /api/user/auth/…; el servidor usa la URL anterior para OAuth.',
     twitchHelpDesktopNote:
@@ -251,7 +251,7 @@ export default {
       reconnectTwitch: 'Volver a conectar Twitch',
       unlinkTwitch: 'Desvincular Twitch',
       twitchUnavailableHint:
-        'La vinculación con Twitch no está configurada en este servidor (faltan credenciales OAuth de Twitch).',
+        'La vinculación con Twitch no está disponible en este servidor por ahora. Puedes seguir usando AkoeNet sin vincular Twitch.',
       twitchChecking: 'Comprobando Twitch…',
       twitchServerUnreachableHint:
         'No pudimos contactar con el servidor para comprobar Twitch (p. ej. API en reposo o sin red). Recarga la página o pulsa Reintentar.',

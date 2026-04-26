@@ -33,7 +33,7 @@ export default {
     leadInvite: 'After you sign in, we will add you to the invited server automatically.',
     leadDefault: 'Communities and real-time chat.',
     twitchChecking: 'Checking Twitch…',
-    twitchUnavailable: 'Twitch unavailable',
+    twitchUnavailable: 'Twitch sign-in unavailable',
     twitchServicePaused: 'Server sleeping or unreachable',
     twitchUnreachableTitle:
       'Could not reach the AkoeNet API. Reload the page (F5 or ⌘R) or tap Try again.',
@@ -41,15 +41,15 @@ export default {
       'Some hosts sleep until the first request. Wait a few seconds, reload this page, or tap Try again to re-check Twitch availability.',
     twitchRetryCheck: 'Try again',
     twitchSignIn: 'Sign in with Twitch',
-    twitchDisabledTitle: 'Twitch OAuth is not configured on the server (missing TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET).',
+    twitchDisabledTitle: 'Twitch sign-in is not available right now. You can continue with email and password.',
     twitchAdminHint:
-      'Server admin must set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET. In the Twitch Developer Console, add exactly this redirect URL (must match TWITCH_REDIRECT_URI / your API):',
+      'Twitch sign-in is temporarily unavailable on this server. You can still continue with email and password.\\n\\nIf you are the admin, configure Twitch OAuth and use this exact redirect URL:',
     twitchApiMountHint:
       'your API mounts the same routes under /auth/… and /api/user/auth/…; the server uses the URL above for OAuth.',
     twitchDesktopHint:
       'Desktop uses the same callback URL the API reports (from VITE_API_URL / production API)—not http://localhost:5173 or tauri://. Twitch only allows https:// or http://localhost callbacks to your backend.',
     twitchHelpBeforeUri:
-      'Server admin must set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET. In the Twitch Developer Console, add exactly this redirect URL (must match TWITCH_REDIRECT_URI / your API):',
+      'Twitch sign-in is temporarily unavailable on this server. You can still continue with email and password.\\n\\nIf you are the admin, configure Twitch OAuth and use this exact redirect URL:',
     twitchHelpMountNote:
       'Your API mounts the same routes under /auth/… and /api/user/auth/…; the server uses the URL above for OAuth.',
     twitchHelpDesktopNote:
@@ -249,7 +249,7 @@ export default {
       reconnectTwitch: 'Reconnect Twitch',
       unlinkTwitch: 'Unlink Twitch',
       twitchUnavailableHint:
-        'Twitch linking is not configured on this server (missing Twitch OAuth credentials).',
+        'Twitch linking is currently unavailable on this server. You can keep using AkoeNet without linking Twitch.',
       twitchChecking: 'Checking Twitch…',
       twitchServerUnreachableHint:
         'We could not reach the server to check Twitch (for example the API is waking up or you are offline). Reload the page or tap Try again.',
