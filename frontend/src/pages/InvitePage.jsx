@@ -170,6 +170,11 @@ export default function InvitePage() {
         </div>
         <p className="invite-landing-kicker">{t('invite.kicker')}</p>
         <h1 className="invite-landing-title">{name}</h1>
+        {preview?.server_tag ? (
+          <p className="muted small invite-landing-server-tag" style={{ marginTop: '0.25rem' }}>
+            {t('invite.serverTagLine', { tag: String(preview.server_tag).toUpperCase() })}
+          </p>
+        ) : null}
         <p className="muted invite-landing-sub">{t('invite.sub')}</p>
 
         {user ? (

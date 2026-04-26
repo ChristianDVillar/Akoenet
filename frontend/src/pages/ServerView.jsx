@@ -75,6 +75,7 @@ export default function ServerView() {
   const [banStatus, setBanStatus] = useState(null)
   const [activeChannelId, setActiveChannelId] = useState(null)
   const [serverName, setServerName] = useState('')
+  const [serverTag, setServerTag] = useState('')
   const [toast, setToast] = useState(null)
   const [channelPermissions, setChannelPermissions] = useState([])
   const [userPermissions, setUserPermissions] = useState([])
@@ -106,6 +107,23 @@ export default function ServerView() {
     clearMembersAutoCloseTimer()
     setMembersDrawerOpen(true)
   }, [clearMembersAutoCloseTimer])
+
+  const refreshServerList = useCallback(async () => {
+    if (Number.isNaN(id)) return
+    try {
+      const { data } = await api.get('/servers')
+      setServers(data)
+      const cur = data.find((s) => s.id === id)
+      if (cur) {
+        setServerName(cur.name)
+        setServerTag(cur?.tag && String(cur.tag).trim() ? String(cur.tag).trim() : '')
+        setServerOwnerId(cur?.owner_id != null ? Number(cur.owner_id) : null)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [id])
+
   const [emojis, setEmojis] = useState([])
   const [voicePresence, setVoicePresence] = useState({})
   /** User ids currently sharing screen in the active voice session (local client view). */
@@ -204,6 +222,7 @@ export default function ServerView() {
         const current = data.find((s) => s.id === id)
         if (!current) {
           setServerOwnerId(null)
+          setServerTag('')
           try {
             await api.get(`/servers/${id}/ban-status`)
             navigate('/')
@@ -218,9 +237,11 @@ export default function ServerView() {
           }
         }
         setServerName(current.name)
+        setServerTag(current?.tag && String(current.tag).trim() ? String(current.tag).trim() : '')
         setServerOwnerId(current?.owner_id != null ? Number(current.owner_id) : null)
       } catch {
         setServerOwnerId(null)
+        setServerTag('')
         navigate('/')
       }
     })()
@@ -672,6 +693,7 @@ export default function ServerView() {
           />
           <ChannelList
             serverName={serverName}
+            serverTag={serverTag}
             categories={categories}
             channels={channels}
             activeChannelId={activeChannelId}
@@ -783,9 +805,11 @@ export default function ServerView() {
           onClose={() => setServerSettingsOpen(false)}
           serverId={id}
           serverName={serverName}
+          serverTag={serverTag}
           members={members}
           serverOwnerId={serverOwnerId}
           onMembersRefresh={refreshServerMembers}
+          onServerTagUpdated={refreshServerList}
         />
         <ChannelSettingsModal
           open={channelSettingsOpen}

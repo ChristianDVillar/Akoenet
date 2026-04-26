@@ -356,7 +356,14 @@ export default function Dashboard() {
                     <span className="server-initial">
                       {s.name.slice(0, 2).toUpperCase()}
                     </span>
-                    <span className="server-name">{s.name}</span>
+                    <span className="server-name">
+                      {s.name}
+                      {s.tag && String(s.tag).trim() ? (
+                        <span className="server-tag-pill--dashboard" aria-hidden="true">
+                          {String(s.tag).trim().toUpperCase()}
+                        </span>
+                      ) : null}
+                    </span>
                   </button>
                 </li>
               ))}

@@ -40,6 +40,7 @@ function VoiceSidebarHeadphonesDeafIcon() {
 
 export default function ChannelList({
   serverName,
+  serverTag = null,
   categories,
   channels,
   activeChannelId,
@@ -579,7 +580,16 @@ export default function ChannelList({
             onClick={() => onOpenServerSettings?.()}
             title={t('channelList.serverSettings')}
           >
-            <span className="channel-server-name">{serverName || t('channelList.serverFallback')}</span>
+            <span className="channel-server-name">
+              <span className="channel-server-name-text">
+                {serverName || t('channelList.serverFallback')}
+              </span>
+              {serverTag ? (
+                <span className="channel-server-tag-pill" title={t('channelList.serverTagTitle')}>
+                  {String(serverTag).toUpperCase()}
+                </span>
+              ) : null}
+            </span>
             <span className="channel-server-chevron" aria-hidden="true" />
           </button>
           <button

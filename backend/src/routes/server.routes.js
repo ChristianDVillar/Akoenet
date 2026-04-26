@@ -45,6 +45,17 @@ const hiddenServerName = (process.env.HIDDEN_SYSTEM_SERVER_NAME || "AkoeNet").tr
 const createServerSchema = z.object({
   name: z.string().trim().min(2).max(80),
 });
+const patchServerTagSchema = z.object({
+  tag: z.union([
+    z.null(),
+    z.literal("").transform(() => null),
+    z
+      .string()
+      .trim()
+      .regex(/^[a-zA-Z0-9]{2,4}$/)
+      .transform((s) => s.toLowerCase()),
+  ]),
+});
 const serverIdParamSchema = z.object({
   serverId: z.coerce.number().int().positive(),
 });
@@ -170,7 +181,7 @@ router.get("/invite/:token/preview", async (req, res) => {
   }
   try {
     const result = await pool.query(
-      `SELECT s.id AS server_id, s.name AS server_name, s.is_system
+      `SELECT s.id AS server_id, s.name AS server_name, s.tag AS server_tag, s.is_system
        FROM server_invites i
        JOIN servers s ON s.id = i.server_id
        WHERE i.token = $1
@@ -185,7 +196,11 @@ router.get("/invite/:token/preview", async (req, res) => {
       return res.status(404).json({ error: "invite_not_found" });
     }
     const row = result.rows[0];
-    res.json({ server_id: row.server_id, server_name: row.server_name });
+    res.json({
+      server_id: row.server_id,
+      server_name: row.server_name,
+      server_tag: row.server_tag || null,
+    });
   } catch (e) {
     logger.error({ err: e }, "Invite preview failed");
     res.status(500).json({ error: "preview_failed" });
@@ -324,6 +339,38 @@ router.get("/", async (req, res) => {
   await cacheSet(cacheKey, JSON.stringify(result.rows), 15);
   res.json(result.rows);
 });
+
+/** Set server tag (short identifier, unique globally, like Discord server tags) */
+router.patch(
+  "/:serverId",
+  validate({ params: serverIdParamSchema, body: patchServerTagSchema }),
+  async (req, res) => {
+    const serverId = req.params.serverId;
+    if (!(await canManageChannels(req.user.id, serverId))) {
+      return res.status(403).json({ error: "Insufficient role to update server" });
+    }
+    const tag = req.body.tag;
+    try {
+      const result = await pool.query(
+        `UPDATE servers SET tag = $1 WHERE id = $2
+         AND COALESCE(is_system, false) = false
+         AND LOWER(TRIM(name)) <> $3
+         RETURNING id, name, tag, owner_id, is_system, created_at`,
+        [tag, serverId, hiddenServerName]
+      );
+      if (!result.rows.length) {
+        return res.status(404).json({ error: "Server not found" });
+      }
+      res.json(result.rows[0]);
+    } catch (e) {
+      if (e.code === "23505") {
+        return res.status(409).json({ error: "tag_taken" });
+      }
+      logger.error({ err: e }, "Patch server tag failed");
+      res.status(500).json({ error: "Could not update server" });
+    }
+  }
+);
 
 /** Join server by id (invite flow MVP: user must know server id) */
 router.post("/:serverId/join", validate({ params: serverIdParamSchema }), async (req, res) => {

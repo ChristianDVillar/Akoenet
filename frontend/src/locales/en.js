@@ -159,6 +159,7 @@ export default {
     errGone: 'This invite has expired or reached its use limit.',
     errJoin: 'Could not join. Try again.',
     errUnexpected: 'Unexpected response',
+    serverTagLine: 'Server tag: {{tag}}',
   },
   systemStatus: {
     title: 'System diagnostics',

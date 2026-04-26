@@ -87,12 +87,21 @@ export default function ServerSidebar({
               <button
                 type="button"
                 className={`rail-icon rail-icon--touch ${activeServerId === s.id ? 'active' : ''}`}
-                title={s.name}
-                aria-label={s.name}
+                title={s.tag ? `${s.name} · ${String(s.tag).toUpperCase()}` : s.name}
+                aria-label={s.tag ? `${s.name} (${String(s.tag).toUpperCase()})` : s.name}
                 onClick={() => onSelectServer(s.id)}
               >
                 <span className="rail-active-pill" aria-hidden="true" />
-                {s.name.slice(0, 2).toUpperCase()}
+                <span
+                  className={`rail-icon-label ${s.tag && String(s.tag).trim() ? 'rail-icon-label--tag' : ''}`}
+                >
+                  {s.tag && String(s.tag).trim()
+                    ? String(s.tag)
+                        .trim()
+                        .slice(0, 4)
+                        .toUpperCase()
+                    : s.name.slice(0, 2).toUpperCase()}
+                </span>
               </button>
             </li>
           ))}

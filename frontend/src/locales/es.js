@@ -160,6 +160,7 @@ export default {
     errGone: 'La invitación ha caducado o alcanzó el límite de usos.',
     errJoin: 'No se pudo unir. Inténtalo de nuevo.',
     errUnexpected: 'Respuesta inesperada',
+    serverTagLine: 'Etiqueta del servidor: {{tag}}',
   },
   systemStatus: {
     title: 'Diagnóstico del sistema',

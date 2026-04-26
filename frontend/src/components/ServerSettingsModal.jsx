@@ -19,9 +19,11 @@ export default function ServerSettingsModal({
   onClose,
   serverId,
   serverName,
+  serverTag = '',
   members = [],
   serverOwnerId = null,
   onMembersRefresh = null,
+  onServerTagUpdated = null,
 }) {
   const { t } = useTranslation()
   const [inviteType, setInviteType] = useState('temporary')
@@ -40,8 +42,10 @@ export default function ServerSettingsModal({
   const [canManageMemberRoles, setCanManageMemberRoles] = useState(false)
   const [serverBans, setServerBans] = useState([])
   const [activeSection, setActiveSection] = useState(
-    /** @type {'invites' | 'emojis' | 'roles' | 'commands' | 'events' | 'announcements' | 'bans'} */ ('invites')
+    /** @type {'servertag' | 'invites' | 'emojis' | 'roles' | 'commands' | 'events' | 'announcements' | 'bans'} */ ('invites')
   )
+  const [tagDraft, setTagDraft] = useState('')
+  const [tagBusy, setTagBusy] = useState(false)
   const copyTimerRef = useRef(null)
 
   const shareOrigin = getInviteShareOrigin()
@@ -53,8 +57,11 @@ export default function ServerSettingsModal({
   }, [inviteType, tempUsesMode])
 
   useEffect(() => {
-    if (open) setActiveSection('invites')
-  }, [open])
+    if (open) {
+      setActiveSection('invites')
+      setTagDraft(serverTag && String(serverTag).trim() ? String(serverTag).trim().toUpperCase() : '')
+    }
+  }, [open, serverTag])
 
   function flashCopy(message) {
     if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current)
@@ -172,6 +179,35 @@ export default function ServerSettingsModal({
     }
   }
 
+  async function saveServerTag(e) {
+    e.preventDefault()
+    if (!serverId || !canManageServer) return
+    setError('')
+    setInfo('')
+    const raw = String(tagDraft || '').trim()
+    if (raw.length > 0 && !/^[a-zA-Z0-9]{2,4}$/.test(raw)) {
+      setError(t('serverModal.tagErrFormat'))
+      return
+    }
+    setTagBusy(true)
+    try {
+      const payload = { tag: raw === '' ? null : raw.toLowerCase() }
+      await api.patch(`/servers/${serverId}`, payload)
+      setInfo(t('serverModal.tagSaved'))
+      onServerTagUpdated?.()
+    } catch (err) {
+      const st = err.response?.status
+      const code = err.response?.data?.error
+      if (st === 409 || code === 'tag_taken') {
+        setError(t('serverModal.tagErrDuplicate'))
+      } else {
+        setError(t('serverModal.tagErr'))
+      }
+    } finally {
+      setTagBusy(false)
+    }
+  }
+
   async function copyText(value, successLabel) {
     try {
       await navigator.clipboard.writeText(value)
@@ -214,6 +250,7 @@ export default function ServerSettingsModal({
 
         <div className="settings-split-layout">
           <aside className="settings-split-nav" aria-label={t('serverModal.navAria')}>
+            {navBtn('servertag', t('serverModal.navServerTag'))}
             {navBtn('invites', t('serverModal.navInvites'))}
             {navBtn('emojis', t('serverModal.navEmojis'))}
             {navBtn('roles', t('serverModal.navRoles'))}
@@ -224,6 +261,61 @@ export default function ServerSettingsModal({
           </aside>
 
           <section className="settings-split-content">
+            {activeSection === 'servertag' && serverId ? (
+              <div className="server-settings-tab-pane">
+                <h2 className="server-settings-panel-title">{t('serverModal.tagTitle')}</h2>
+                <p className="muted small" style={{ margin: '0 0 0.75rem' }}>
+                  {t('serverModal.tagLead')}
+                </p>
+                {canManageServer ? (
+                  <form onSubmit={saveServerTag} className="form-stack" style={{ maxWidth: 420 }}>
+                    <div>
+                      <label htmlFor="server-tag-input">{t('serverModal.tagLabel')}</label>
+                      <input
+                        id="server-tag-input"
+                        name="server_tag"
+                        value={tagDraft}
+                        onChange={(e) => setTagDraft(e.target.value.toUpperCase())}
+                        maxLength={4}
+                        minLength={0}
+                        placeholder={t('serverModal.tagPlaceholder')}
+                        autoComplete="off"
+                        inputMode="text"
+                      />
+                    </div>
+                    <div className="form-inline" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button type="submit" className="btn primary" disabled={tagBusy}>
+                        {tagBusy ? t('serverModal.tagSaving') : t('serverModal.tagSave')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        disabled={tagBusy}
+                        onClick={() => {
+                          setTagDraft('')
+                        }}
+                      >
+                        {t('serverModal.tagClear')}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <p className="muted small">
+                    {serverTag && String(serverTag).trim() ? (
+                      <strong className="server-tag-display">{String(serverTag).trim().toUpperCase()}</strong>
+                    ) : (
+                      t('serverModal.tagNone')
+                    )}
+                  </p>
+                )}
+                {!canManageServer ? (
+                  <p className="muted small" style={{ marginTop: '0.75rem' }}>
+                    {t('serverModal.tagReadOnly')}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {activeSection === 'invites' && (
               <div className="server-settings-tab-pane">
                 <form onSubmit={createInvite} className="form-stack invite-create-form">
