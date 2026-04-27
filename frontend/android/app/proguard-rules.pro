@@ -19,3 +19,15 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Capacitor plugins rely on runtime annotations/callback reflection.
+# Keep annotation metadata and plugin callback methods in release builds.
+-keepattributes *Annotation*
+
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keep public class * extends com.getcapacitor.Plugin { *; }
+
+-keepclassmembers class * {
+    @com.getcapacitor.annotation.PermissionCallback <methods>;
+    @com.getcapacitor.annotation.ActivityCallback <methods>;
+}
