@@ -216,6 +216,15 @@ function createApp() {
   });
   app.use("/uploads", express.static(uploadDir));
 
+  app.get("/", (_req, res) =>
+    res.json({
+      ok: true,
+      product: "AkoeNet",
+      message: "Backend running",
+      health: "/health",
+      docs: "/docs",
+    })
+  );
   app.get("/health", (_req, res) =>
     res.json({ ok: true, product: "AkoeNet", chat: "AkoeNet", twitchClientId })
   );
