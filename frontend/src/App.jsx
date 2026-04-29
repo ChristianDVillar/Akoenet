@@ -13,6 +13,7 @@ import Register from './pages/Register'
 import DashboardAdmin from './pages/DashboardAdmin'
 import InvitePage from './pages/InvitePage'
 import { initMobileIntegrations } from './services/mobile-integrations'
+import { reportError } from './lib/reportError'
 
 const RegisterComplete = lazy(() => import('./pages/RegisterComplete'))
 const Messages = lazy(() => import('./pages/Messages'))
@@ -83,12 +84,14 @@ export default function App() {
     let cleanup = null
     initMobileIntegrations((to) => navigate(to)).then((fn) => {
       cleanup = fn
+    }).catch((err) => {
+      reportError('mobileIntegrations.init', err)
     })
     return () => {
       try {
         cleanup?.()
-      } catch {
-        /* ignore */
+      } catch (err) {
+        reportError('mobileIntegrations.cleanup', err)
       }
     }
   }, [navigate])
@@ -108,7 +111,7 @@ export default function App() {
           app_version: app_version || undefined,
           device_name: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
         })
-        .catch(() => {})
+        .catch((err) => reportError('push.native.subscribe', err))
     }
     window.addEventListener('akoenet:mobile-push-token', onMobilePushToken)
     return () => {

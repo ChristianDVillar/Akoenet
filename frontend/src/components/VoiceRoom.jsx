@@ -12,6 +12,7 @@ import {
 } from '../lib/voiceConstraints'
 import { resolveImageUrl } from '../lib/resolveImageUrl'
 import { getSavedVoiceSettings } from './VoiceSettingsModal'
+import { reportError } from '../lib/reportError'
 
 const fallbackIceServers = [{ urls: 'stun:stun.l.google.com:19302' }]
 
@@ -176,11 +177,11 @@ function RemoteParticipantMedia({
     if (!ctx) {
       if (voiceStream.getAudioTracks().length > 0) {
         voiceEl.srcObject = voiceStream
-        void voiceEl.play()?.catch(() => {})
+        void voiceEl.play()?.catch((err) => reportError('voice.playRemoteVoice', err))
       }
       if (screenEl && screenStream && screenStream.getAudioTracks().length > 0) {
         screenEl.srcObject = screenStream
-        void screenEl.play()?.catch(() => {})
+        void screenEl.play()?.catch((err) => reportError('voice.playRemoteScreen', err))
       }
       return undefined
     }
@@ -192,14 +193,14 @@ function RemoteParticipantMedia({
       } else if (voiceStream.getAudioTracks().length > 0) {
         voiceEl.srcObject = voiceStream
       }
-      void voiceEl.play()?.catch(() => {})
+      void voiceEl.play()?.catch((err) => reportError('voice.playProcessedRemoteVoice', err))
     }
 
     if (screenEl && screenStream && screenStream.getAudioTracks().length > 0) {
       const sPlay = connectProcessedPlayback(ctx, screenStream, screenPlaybackCleanupRef)
       screenEl.srcObject =
         sPlay && sPlay.getAudioTracks().length > 0 ? sPlay : screenStream
-      void screenEl.play()?.catch(() => {})
+      void screenEl.play()?.catch((err) => reportError('voice.playProcessedRemoteScreen', err))
     }
 
     return () => {
@@ -256,14 +257,14 @@ function RemoteParticipantMedia({
       sv.srcObject = videoLayout.screen
       if (videoLayout.screen) {
         const p = sv.play()
-        if (p !== undefined) p.catch(() => {})
+        if (p !== undefined) p.catch((err) => reportError('voice.playRemoteScreenVideo', err))
       }
     }
     if (cv) {
       cv.srcObject = videoLayout.camera
       if (videoLayout.camera) {
         const p = cv.play()
-        if (p !== undefined) p.catch(() => {})
+        if (p !== undefined) p.catch((err) => reportError('voice.playRemoteCameraVideo', err))
       }
     }
   }, [videoLayout])
@@ -860,7 +861,7 @@ export default function VoiceRoom({
       osc.stop(t0 + dur)
     }
     if (ctx.state === 'suspended') {
-      void ctx.resume().then(run).catch(() => {})
+      void ctx.resume().then(run).catch((err) => reportError('voice.resumeAudioContext', err))
     } else {
       run()
     }
@@ -995,7 +996,7 @@ export default function VoiceRoom({
           targetSocketId,
           description: pc.localDescription,
         })
-      })().catch(() => {})
+      })().catch((err) => reportError('voice.createOffer', err))
     }
 
     return pc
@@ -1339,7 +1340,7 @@ export default function VoiceRoom({
     pendingAudioCtxCloseRef.current = window.setTimeout(() => {
       pendingAudioCtxCloseRef.current = null
       if (ctxToClose && ctxToClose.state !== 'closed') {
-        ctxToClose.close().catch(() => {})
+        ctxToClose.close().catch((err) => reportError('voice.closeAudioContext', err))
       }
       if (audioContextRef.current === ctxToClose) {
         audioContextRef.current = null
@@ -1635,7 +1636,7 @@ export default function VoiceRoom({
     el.srcObject = new MediaStream(tracks)
     el.muted = localScreenPreviewMuted
     const p = el.play()
-    if (p !== undefined) p.catch(() => {})
+    if (p !== undefined) p.catch((err) => reportError('voice.playLocalScreenAudioPreview', err))
     return undefined
   }, [screenSharing, localScreenStream, localScreenPreviewMuted])
 

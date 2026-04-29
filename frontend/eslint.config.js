@@ -5,7 +5,12 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'src-tauri/target/**']),
+  globalIgnores([
+    'dist',
+    'src-tauri/target/**',
+    'android/app/build/**',
+    'android/app/src/main/assets/public/**',
+  ]),
   {
     files: ['vite.config.js'],
     languageOptions: {

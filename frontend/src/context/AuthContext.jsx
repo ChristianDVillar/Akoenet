@@ -20,6 +20,7 @@ import {
   setAccessToken,
   setRefreshToken,
 } from '../services/session-store'
+import { reportError } from '../lib/reportError'
 
 const AuthContext = createContext(null)
 const SESSION_NOTICE_KEY = 'akoenet_session_notice'
@@ -55,8 +56,8 @@ export function AuthProvider({ children }) {
       if (rt) {
         await api.post('/auth/logout', { refresh_token: rt })
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      reportError('auth.logout', err)
     }
     clearSessionTokens()
     stopSessionKeepAlive()
@@ -69,8 +70,8 @@ export function AuthProvider({ children }) {
   const logoutAllDevices = useCallback(async () => {
     try {
       await api.post('/auth/logout-all')
-    } catch {
-      /* ignore */
+    } catch (err) {
+      reportError('auth.logoutAllDevices', err)
     }
     clearSessionTokens()
     stopSessionKeepAlive()
@@ -198,12 +199,12 @@ export function AuthProvider({ children }) {
       .then((cleanup) => {
         removeListener = cleanup
       })
-      .catch(() => {})
+      .catch((err) => reportError('auth.nativeAppStateListener', err))
     return () => {
       try {
         removeListener?.()
-      } catch {
-        /* ignore */
+      } catch (err) {
+        reportError('auth.nativeAppStateListener.cleanup', err)
       }
     }
   }, [user])

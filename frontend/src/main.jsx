@@ -6,6 +6,7 @@ import './index.css'
 import { applyTheme, loadTheme } from './lib/themePreferences.js'
 import { isTauri } from './lib/isTauri.js'
 import { runDesktopUpdateCheck } from './lib/desktopUpdates.js'
+import { reportError } from './lib/reportError.js'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { LandingLocaleProvider } from './context/LandingLocaleProvider.jsx'
@@ -65,7 +66,7 @@ async function bootstrapSessionEarly() {
 if (isTauri() && import.meta.env.DEV) {
   import('@tauri-apps/plugin-log')
     .then(({ attachConsole }) => attachConsole())
-    .catch(() => {})
+    .catch((err) => reportError('tauri.attachConsole', err))
 }
 
 void runDesktopUpdateCheck()
@@ -75,7 +76,7 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     const base = import.meta.env.BASE_URL || '/'
     const swPath = `${base.replace(/\/?$/, '/') }sw.js`.replace(/([^:]\/)\/+/g, '$1')
-    navigator.serviceWorker.register(swPath).catch(() => {})
+    navigator.serviceWorker.register(swPath).catch((err) => reportError('sw.register', err))
   })
 }
 
@@ -94,7 +95,7 @@ function mountReactApp() {
 }
 
 void bootstrapSessionEarly()
-  .catch(() => {})
+  .catch((err) => reportError('bootstrapSessionEarly', err))
   .finally(() => {
     bootstrapThemeEarly()
     mountReactApp()
