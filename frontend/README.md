@@ -51,6 +51,25 @@ Equivale a `tauri:build` y luego genera en `frontend/public/releases/` **solo la
 
 En Windows verás típicamente `.msi` o instalador NSIS; en macOS `.dmg`/`.app`; según targets en `src-tauri/tauri.conf.json`.
 
+### Flujo recomendado de release desktop (tags)
+
+Para evitar fallos de CI por desalineación de versión/tag:
+
+1. Sube la versión en:
+   - `frontend/package.json`
+   - `frontend/src-tauri/tauri.conf.json`
+   - `frontend/src-tauri/Cargo.toml`
+2. Ejecuta validación local:
+   - PowerShell: `$env:TAG='v1.5.6'; node scripts/verify-tauri-release-version.mjs`
+   - Bash: `TAG=v1.5.6 node scripts/verify-tauri-release-version.mjs`
+3. Compila/publica:
+   - `npm run release:desktop`
+4. Commit + push del bump (incluyendo `Cargo.lock` si cambió al compilar).
+5. Crea o mueve el tag **después** de subir el commit correcto:
+   - `git tag -f v1.5.6`
+   - `git push origin main`
+   - `git push -f origin v1.5.6`
+
 ## App Android (Capacitor)
 
 Tras cambiar el logo en **`public/Akoenet.png`**, regenera iconos adaptativos y splash en el proyecto nativo:

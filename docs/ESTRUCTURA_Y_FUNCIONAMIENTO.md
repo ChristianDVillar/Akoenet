@@ -2,7 +2,9 @@
 
 Este documento resume la arquitectura actual del proyecto, los flujos principales y los componentes clave de backend/frontend.
 
-*Última revisión estructural: abril 2026 (backend **1.4.6**, frontend/desktop **1.5.0**: ajustes de servidor por pestañas como User settings; `GET /integrations/scheduler/servers` y `…/channels` para el Streamer Scheduler; sesión persistente JWT + socket; desktop, `render.yaml`, workflow Windows por tag; registro por email, DM/amistad, Resend, UX móvil y cookies).*
+> Uso interno del equipo. Para compartir externamente, usa `docs/GUIA_PUBLICA.md`.
+
+*Última revisión estructural: abril 2026 (backend **1.4.6**, frontend/desktop **1.5.6**: ajustes de servidor por pestañas como User settings; `GET /integrations/scheduler/servers` y `…/channels` para el Streamer Scheduler; sesión persistente JWT + socket; desktop, `render.yaml`, workflow Windows por tag; registro por email, DM/amistad, Resend, UX móvil y cookies).*
 
 ## Últimos cambios del documento
 
@@ -116,7 +118,7 @@ Notas:
   - `1733000012000_add_user_erasure_fields`
   - `1733000013000_message_edit_reply_fts`
   - `1733000014000_add_user_birth_date` — fecha de nacimiento en registro (cumplimiento de edad mínima)
-  - `1733000015000_dev_admin_password_admintest` / `1733000016000_ensure_dev_admin_christiandvillar` — ajustes de entorno de desarrollo (opcional según despliegue)
+  - `1733000015000_*` / `1733000016000_*` — ajustes de entorno de desarrollo (opcional según despliegue; pueden variar por entorno interno)
   - `1733000018000_legal_dmca_dpo_age_verified` — `users.age_verified_at`, columnas `dmca_removed_at` en `messages` y `direct_messages`, tablas `dmca_takedowns` y `dpo_requests`
   - `1733000019000_refresh_tokens` — tabla `refresh_tokens` para sesiones renovables (`/auth/refresh`, `/auth/logout`)
   - `1733000020000_extended_features` — 2FA TOTP, push subscriptions, amistades/bloqueos y soporte base de threads
@@ -496,9 +498,9 @@ Los valores de ejemplo siguientes son **ficticios**; no uses estos secretos en p
 PORT=3000
 LOG_LEVEL=info
 APP_VERSION=1.0.0-dev
-JWT_SECRET=super-secreto-falso-no-usar-en-prod-7x9k2m
+JWT_SECRET=<set-a-strong-random-secret>
 TOKEN_VERSION=2
-DATABASE_URL=postgresql://postgres:fakepass123@localhost:5432/akonet
+DATABASE_URL=postgresql://<db_user>:<db_password>@localhost:5432/akonet
 PGSSL_REJECT_UNAUTHORIZED=true
 SKIP_ADMIN_BOOTSTRAP=1
 REDIS_URL=redis://localhost:6379
@@ -506,8 +508,8 @@ STORAGE_DRIVER=local
 S3_ENDPOINT=http://localhost:9000
 S3_REGION=us-east-1
 S3_BUCKET=akonet
-S3_ACCESS_KEY_ID=minioadmin
-S3_SECRET_ACCESS_KEY=minioadmin
+S3_ACCESS_KEY_ID=<storage-access-key>
+S3_SECRET_ACCESS_KEY=<storage-secret-key>
 S3_FORCE_PATH_STYLE=true
 STORAGE_PUBLIC_BASE_URL=http://localhost:9000/akonet
 S3_USE_PRESIGNED_URLS=true
@@ -519,11 +521,11 @@ SOCKET_DM_RATE_LIMIT_MAX=30
 REACTION_RATE_LIMIT_MAX=10
 EXPORT_MAX_MESSAGES=10000
 HIDDEN_SYSTEM_SERVER_NAME=AkoeNet
-TWITCH_CLIENT_ID=fake_twitch_client_id_abc123
-TWITCH_CLIENT_SECRET=fake_twitch_secret_xyz789
+TWITCH_CLIENT_ID=<twitch-client-id>
+TWITCH_CLIENT_SECRET=<twitch-client-secret>
 TWITCH_REDIRECT_URI=http://localhost:3000/auth/twitch/callback
 FRONTEND_OAUTH_REDIRECT=http://localhost:5173/auth/twitch/callback
-SCHEDULER_WEBHOOK_SECRET=fake-webhook-shared-secret
+SCHEDULER_WEBHOOK_SECRET=<scheduler-shared-secret>
 SCHEDULER_ANNOUNCE_CHANNEL_ID=12
 SCHEDULER_ANNOUNCER_USER_ID=3
 SCHEDULER_API_BASE_URL=https://api.scheduler-example.test
@@ -566,7 +568,7 @@ VITE_ICE_SERVERS=[{"urls":"stun:stun.l.google.com:19302"}]
 Ejemplo ficticio **`.env` en la raíz** (solo para Compose, si lo usas):
 
 ```env
-JWT_SECRET=compose-jwt-falso-abc123
+JWT_SECRET=<set-a-strong-random-secret>
 STORAGE_DRIVER=local
 ```
 
@@ -596,7 +598,7 @@ STORAGE_DRIVER=local
 - Comportamiento gobernado por variables de entorno (ver `backend/.env.example`):
   - **`SKIP_ADMIN_BOOTSTRAP=1`:** no se ejecuta ningún `INSERT` de admin (recomendado en bases alojadas); crear el primer administrador vía registro + `UPDATE users SET is_admin = true` o variables `ADMIN_BOOTSTRAP_*` en un despliegue controlado.
   - **`ADMIN_BOOTSTRAP_EMAIL` + `ADMIN_BOOTSTRAP_PASSWORD_HASH`** (hash bcrypt) y opcionalmente **`ADMIN_BOOTSTRAP_USERNAME`:** se inserta/actualiza ese usuario con `is_admin = true`.
-  - **Por defecto** (sin las anteriores): la migración mantiene un usuario de desarrollo documentado en el propio archivo de migración (solo para entornos de confianza; no usar en producción sin cambiar credenciales).
+- **Recomendación de seguridad:** evita depender de usuarios admin por defecto en migraciones. Define siempre `SKIP_ADMIN_BOOTSTRAP=1` en producción y crea/eleva admins de forma explícita y auditada.
 
 ### 12.6 Versionado de token (logout forzado controlado)
 
