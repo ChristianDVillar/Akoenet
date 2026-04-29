@@ -31,3 +31,14 @@
     @com.getcapacitor.annotation.PermissionCallback <methods>;
     @com.getcapacitor.annotation.ActivityCallback <methods>;
 }
+
+# Keep core Capacitor bridge classes used by reflection/WebView bindings.
+-keep class com.getcapacitor.Bridge { *; }
+-keep class com.getcapacitor.BridgeWebChromeClient { *; }
+-keep class com.getcapacitor.BridgeWebViewClient { *; }
+-keep class com.getcapacitor.PluginHandle { *; }
+
+# Prevent JS interface methods from being stripped or obfuscated.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
