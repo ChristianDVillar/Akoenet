@@ -150,6 +150,22 @@ function normalizeCorsOrigins(origins) {
   });
 }
 
+function resolveCorsOriginsForEnvironment() {
+  const configured = String(process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (configured.length > 0) return normalizeCorsOrigins(configured);
+  if (process.env.NODE_ENV !== "production") return [];
+
+  const fallback = String(process.env.FRONTEND_URL || "").trim() || "https://akoenet-frontend.onrender.com";
+  logger.warn(
+    { fallbackOrigin: fallback },
+    "CORS_ORIGINS is empty in production; using fallback browser origin."
+  );
+  return normalizeCorsOrigins([fallback]);
+}
+
 function createApp() {
   const app = express();
   const uploadDir = path.join(__dirname, "..", "uploads");
@@ -166,18 +182,10 @@ function createApp() {
       crossOriginResourcePolicy: { policy: "cross-origin" },
     })
   );
-  const corsOrigins = normalizeCorsOrigins(
-    String(process.env.CORS_ORIGINS || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-  );
+  const corsOrigins = resolveCorsOriginsForEnvironment();
   const isProduction = process.env.NODE_ENV === "production";
   const allowAllOrigins = corsOrigins.length === 0 && !isProduction;
   const allowCredentials = String(process.env.CORS_CREDENTIALS || "true").toLowerCase() !== "false";
-  if (isProduction && corsOrigins.length === 0) {
-    logger.warn("CORS_ORIGINS is empty in production; rejecting browser origins except Tauri webview.");
-  }
   app.use(
     cors({
       origin(origin, cb) {
