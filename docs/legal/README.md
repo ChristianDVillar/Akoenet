@@ -42,4 +42,4 @@ Sustituye los placeholders de contacto (`[CONTACTO_LEGAL]`, `[CONTACTO_PRIVACIDA
 
 - **Pie público (`SiteFooter`):** línea `© <año> <autor>. …` con enlaces a términos y privacidad; el idioma sigue al selector de la landing (EN/ES) vía `footerContent` en `frontend/src/lib/landingContent.js`.
 - **Login y registro:** componente `AuthLegalStrip` con el mismo esquema; el idioma se elige por el idioma del navegador (`es` si `navigator.language` empieza por `es`, si no inglés).
-- El nombre del titular se configura con **`VITE_APP_AUTHOR`** (ver `frontend/.env.example`); por defecto **Christian**.
+- El nombre del titular se configura con **`VITE_APP_AUTHOR`** (ver `frontend/.env.example`); por defecto **Dakinys Systems**.

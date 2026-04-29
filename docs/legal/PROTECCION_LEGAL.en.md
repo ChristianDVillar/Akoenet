@@ -11,7 +11,7 @@ It is not professional legal advice. We recommend validating it with a lawyer in
 
 Suggested copyright header text:
 
-`Copyright (c) 2026 Christian. All rights reserved.`
+`Copyright (c) 2026 Dakinys Systems. All rights reserved.`
 
 ## 2) Licence of use (draft baseline)
 
@@ -83,11 +83,11 @@ To strengthen brand protection:
 
 **Spanish**
 
-`© 2026 Christian. Todos los derechos reservados. Uso sujeto a Términos y Política de Privacidad.`
+`© 2026 Dakinys Systems. Todos los derechos reservados. Uso sujeto a Términos y Política de Privacidad.`
 
 **English**
 
-`© 2026 Christian. All rights reserved. Use subject to Terms of Service and Privacy Policy.`
+`© 2026 Dakinys Systems. All rights reserved. Use subject to Terms of Service and Privacy Policy.`
 
 In the web client, the public footer uses **Spanish or English** copy depending on the landing language (`footerContent` in `frontend/src/lib/landingContent.js` + `SiteFooter`). The year and owner name may align with `VITE_APP_AUTHOR` and the current year.
 

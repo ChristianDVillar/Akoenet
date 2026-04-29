@@ -51,6 +51,8 @@ Equivale a `tauri:build` y luego genera en `frontend/public/releases/` **solo la
 
 En Windows verás típicamente `.msi` o instalador NSIS; en macOS `.dmg`/`.app`; según targets en `src-tauri/tauri.conf.json`.
 
+**Branding web actual:** el pie legal y la franja legal de auth usan `frontend/public/Logo Grande.jpeg`.
+
 ### Flujo recomendado de release desktop (tags)
 
 Para evitar fallos de CI por desalineación de versión/tag:

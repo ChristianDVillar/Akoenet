@@ -1,9 +1,9 @@
 /**
  * Atribución de derechos de autor del cliente web AkoeNet.
- * Dakinis Systems constituye la titularidad de marca y despliegue referenciada en el pie legal.
+ * Dakinys Systems constituye la titularidad de marca y despliegue referenciada en el pie legal.
  */
 
-export const COPYRIGHT_HOLDER = 'Dakinis Systems'
+export const COPYRIGHT_HOLDER = 'Dakinys Systems'
 
 function isSpanishCopyrightLocale(locale) {
   return String(locale ?? 'en').toLowerCase().startsWith('es')
@@ -11,8 +11,8 @@ function isSpanishCopyrightLocale(locale) {
 
 function copyrightTradingNameSuffix(locale) {
   return isSpanishCopyrightLocale(locale)
-    ? 'Marca comercial de Christian Villar. Todos los derechos reservados.'
-    : 'Trading name of Christian Villar. All rights reserved.'
+    ? 'Todos los derechos reservados.'
+    : 'All rights reserved.'
 }
 
 function getCopyrightDisplayYear() {
@@ -32,7 +32,7 @@ export function clientCopyrightLineParts(locale) {
 }
 
 /**
- * Línea © con marca Dakinis para pie / textos planos (paridad con Streamer Scheduler `dakinisCopyrightNotice`).
+ * Línea © con marca Dakinys para pie / textos planos (paridad con Streamer Scheduler `dakinisCopyrightNotice`).
  * @param {string} [locale]
  */
 export function dakinisCopyrightNotice(locale = 'en') {

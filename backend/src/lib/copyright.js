@@ -2,9 +2,9 @@
 
 /**
  * Atribución de derechos de autor del servidor API AkoeNet.
- * Dakinis Systems como titular documentado en código y trazas de arranque.
+ * Dakinys Systems como titular documentado en código y trazas de arranque.
  */
-const SOFTWARE_COPYRIGHT_HOLDER = "Dakinis Systems";
+const SOFTWARE_COPYRIGHT_HOLDER = "Dakinys Systems";
 
 function getCopyrightDisplayYear() {
   return new Date().getFullYear();

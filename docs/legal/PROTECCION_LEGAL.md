@@ -11,7 +11,7 @@ No constituye asesoría legal profesional. Se recomienda validarlo con un abogad
 
 Texto sugerido para encabezado de derechos:
 
-`Copyright (c) 2026 Christian. Todos los derechos reservados.`
+`Copyright (c) 2026 Dakinys Systems. Todos los derechos reservados.`
 
 ## 2) Licencia de uso (propuesta base)
 
@@ -83,11 +83,11 @@ Para reforzar protección de marca:
 
 **Español**
 
-`© 2026 Christian. Todos los derechos reservados. Uso sujeto a Términos y Política de Privacidad.`
+`© 2026 Dakinys Systems. Todos los derechos reservados. Uso sujeto a Términos y Política de Privacidad.`
 
 **English**
 
-`© 2026 Christian. All rights reserved. Use subject to Terms of Service and Privacy Policy.`
+`© 2026 Dakinys Systems. All rights reserved. Use subject to Terms of Service and Privacy Policy.`
 
 En el cliente web, el pie público usa textos en **español o inglés** según el idioma de la landing (`footerContent` en `frontend/src/lib/landingContent.js` + `SiteFooter`). El año y el nombre del titular pueden alinearse con `VITE_APP_AUTHOR` y el año en curso.
 
