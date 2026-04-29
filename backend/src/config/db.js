@@ -26,10 +26,19 @@ function poolOptions() {
     String(process.env.PGSSLMODE || "").toLowerCase() === "require";
 
   if (hostLooksRemote) {
-    opts.ssl =
-      String(process.env.PGSSL_REJECT_UNAUTHORIZED || "true").toLowerCase() === "false"
-        ? { rejectUnauthorized: false }
-        : { rejectUnauthorized: true };
+    const rejectUnauthorized =
+      String(process.env.PGSSL_REJECT_UNAUTHORIZED || "true").toLowerCase() !== "false";
+    if (
+      !rejectUnauthorized &&
+      process.env.NODE_ENV === "production" &&
+      String(process.env.ALLOW_INSECURE_DB_SSL || "").toLowerCase() !== "true"
+    ) {
+      throw new Error(
+        "Refusing to start in production with PGSSL_REJECT_UNAUTHORIZED=false. " +
+          "Set ALLOW_INSECURE_DB_SSL=true only if your provider requires it."
+      );
+    }
+    opts.ssl = { rejectUnauthorized };
   }
 
   const max = Number(process.env.DATABASE_POOL_MAX || 20);

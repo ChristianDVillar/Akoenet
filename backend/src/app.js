@@ -172,7 +172,12 @@ function createApp() {
       .map((s) => s.trim())
       .filter(Boolean)
   );
-  const allowAllOrigins = corsOrigins.length === 0;
+  const isProduction = process.env.NODE_ENV === "production";
+  const allowAllOrigins = corsOrigins.length === 0 && !isProduction;
+  const allowCredentials = String(process.env.CORS_CREDENTIALS || "true").toLowerCase() !== "false";
+  if (isProduction && corsOrigins.length === 0) {
+    logger.warn("CORS_ORIGINS is empty in production; rejecting browser origins except Tauri webview.");
+  }
   app.use(
     cors({
       origin(origin, cb) {
@@ -181,11 +186,17 @@ function createApp() {
         if (isTauriWebviewOrigin(origin)) return cb(null, true);
         return cb(null, false);
       },
-      credentials: true,
+      credentials: allowCredentials,
     })
   );
   app.use(pinoHttp({ logger }));
-  app.get("/metrics", metricsHandler);
+  app.get("/metrics", (req, res, next) => {
+    const token = String(process.env.METRICS_AUTH_TOKEN || "").trim();
+    if (!token) return metricsHandler(req, res, next);
+    const auth = String(req.headers.authorization || "");
+    if (auth === `Bearer ${token}`) return metricsHandler(req, res, next);
+    return res.status(401).json({ error: "Unauthorized" });
+  });
   app.use(globalIpRateLimiter);
   app.use(express.json());
   app.use(httpMetricsMiddleware);

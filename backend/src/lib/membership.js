@@ -163,17 +163,58 @@ async function canReadChannel(userId, channelId) {
 /** All channel IDs the user can read (for global search). May call `canReadChannel` per channel. */
 async function listReadableChannelIds(userId) {
   const r = await pool.query(
-    `SELECT c.id
-     FROM channels c
-     INNER JOIN server_members sm ON sm.server_id = c.server_id AND sm.user_id = $1`,
+    `WITH member_channels AS (
+       SELECT c.id, c.server_id, c.is_private
+       FROM channels c
+       INNER JOIN server_members sm ON sm.server_id = c.server_id AND sm.user_id = $1
+       LEFT JOIN server_bans sb
+         ON sb.user_id = sm.user_id
+        AND sb.server_id = sm.server_id
+        AND sb.revoked_at IS NULL
+        AND (sb.expires_at IS NULL OR sb.expires_at > NOW())
+       WHERE sb.id IS NULL
+     ),
+     server_perm AS (
+       SELECT
+         r.server_id,
+         bool_or(rsp.permission_key = 'server_admin') AS is_admin,
+         bool_or(rsp.permission_key = 'access_private_default') AS access_private_default
+       FROM user_roles ur
+       INNER JOIN roles r ON r.id = ur.role_id
+       LEFT JOIN role_server_permissions rsp ON rsp.role_id = r.id
+       WHERE ur.user_id = $1
+       GROUP BY r.server_id
+     ),
+     role_channel_perm AS (
+       SELECT
+         cp.channel_id,
+         true AS has_rules,
+         bool_or(cp.can_view) AS can_view
+       FROM channel_permissions cp
+       INNER JOIN roles r ON r.id = cp.role_id
+       INNER JOIN user_roles ur ON ur.role_id = r.id AND ur.user_id = $1
+       GROUP BY cp.channel_id
+     ),
+     user_override AS (
+       SELECT channel_id, can_view
+       FROM channel_user_permissions
+       WHERE user_id = $1
+     )
+     SELECT mc.id
+     FROM member_channels mc
+     LEFT JOIN server_perm sp ON sp.server_id = mc.server_id
+     LEFT JOIN role_channel_perm rcp ON rcp.channel_id = mc.id
+     LEFT JOIN user_override uo ON uo.channel_id = mc.id
+     WHERE CASE
+       WHEN coalesce(sp.is_admin, false) THEN true
+       WHEN uo.channel_id IS NOT NULL THEN coalesce(uo.can_view, false)
+       WHEN coalesce(rcp.has_rules, false) THEN coalesce(rcp.can_view, false)
+       WHEN mc.is_private THEN coalesce(sp.access_private_default, false)
+       ELSE true
+     END`,
     [userId]
   );
-  const out = [];
-  for (const row of r.rows) {
-    const cid = Number(row.id);
-    if (await canReadChannel(userId, cid)) out.push(cid);
-  }
-  return out;
+  return r.rows.map((row) => Number(row.id));
 }
 
 async function canSendToChannel(userId, channelId) {
