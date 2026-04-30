@@ -39,6 +39,8 @@ function maybePersistTokensFromRoute(route) {
 export async function initMobileIntegrations(navigate) {
   if (!isCapacitorNative() || typeof navigate !== 'function') return () => {}
   const removers = []
+  let registerInFlight = false
+  let lastRegisterAt = 0
 
   if (App?.addListener) {
     const urlHandle = await App.addListener('appUrlOpen', ({ url }) => {
@@ -59,10 +61,16 @@ export async function initMobileIntegrations(navigate) {
   if (PushNotifications && mayUseNativePush()) {
     try {
       const registerPush = async () => {
+        const now = Date.now()
+        if (registerInFlight || now - lastRegisterAt < 30_000) return
+        registerInFlight = true
         try {
           await PushNotifications.register()
         } catch {
           /* ignore */
+        } finally {
+          lastRegisterAt = Date.now()
+          registerInFlight = false
         }
       }
       let perm = await PushNotifications.checkPermissions()

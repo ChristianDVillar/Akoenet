@@ -1134,8 +1134,48 @@ router.post(
       );
       res.json({ ok: true });
     } catch (e) {
-      logger.error({ err: e }, "native push subscribe failed");
-      res.status(500).json({ error: "native_subscribe_failed" });
+      try {
+        const token = String(req.body.token || "").trim();
+        const platform = String(req.body.platform || "").trim().toLowerCase();
+        if (!token || (platform !== "android" && platform !== "ios")) {
+          return res.status(400).json({ error: "invalid_payload" });
+        }
+
+        // Fallback para esquemas parciales (migraciones no aplicadas o índices faltantes):
+        // intenta actualizar por token y, si no existe, insertar sin metadata opcional.
+        const updated = await pool.query(
+          `UPDATE push_subscriptions
+           SET user_id = $1,
+               subscription_type = 'native',
+               native_platform = $2,
+               endpoint = NULL,
+               p256dh = NULL,
+               auth = NULL,
+               updated_at = NOW()
+           WHERE native_token = $3`,
+          [req.user.id, platform, token]
+        );
+        if (!updated.rowCount) {
+          await pool.query(
+            `INSERT INTO push_subscriptions (
+               user_id,
+               endpoint,
+               p256dh,
+               auth,
+               subscription_type,
+               native_platform,
+               native_token,
+               updated_at
+             )
+             VALUES ($1, NULL, NULL, NULL, 'native', $2, $3, NOW())`,
+            [req.user.id, platform, token]
+          );
+        }
+        return res.json({ ok: true, fallback: true });
+      } catch (fallbackErr) {
+        logger.error({ err: e, fallbackErr }, "native push subscribe failed");
+        return res.status(500).json({ error: "native_subscribe_failed" });
+      }
     }
   }
 );

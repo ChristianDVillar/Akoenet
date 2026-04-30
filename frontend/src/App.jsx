@@ -16,6 +16,10 @@ import { initMobileIntegrations } from './services/mobile-integrations'
 import { reportError } from './lib/reportError'
 import { getAccessToken } from './services/session-store'
 
+const pushTokenInFlight = new Set()
+const pushTokenSent = new Set()
+const pushTokenRetryAfter = new Map()
+
 const RegisterComplete = lazy(() => import('./pages/RegisterComplete'))
 const Messages = lazy(() => import('./pages/Messages'))
 const ServerView = lazy(() => import('./pages/ServerView'))
@@ -106,6 +110,11 @@ export default function App() {
       const device_id = String(event?.detail?.device_id || '').trim()
       const app_version = String(event?.detail?.app_version || '').trim()
       if (!token || (platform !== 'android' && platform !== 'ios')) return
+      const key = `${platform}:${token}`
+      const now = Date.now()
+      const retryAfter = Number(pushTokenRetryAfter.get(key) || 0)
+      if (pushTokenSent.has(key) || pushTokenInFlight.has(key) || now < retryAfter) return
+      pushTokenInFlight.add(key)
       api
         .post('/auth/push/native/subscribe', {
           token,
@@ -114,7 +123,16 @@ export default function App() {
           app_version: app_version || undefined,
           device_name: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
         })
+        .then(() => {
+          pushTokenSent.add(key)
+          pushTokenRetryAfter.delete(key)
+        })
         .catch((err) => {
+          const status = Number(err?.response?.status || 0)
+          if (status >= 500) {
+            // Backend temporalmente inestable: evita spam del mismo token durante 5 minutos.
+            pushTokenRetryAfter.set(key, Date.now() + 5 * 60 * 1000)
+          }
           const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown'
           console.error('[push.native.subscribe] request failed', {
             endpoint: `${api.defaults?.baseURL || ''}/auth/push/native/subscribe`,
@@ -122,10 +140,13 @@ export default function App() {
             platform,
             hasToken: Boolean(token),
             message: err?.message || 'unknown_error',
-            status: err?.response?.status || null,
+            status: status || null,
             response: err?.response?.data || null,
           })
           reportError('push.native.subscribe', err)
+        })
+        .finally(() => {
+          pushTokenInFlight.delete(key)
         })
     }
     window.addEventListener('akoenet:mobile-push-token', onMobilePushToken)

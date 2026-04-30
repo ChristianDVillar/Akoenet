@@ -92,6 +92,30 @@ router.get("/metrics", (_req, res) => {
   res.json(getSnapshot());
 });
 
+router.get("/realtime", (req, res) => {
+  try {
+    const io = req.app?.locals?.io;
+    const adapterRooms = io?.sockets?.adapter?.rooms;
+    const rooms = adapterRooms ? Array.from(adapterRooms.keys()) : [];
+    const userRooms = rooms.filter((name) => String(name).startsWith("user:")).length;
+    const voiceRooms = rooms.filter((name) => String(name).startsWith("voice:")).length;
+    res.json({
+      ok: true,
+      checked_at: new Date().toISOString(),
+      socket_connected_clients: Number(io?.engine?.clientsCount || 0),
+      namespace_connected_sockets: Number(io?.of("/")?.sockets?.size || 0),
+      rooms: {
+        total: rooms.length,
+        user: userRooms,
+        voice: voiceRooms,
+      },
+    });
+  } catch (e) {
+    logger.error({ err: e }, "admin realtime health failed");
+    res.status(500).json({ ok: false, error: "realtime_health_failed" });
+  }
+});
+
 /**
  * Aggregated KPIs and activity for the admin overview UI (DB-backed; resets only where noted).
  */

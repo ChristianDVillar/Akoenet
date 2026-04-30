@@ -74,11 +74,13 @@ export default function DashboardAdmin({ embedded = false }) {
   const [reportServerId, setReportServerId] = useState('')
   const [metrics, setMetrics] = useState(null)
   const [pushDebug, setPushDebug] = useState(null)
+  const [realtime, setRealtime] = useState(null)
   const [overview, setOverview] = useState(null)
   const [overviewEndpointAvailable, setOverviewEndpointAvailable] = useState(true)
   const [reportsEndpointAvailable, setReportsEndpointAvailable] = useState(true)
   const [metricsEndpointAvailable, setMetricsEndpointAvailable] = useState(true)
   const [pushDebugEndpointAvailable, setPushDebugEndpointAvailable] = useState(true)
+  const [realtimeEndpointAvailable, setRealtimeEndpointAvailable] = useState(true)
   const [loadWarnings, setLoadWarnings] = useState([])
   const docsUrl = `${String(api.defaults.baseURL || '').replace(/\/$/, '')}/docs`
 
@@ -137,11 +139,14 @@ export default function DashboardAdmin({ embedded = false }) {
         pushDebugEndpointAvailable
           ? api.get('/admin/push/debug', acceptAllStatuses)
           : Promise.resolve({ status: 404, data: null }),
+        realtimeEndpointAvailable
+          ? api.get('/admin/realtime', acceptAllStatuses)
+          : Promise.resolve({ status: 404, data: null }),
         overviewEndpointAvailable
           ? api.get('/admin/overview', acceptAllStatuses)
           : Promise.resolve({ status: 404, data: null }),
       ]
-      const [depsRes, auditRes, reportRes, metricsRes, pushDebugRes, overviewRes] = await Promise.all(reqs)
+      const [depsRes, auditRes, reportRes, metricsRes, pushDebugRes, realtimeRes, overviewRes] = await Promise.all(reqs)
 
       const depsBody = depsRes.data && typeof depsRes.data === 'object' ? depsRes.data : null
       if (depsBody?.deps && typeof depsBody.deps === 'object') {
@@ -207,6 +212,19 @@ export default function DashboardAdmin({ embedded = false }) {
           warnings.push(t('admin.warnPushDebug404'))
         } else if (pushDebugRes.status && pushDebugRes.status !== 200) {
           warnings.push(t('admin.warnPushDebugHttp', { status: pushDebugRes.status }))
+        }
+      }
+
+      if (realtimeRes.status === 200 && realtimeRes.data && typeof realtimeRes.data === 'object') {
+        setRealtime(realtimeRes.data)
+        setRealtimeEndpointAvailable(true)
+      } else {
+        setRealtime(null)
+        if (realtimeRes.status === 404) {
+          if (realtimeEndpointAvailable) setRealtimeEndpointAvailable(false)
+          warnings.push(t('admin.warnRealtime404'))
+        } else if (realtimeRes.status && realtimeRes.status !== 200) {
+          warnings.push(t('admin.warnRealtimeHttp', { status: realtimeRes.status }))
         }
       }
 
@@ -478,6 +496,34 @@ export default function DashboardAdmin({ embedded = false }) {
                 </span>
               </div>
             )}
+            <div className="status-history">
+              <h3>{t('admin.realtimeStatusTitle')}</h3>
+              {!realtimeEndpointAvailable ? (
+                <p className="muted small">{t('admin.realtimeStatus404')}</p>
+              ) : realtime ? (
+                <div className="status-meta" style={{ marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                  <span>
+                    <strong>{t('admin.realtimeConnectedClients')}</strong>{' '}
+                    {formatNum(realtime?.socket_connected_clients ?? 0)}
+                  </span>
+                  <span>
+                    <strong>{t('admin.realtimeNamespaceSockets')}</strong>{' '}
+                    {formatNum(realtime?.namespace_connected_sockets ?? 0)}
+                  </span>
+                  <span>
+                    <strong>{t('admin.realtimeRoomsTotal')}</strong> {formatNum(realtime?.rooms?.total ?? 0)}
+                  </span>
+                  <span>
+                    <strong>{t('admin.realtimeRoomsUser')}</strong> {formatNum(realtime?.rooms?.user ?? 0)}
+                  </span>
+                  <span>
+                    <strong>{t('admin.realtimeRoomsVoice')}</strong> {formatNum(realtime?.rooms?.voice ?? 0)}
+                  </span>
+                </div>
+              ) : (
+                <p className="muted small">{t('admin.na')}</p>
+              )}
+            </div>
             <div className="status-history">
               <h3>{t('admin.mobileStatusTitle')}</h3>
               {!pushDebugEndpointAvailable ? (
