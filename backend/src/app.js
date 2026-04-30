@@ -139,6 +139,20 @@ function isTauriWebviewOrigin(origin) {
   }
 }
 
+/** Capacitor/Ionic WebViews: Origin may be http(s)://localhost or capacitor:/ionic: schemes. */
+function isMobileWebviewOrigin(origin) {
+  if (!origin || typeof origin !== "string") return false;
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol === "capacitor:" || protocol === "ionic:") return true;
+    return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 function normalizeCorsOrigins(origins) {
   if (process.env.NODE_ENV !== "production") return origins;
   return origins.map((o) => {
@@ -166,6 +180,14 @@ function resolveCorsOriginsForEnvironment() {
   return normalizeCorsOrigins([fallback]);
 }
 
+function evaluateCorsOrigin({ origin, allowAllOrigins, corsOrigins }) {
+  if (allowAllOrigins || !origin) return { allowed: true, reason: allowAllOrigins ? "allow_all_dev" : "same_origin_or_non_browser" };
+  if (corsOrigins.includes(origin)) return { allowed: true, reason: "configured_origin" };
+  if (isTauriWebviewOrigin(origin)) return { allowed: true, reason: "tauri_webview_origin" };
+  if (isMobileWebviewOrigin(origin)) return { allowed: true, reason: "mobile_webview_origin" };
+  return { allowed: false, reason: "not_allowlisted" };
+}
+
 function createApp() {
   const app = express();
   const uploadDir = path.join(__dirname, "..", "uploads");
@@ -186,15 +208,46 @@ function createApp() {
   const isProduction = process.env.NODE_ENV === "production";
   const allowAllOrigins = corsOrigins.length === 0 && !isProduction;
   const allowCredentials = String(process.env.CORS_CREDENTIALS || "true").toLowerCase() !== "false";
+  app.use((req, res, next) => {
+    const origin = String(req.headers.origin || "");
+    if (!origin || !isMobileWebviewOrigin(origin)) return next();
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", allowCredentials ? "true" : "false");
+    const reqHeaders = String(req.headers["access-control-request-headers"] || "").trim();
+    res.header(
+      "Access-Control-Allow-Headers",
+      reqHeaders || "Authorization, Content-Type, X-Requested-With"
+    );
+    res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
+    if (req.method === "OPTIONS") {
+      logger.info({ origin, path: req.originalUrl || req.url }, "Handled mobile CORS preflight");
+      return res.sendStatus(204);
+    }
+    return next();
+  });
   app.use(
     cors({
       origin(origin, cb) {
-        if (allowAllOrigins || !origin) return cb(null, true);
-        if (corsOrigins.includes(origin)) return cb(null, true);
-        if (isTauriWebviewOrigin(origin)) return cb(null, true);
-        return cb(null, false);
+        const result = evaluateCorsOrigin({ origin, allowAllOrigins, corsOrigins });
+        if (!result.allowed && origin) {
+          logger.warn(
+            {
+              origin,
+              allowAllOrigins,
+              corsOriginsCount: corsOrigins.length,
+              reason: result.reason,
+            },
+            "CORS origin denied"
+          );
+        }
+        if (result.allowed && origin && isMobileWebviewOrigin(origin)) {
+          logger.info({ origin, reason: result.reason }, "CORS mobile webview origin allowed");
+        }
+        return cb(null, result.allowed);
       },
       credentials: allowCredentials,
+      optionsSuccessStatus: 204,
     })
   );
   app.use(pinoHttp({ logger }));

@@ -14,6 +14,7 @@ import DashboardAdmin from './pages/DashboardAdmin'
 import InvitePage from './pages/InvitePage'
 import { initMobileIntegrations } from './services/mobile-integrations'
 import { reportError } from './lib/reportError'
+import { getAccessToken } from './services/session-store'
 
 const RegisterComplete = lazy(() => import('./pages/RegisterComplete'))
 const Messages = lazy(() => import('./pages/Messages'))
@@ -98,6 +99,8 @@ export default function App() {
 
   useEffect(() => {
     const onMobilePushToken = (event) => {
+      const accessToken = String(getAccessToken() || '').trim()
+      if (!accessToken) return
       const token = String(event?.detail?.token || '').trim()
       const platform = String(event?.detail?.platform || '').trim().toLowerCase()
       const device_id = String(event?.detail?.device_id || '').trim()
@@ -111,7 +114,19 @@ export default function App() {
           app_version: app_version || undefined,
           device_name: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
         })
-        .catch((err) => reportError('push.native.subscribe', err))
+        .catch((err) => {
+          const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown'
+          console.error('[push.native.subscribe] request failed', {
+            endpoint: `${api.defaults?.baseURL || ''}/auth/push/native/subscribe`,
+            origin,
+            platform,
+            hasToken: Boolean(token),
+            message: err?.message || 'unknown_error',
+            status: err?.response?.status || null,
+            response: err?.response?.data || null,
+          })
+          reportError('push.native.subscribe', err)
+        })
     }
     window.addEventListener('akoenet:mobile-push-token', onMobilePushToken)
     return () => {

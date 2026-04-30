@@ -5,6 +5,7 @@ import {
   isIosBrowser,
   isStandalonePwa,
 } from '../lib/landingDevice'
+import { isCapacitorNative } from '../lib/mobile-runtime'
 
 /**
  * Sección “descargar / instalar app”: copia distinta para móvil vs PC y PWA (Chrome/Edge).
@@ -82,6 +83,7 @@ function NativeDesktopBlock({ a }) {
 
 export default function LandingAppSection({ t }) {
   const a = t.appSection
+  const nativeMobileApp = isCapacitorNative()
   const [kind, setKind] = useState(() => getLandingDeviceKind())
   const [standalone, setStandalone] = useState(() => isStandalonePwa())
   const [deferredPrompt, setDeferredPrompt] = useState(null)
@@ -117,6 +119,8 @@ export default function LandingAppSection({ t }) {
     }
     setDeferredPrompt(null)
   }, [deferredPrompt])
+
+  if (nativeMobileApp) return null
 
   if (standalone && !hasHostedDesktop) {
     return (

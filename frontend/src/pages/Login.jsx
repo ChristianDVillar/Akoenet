@@ -75,6 +75,7 @@ export default function Login() {
     const ac = new AbortController()
     const timeoutMs = 8000
     const timer = setTimeout(() => ac.abort(), timeoutMs)
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown'
 
     fetch(`${apiBase}/auth/twitch/status`, { signal: ac.signal })
       .then((res) => {
@@ -88,9 +89,19 @@ export default function Login() {
         const ru = data?.redirectUri != null ? String(data.redirectUri).trim() : ''
         setTwitchOAuthRedirectUri(ru || null)
       })
-      .catch(() => {
+      .catch((err) => {
         clearTimeout(timer)
-        if (!cancelled) setTwitchGate('unreachable')
+        if (!cancelled) {
+          setTwitchGate('unreachable')
+          // Debug para Android Studio / WebView cuando Render está dormido o CORS bloquea.
+          console.error('[login:twitch-status] unreachable', {
+            apiBase,
+            endpoint: `${apiBase}/auth/twitch/status`,
+            origin,
+            message: err?.message || 'unknown_error',
+            name: err?.name || 'Error',
+          })
+        }
       })
 
     return () => {
